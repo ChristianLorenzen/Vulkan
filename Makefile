@@ -20,6 +20,7 @@ SRC_FILES := $(shell find $(ASSEMBLY) -type f \( -name "*.cpp" -o -name "*.c" -o
 # The build target
 .PHONY: build
 build: $(BUILD_DIR)
+	sh compileShaders.sh
 	$(CXX) $(CXXFLAGS) $(SRC_FILES) -o $(BUILD_DIR)/app $(INCLUDE_FLAGS) $(LINKER_FLAGS)
 
 # Create the build directory if it doesn't exist
