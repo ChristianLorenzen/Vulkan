@@ -6,13 +6,15 @@ BUILD_DIR := bin
 
 # Compiler and flags
 CXX := g++                             # Use g++ as the compiler
-CXXFLAGS := -std=c++20                 # Enable C++20 standard
+CXXFLAGS := -std=c++20  # Enable C++20 standard
+
+FRAMEWORKS = -framework Cocoa -framework OpenGL -framework IOKit
 
 # Include directories
-INCLUDE_FLAGS := -Isrc -I/opt/homebrew/include -I$(VULKAN_SDK)/include $(shell pkg-config --cflags glfw3)
+INCLUDE_FLAGS := -Isrc -I/opt/homebrew/include -I$(VULKAN_SDK)/include
 
 # Linker options
-LINKER_FLAGS := -L/opt/homebrew/lib -L$(VULKAN_SDK)/lib $(shell pkg-config --libs glfw3) -lvulkan -rpath /usr/local/lib
+LINKER_FLAGS := -L/opt/homebrew/lib -L$(VULKAN_SDK)/lib -lglfw3 -framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo -lvulkan -rpath /usr/local/lib
 
 # Source files
 SRC_FILES := $(shell find $(ASSEMBLY) -type f \( -name "*.cpp" -o -name "*.c" -o -name "*.m" \))
@@ -21,7 +23,7 @@ SRC_FILES := $(shell find $(ASSEMBLY) -type f \( -name "*.cpp" -o -name "*.c" -o
 .PHONY: build
 build: $(BUILD_DIR)
 	sh compileShaders.sh
-	$(CXX) $(CXXFLAGS) $(SRC_FILES) -o $(BUILD_DIR)/app $(INCLUDE_FLAGS) $(LINKER_FLAGS)
+	$(CXX) $(CXXFLAGS) ${FRAMEWORKS} $(SRC_FILES) -o $(BUILD_DIR)/app $(INCLUDE_FLAGS) $(LINKER_FLAGS)
 
 # Create the build directory if it doesn't exist
 $(BUILD_DIR):
