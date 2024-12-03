@@ -61,13 +61,26 @@ namespace Faye {
 
             Window* window;
 
+            // Pre index buffer rectangle
+            // const std::vector<Vertex> vertices = {
+            //     {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+            //     {{0.5f, -0.5f}, {0.0f, 0.0f, 0.0f}},
+            //     {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+            //     {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+            //     {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+            //     {{-0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}}
+            // };
+
             const std::vector<Vertex> vertices = {
-                {{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-                {{0.5f, -0.5f}, {0.0f, 0.0f, 0.0f}},
-                {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-                {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+                {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+                {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+                {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+                {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
             };
 
+            const std::vector<uint16_t> indices = {
+                0, 1, 2, 2, 3, 0
+            };
 
             const std::vector<const char*> validationLayers = {
                 "VK_LAYER_KHRONOS_validation"
@@ -78,6 +91,9 @@ namespace Faye {
                 "VK_KHR_portability_subset"
             };
 
+            uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+            uint32_t currentFrame = 0;
+
             VkInstance instance = nullptr;
 
             VkSurfaceKHR surface = nullptr;
@@ -86,6 +102,12 @@ namespace Faye {
 
             VkBuffer vertexBuffer;
             VkDeviceMemory vertexBufferMemory;
+            VkBuffer indexBuffer;
+            VkDeviceMemory indexBufferMemory;
+
+            std::vector<VkBuffer> uniformBuffers;
+            std::vector<VkDeviceMemory> uniformBuffersMemory;
+            std::vector<void*> uniformBuffersMapped;
 
             // Queues
             VkQueue graphicsQueue = nullptr;
@@ -99,18 +121,28 @@ namespace Faye {
             std::vector<VkImageView> swapChainImageViews;
 
             //Create Render Pass
+            VkDescriptorSetLayout descriptorSetLayout;
             VkPipelineLayout pipelineLayout;
             VkRenderPass renderPass;
             VkPipeline graphicsPipeline;
 
             std::vector<VkFramebuffer> swapChainFramebuffers;
 
+            VkDescriptorPool descriptorPool;
+            std::vector<VkDescriptorSet> descriptorSets;
             VkCommandPool commandPool;
-            VkCommandBuffer commandBuffer;
 
-            VkSemaphore imageAvailableSemaphore;
-            VkSemaphore renderFinishedSemaphore;
-            VkFence inFlightFence;
+            std::vector<VkCommandBuffer> commandBuffers;
+
+            std::vector<VkSemaphore> imageAvailableSemaphores;
+            std::vector<VkSemaphore> renderFinishedSemaphores;
+            std::vector<VkFence> inFlightFences;
+
+            VkImage textureImage;
+            VkDeviceMemory textureImageMemory;
+            VkImageView textureImageView;
+
+            VkSampler textureSampler;
 
             void onInit();
             void createSurface();
@@ -130,13 +162,33 @@ namespace Faye {
             VkExtent2D channelSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
             void createImageViews();
 
+            VkCommandBuffer beginSingleTimeCommands();
+            void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
+            void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+            void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+
             void createRenderPass() ;
+            void createDescriptorSetLayout();
             void createGraphicsPipeline();
             void createFramebuffers();
             void createCommandPools();
+            void createTextureImage();
+            void createTextureImageView();
+            VkImageView createImageView(VkImage image, VkFormat format);
+            void createTextureSampler();
+            void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
             void createVertexBuffer();
-            void createCommandBuffer();
-            void recordCommandBuffer(uint32_t imageIndex);
+            void createIndexBuffer();
+            void createUniformBuffers();
+            void createDescriptorPool();
+            void createDescriptorSets();
+            void updateUniformBuffer(uint32_t currentImage);
+            void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+            void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+            
+            void createCommandBuffers();
+            void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
             VkShaderModule createShaderModule(const std::vector<char>& code);
             void createSyncObjects();
 

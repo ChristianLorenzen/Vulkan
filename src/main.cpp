@@ -37,14 +37,13 @@ class Engine {
         LOG_INFO(logger, "Starting cleanup...");
         cleanup();
     }
-    void setLogger(quill::Logger** logger) {
-        logger = logger;
-    }
+
     private:
     // Custom class for glfw window related functionality.
     Window* glfwWindow;
     // Custom class for Vulkan init/functionality.
     Vulkan* vkData;
+
     quill::Logger* logger;
 
     void mainLoop() {        
