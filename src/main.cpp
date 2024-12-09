@@ -15,8 +15,8 @@
 
 using namespace Faye;
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+const uint32_t WIDTH = 1300;
+const uint32_t HEIGHT = 900;
 
 class Engine {
     public: 
@@ -48,8 +48,12 @@ class Engine {
 
     void mainLoop() {        
         while(!glfwWindow->shouldClose()) {
+            vkData->timer.frameStart();
             glfwPollEvents();
             vkData->drawFrame();
+
+            // End frame statistics
+            vkData->timer.frameEnd(logger);
         }
 
         vkDeviceWaitIdle(vkData->getDevice());
@@ -58,8 +62,8 @@ class Engine {
     void cleanup() {
         // Cleanup glfwWindow pointer;
         // delete vkData;
-        delete glfwWindow;
         delete vkData;
+        delete glfwWindow;
     }
 };
 

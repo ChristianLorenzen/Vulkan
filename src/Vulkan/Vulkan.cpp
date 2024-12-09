@@ -1,9 +1,17 @@
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 #include <stdio.h>
+#include <unordered_map>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "include/tiny_obj_loader.h"
+
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_vulkan.h"
 
 #include "Vulkan.hpp"
 #include "Window/Window.hpp"
@@ -16,8 +24,11 @@
 #include "quill/sinks/ConsoleSink.h"
 
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+#include "GUIComponents/imgui_Components.hpp"
 
 #include <chrono>
 
@@ -28,6 +39,9 @@ const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
+
+const std::string MODEL_PATH = "src/include/viking_room.obj";
+const std::string TEXTURE_PATH = "src/include/viking_room.png";
 
 Faye::Vulkan::Vulkan(Window* win) {
     onInit();
@@ -45,11 +59,13 @@ Faye::Vulkan::Vulkan(Window* win) {
     createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
-    createFramebuffers();
     createCommandPools();
+    createDepthResources();
+    createFramebuffers();
     createTextureImage();
     createTextureImageView();
     createTextureSampler();
+    loadModel();
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
@@ -57,6 +73,60 @@ Faye::Vulkan::Vulkan(Window* win) {
     createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
+
+    initImGui();
+}
+
+void Faye::Vulkan::initImGui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    //Add Roboto as default font.
+    io.FontDefault = io.Fonts->AddFontFromFileTTF("src/include/fonts/Poppins,Roboto/Roboto/Roboto-Regular.ttf", 16.0f);
+
+    // Add custom styling.
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.FrameRounding = 2.0f;
+    style.WindowRounding = 4.f;
+    style.WindowBorderSize = 0.0f;
+
+
+    ImGui::StyleColorsCustom();
+
+    // ImGuiStyle& style = ImGui::GetStyle();
+    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+    //     style.WindowRounding = 0.0f;
+    //     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    // }
+
+    ImGui_ImplGlfw_InitForVulkan(window->getWindow(), true);
+    ImGui_ImplVulkan_InitInfo info = {};
+    info.Instance = instance;
+    info.PhysicalDevice = physicalDevice;
+    info.Device = device;
+    info.QueueFamily = 0;
+    info.Queue = graphicsQueue;
+    info.DescriptorPool = descriptorPool;
+    info.RenderPass = renderPass;
+
+    info.MinImageCount = MAX_FRAMES_IN_FLIGHT;
+    info.ImageCount = MAX_FRAMES_IN_FLIGHT;
+
+    ImGui_ImplVulkan_Init(&info);
+
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+    ImGui_ImplVulkan_CreateFontsTexture();
+
+    endSingleTimeCommands(commandBuffer);
+
+    vkDeviceWaitIdle(device);
+
+    // ImGui_ImplVulkan_DestroyFontsTexture();
 }
 
 void Faye::Vulkan::onInit() {
@@ -368,6 +438,8 @@ void Faye::Vulkan::createSwapChain() {
 
 VkSurfaceFormatKHR Faye::Vulkan::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
+        // TODO VK_FORMAT_B8G8R8A8_SRGB gives better color for Vulkan rendered items
+        // but UNORM is needed for IMGUI. Figure out something for this...
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
         }
@@ -403,7 +475,7 @@ VkExtent2D Faye::Vulkan::channelSwapExtent(const VkSurfaceCapabilitiesKHR& capab
 void Faye::Vulkan::createImageViews() {
     swapChainImageViews.resize(swapChainImages.size());
     for (size_t i = 0; i < swapChainImages.size(); i++) {
-        swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat);
+        swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 }
 
@@ -418,30 +490,46 @@ void Faye::Vulkan::createRenderPass() {
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
+    VkAttachmentDescription depthAttachment = {};
+    depthAttachment.format = findDepthFormat();
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkAttachmentReference colorAttachmentRef = {};
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthAttachmentRef = {};
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass = {};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
-
-    VkRenderPassCreateInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
+    
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
     dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
+
+    VkRenderPassCreateInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
@@ -546,6 +634,14 @@ void Faye::Vulkan::createGraphicsPipeline() {
     multisampling.alphaToCoverageEnable = VK_FALSE;
     multisampling.alphaToOneEnable = VK_FALSE;
 
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.stencilTestEnable = VK_FALSE;
+
     VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     colorBlendAttachment.blendEnable = VK_FALSE;
@@ -602,6 +698,7 @@ void Faye::Vulkan::createGraphicsPipeline() {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
+    pipelineInfo.pDepthStencilState = &depthStencil;
 
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create graphics pipeline");
@@ -612,45 +709,90 @@ void Faye::Vulkan::createGraphicsPipeline() {
 }
 
 void Faye::Vulkan::createFramebuffers() {
-swapChainFramebuffers.resize(swapChainImageViews.size());
+    swapChainFramebuffers.resize(swapChainImageViews.size());
 
-for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-    VkImageView attachments[] = {
-        swapChainImageViews[i]
-    };
+    for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+        std::array<VkImageView, 2> attachments = {
+            swapChainImageViews[i],
+            depthImageView
+        };
 
-    VkFramebufferCreateInfo framebufferInfo = {};
-    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebufferInfo.renderPass = renderPass;
-    framebufferInfo.attachmentCount = 1;
-    framebufferInfo.pAttachments = attachments;
-    framebufferInfo.width = swapChainExtent.width;
-    framebufferInfo.height = swapChainExtent.height;
-    framebufferInfo.layers = 1;
+        VkFramebufferCreateInfo framebufferInfo = {};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        framebufferInfo.pAttachments = attachments.data();
+        framebufferInfo.width = swapChainExtent.width;
+        framebufferInfo.height = swapChainExtent.height;
+        framebufferInfo.layers = 1;
 
-    if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create framebuffer");
+        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create framebuffer");
+        }
     }
-}
 }
 
 void Faye::Vulkan::createCommandPools() {
-QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
-VkCommandPoolCreateInfo poolInfo = {};
-poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+    VkCommandPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
-    throw std::runtime_error("Failed to create command pool");
+    if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create command pool");
+    }
 }
+
+void Faye::Vulkan::createDepthResources()
+{
+    VkFormat depthFormat = findDepthFormat();
+
+    createImage(
+        swapChainExtent.width,
+        swapChainExtent.height,
+        depthFormat,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        depthImage,
+        depthImageMemory
+    );
+    depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+}
+
+VkFormat Faye::Vulkan::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+            return format;
+        } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+            return format;
+        }
+    }
+
+    throw std::runtime_error("Failed to find supported format");
+}
+
+VkFormat Faye::Vulkan::findDepthFormat() {
+    return findSupportedFormat(
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+}
+
+bool Faye::Vulkan::hasStencilComponent(VkFormat format) {
+    return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
 void Faye::Vulkan::createTextureImage()
 {
     int texWidth, texHeight, texChannels;
-    stbi_uc* pixels = stbi_load("src/textures/spy.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+    stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
     
     LOG_INFO(logger, "Loaded texture image: {}x{}x{}", texWidth, texHeight, texChannels);
 
@@ -687,16 +829,16 @@ void Faye::Vulkan::createTextureImage()
 
 void Faye::Vulkan::createTextureImageView()
 {
-    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-VkImageView Faye::Vulkan::createImageView(VkImage image, VkFormat format) {
+VkImageView Faye::Vulkan::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image= image;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.aspectMask = aspectFlags;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -778,6 +920,7 @@ void Faye::Vulkan::transitionImageLayout(VkImage image, VkFormat format, VkImage
     } else {
         throw std::invalid_argument("unsupported layout transition!");
     }
+
 
     vkCmdPipelineBarrier(
         commandBuffer,
@@ -878,6 +1021,46 @@ void Faye::Vulkan::createImage(uint32_t width, uint32_t height, VkFormat format,
     vkBindImageMemory(device, image, imageMemory, 0);
 }
 
+void Faye::Vulkan::loadModel()
+{
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+        throw std::runtime_error(warn + err);
+    }
+
+    std::unordered_map<Vertex, uint32_t> uniqueVertices = {};
+
+    for (const auto& shape : shapes) {
+        for (const auto& index : shape.mesh.indices) {
+            Vertex vertex = {};
+
+            vertex.pos = {
+                attrib.vertices[3 * index.vertex_index + 0],
+                attrib.vertices[3 * index.vertex_index + 1],
+                attrib.vertices[3 * index.vertex_index + 2]
+            };
+
+            vertex.texCoord = {
+                attrib.texcoords[2 * index.texcoord_index + 0],
+                1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+            };
+            
+            vertex.color = { 1.0f, 1.0f, 1.0f };
+            
+            if (uniqueVertices.count(vertex) == 0) {
+                uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+                vertices.push_back(vertex);
+            }
+
+            indices.push_back(uniqueVertices[vertex]);
+        }
+    }
+}
+
 void Faye::Vulkan::createVertexBuffer() {
     VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
     LOG_INFO(logger, "Creating vertex buffer of size: {} with {} vertices of size {}", bufferSize, vertices.size(), sizeof(Vertex));
@@ -901,7 +1084,7 @@ void Faye::Vulkan::createVertexBuffer() {
 
 void Faye::Vulkan::createIndexBuffer()
 {
-    VkDeviceSize bufferSize = sizeof(uint16_t) * indices.size();
+    VkDeviceSize bufferSize = sizeof(uint32_t) * indices.size();
     LOG_INFO(logger, "Creating index buffer of size: {} with {} vertices of size {}", bufferSize, indices.size(), sizeof(uint16_t));
     
     VkBuffer stagingBuffer;
@@ -941,13 +1124,14 @@ void Faye::Vulkan::createDescriptorPool()
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
 
     VkDescriptorPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
 
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create descriptor pool...");
@@ -1008,8 +1192,8 @@ void Faye::Vulkan::createCommandBuffers() {
 void Faye::Vulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = nullptr;
+    //beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    //beginInfo.pInheritanceInfo = nullptr;
 
     if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("Failed to begin recording command buffer");
@@ -1022,9 +1206,12 @@ void Faye::Vulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t i
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapChainExtent;
 
-    VkClearValue clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    std::array<VkClearValue, 2> clearValues = {};
+    clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    clearValues[1].depthStencil = {1.0f, 0};
+
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1048,12 +1235,33 @@ void Faye::Vulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t i
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     // LOG_INFO(logger, "vkDraw called with {} vertices", vertices.size());
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::ShowDemoWindow();
+
+    Faye::Components::FrameCounter(logger, timer.getFrameTime(1), timer.getAverageFPS());
+
+    ImGui::Render();
+
+    // TODO: If windowing...
+    // ImGuiIO& io = ImGui::GetIO();
+    // // Update and Render additional Platform Windows
+    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    // {
+    //     ImGui::UpdatePlatformWindows();
+    //     ImGui::RenderPlatformWindowsDefault();
+    // }
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, 0);
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -1122,6 +1330,7 @@ void Faye::Vulkan::recreateSwapChain() {
 
     createSwapChain();
     createImageViews();
+    createDepthResources();
     createFramebuffers();
 }
 
@@ -1140,12 +1349,11 @@ void Faye::Vulkan::drawFrame() {
 
     updateUniformBuffer(currentFrame);
 
-
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
 
-    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame],imageIndex);
+
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1256,6 +1464,12 @@ void Faye::Vulkan::createDescriptorSets()
 }
 
 void Faye::Vulkan::cleanup() {
+    ImGui_ImplVulkan_Shutdown();
+
+    ImGui_ImplGlfw_Shutdown();
+    
+    ImGui::DestroyContext();
+
     cleanupSwapChain();
 
     vkDestroyPipeline(device, graphicsPipeline, nullptr);

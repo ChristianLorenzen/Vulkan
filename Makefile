@@ -6,12 +6,12 @@ BUILD_DIR := bin
 
 # Compiler and flags
 CXX := g++                             # Use g++ as the compiler
-CXXFLAGS := -std=c++20  # Enable C++20 standard
+CXXFLAGS := -std=c++20  			   # Enable C++20 standard
 
 FRAMEWORKS = -framework Cocoa -framework OpenGL -framework IOKit
 
 # Include directories
-INCLUDE_FLAGS := -Isrc -I/opt/homebrew/include -I$(VULKAN_SDK)/include
+INCLUDE_FLAGS := -Isrc -Isrc/imgui -I/opt/homebrew/include -I$(VULKAN_SDK)/include
 
 # Linker options
 LINKER_FLAGS := -L/opt/homebrew/lib -L$(VULKAN_SDK)/lib -lglfw3 -framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo -lvulkan -rpath /usr/local/lib

@@ -4,12 +4,21 @@
 #include <vulkan/vulkan.h>
 #include <array>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
+
+
 namespace Faye {
 
 struct Vertex {
-    glm::vec2 pos;
+    #define INDEX_SIZE = uint32_t
+    glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 texCoord;
+
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+    }
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
@@ -25,7 +34,7 @@ struct Vertex {
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
         attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
         attributeDescriptions[1].binding = 0;
@@ -39,6 +48,14 @@ struct Vertex {
         attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
 
         return attributeDescriptions;
+    }
+};
+}
+
+namespace std {
+template<> struct hash<Faye::Vertex> {
+    size_t operator()(Faye::Vertex const& vertex) const {
+        return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
     }
 };
 }

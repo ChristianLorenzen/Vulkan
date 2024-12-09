@@ -15,6 +15,7 @@
 #include "Structures/Vertex.hpp"
 #include "Window/Window.hpp"
 #include "File.hpp"
+#include "Physics/FrameTimer.hpp"
 
 #include "quill/Logger.h"
 
@@ -56,6 +57,8 @@ namespace Faye {
 
             bool framebufferResized = false;
 
+
+            FrameTimer timer;
         private:
             quill::Logger* logger;
 
@@ -71,16 +74,22 @@ namespace Faye {
             //     {{-0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}}
             // };
 
-            const std::vector<Vertex> vertices = {
-                {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-                {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-                {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-                {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
-            };
+            // const std::vector<Vertex> vertices = {
+            //     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+            //     {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+            //     {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+            //     {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
 
-            const std::vector<uint16_t> indices = {
-                0, 1, 2, 2, 3, 0
-            };
+            //     {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+            //     {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+            //     {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+            //     {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
+            // };
+
+            // const std::vector<uint16_t> indices = {
+            //     0, 1, 2, 2, 3, 0,
+            //     4, 5, 6, 6, 7, 4
+            // };
 
             const std::vector<const char*> validationLayers = {
                 "VK_LAYER_KHRONOS_validation"
@@ -144,7 +153,16 @@ namespace Faye {
 
             VkSampler textureSampler;
 
+            VkImage depthImage;
+            VkDeviceMemory depthImageMemory;
+            VkImageView depthImageView;
+
+            std::vector<Vertex> vertices;
+            std::vector<uint32_t> indices;
+
+
             void onInit();
+            void initImGui();
             void createSurface();
             void createPhysicalDevice();
             void createLogicalDevice();
@@ -168,16 +186,22 @@ namespace Faye {
             void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
             void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 
+            bool hasStencilComponent(VkFormat format);
+            VkFormat findDepthFormat();
+            VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+
             void createRenderPass() ;
             void createDescriptorSetLayout();
             void createGraphicsPipeline();
             void createFramebuffers();
             void createCommandPools();
+            void createDepthResources();
             void createTextureImage();
             void createTextureImageView();
-            VkImageView createImageView(VkImage image, VkFormat format);
+            VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
             void createTextureSampler();
             void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+            void loadModel();
             void createVertexBuffer();
             void createIndexBuffer();
             void createUniformBuffers();
