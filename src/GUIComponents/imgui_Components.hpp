@@ -38,5 +38,13 @@ namespace Faye {
 
             ImGui::End();
         }
+
+        static void CreateDockspace() {
+            if (ImGui::Begin("Dockspace", nullptr)) { 
+                ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+            }
+
+            ImGui::End();
+        }
     };
 }

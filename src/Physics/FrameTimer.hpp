@@ -11,6 +11,12 @@
 
 namespace Faye {
 
+    struct EngineTimeStats {
+        double frametime;
+        double sceneUpdateTime;
+        double meshDrawTime;
+    };
+
     class FrameTimer {
 public:
     // Called at the start of a frame
@@ -18,13 +24,23 @@ public:
         startTime = std::chrono::high_resolution_clock::now();
     }
 
+    void drawStart() {
+        drawStartTime = std::chrono::high_resolution_clock::now();
+    }
+
+    void drawEnd() {
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = endTime - drawStartTime;
+        std::cout << "Render time: " << duration.count() << " ms" << std::endl;
+    }
+
     // Called at the end of a frame
     void frameEnd(quill::Logger* logger) {
         auto endTime = std::chrono::high_resolution_clock::now();
 
         // Compute frametime in seconds
-        std::chrono::duration<double> duration = endTime - startTime;
-        double currentFrameTime = duration.count();
+        delta = endTime - startTime;
+        double currentFrameTime = delta.count();
 
         // Update frametime history in milliseconds
         frameTimes[frameIndex] = currentFrameTime * 1000;
@@ -64,12 +80,21 @@ public:
         return fpsHistory;
     }
 
+    double getDelta() const {
+        return delta.count();
+    }
+
+
+
 private:
     std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+    std::chrono::time_point<std::chrono::high_resolution_clock> drawStartTime;
+
     std::array<double, 5> frameTimes = {}; // Circular buffer for frametimes
     size_t frameIndex = 0;                 // Index for the current frame
     std::deque<double> fpsHistory;        // Rolling FPS history
     static constexpr size_t maxHistorySize = 100; // Adjustable history size
+    std::chrono::duration<double> delta;
 };
 
 } //namespace
