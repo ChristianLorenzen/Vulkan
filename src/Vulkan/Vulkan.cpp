@@ -18,10 +18,7 @@
 #include "Structures/Vertex.hpp"
 #include "Structures/UBO.hpp"
 
-#include "quill/Frontend.h"
 #include "quill/LogMacros.h"
-#include "quill/Logger.h"
-#include "quill/sinks/ConsoleSink.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -47,43 +44,29 @@ const std::string TEXTURE_PATH = "src/include/viking_room.png";
 
 Faye::Vulkan::Vulkan(Window *win)
 {
-    logger = quill::Frontend::create_or_get_logger(
-        "root", quill::Frontend::create_or_get_sink<quill::ConsoleSink>("sink_id_1"));
-    // onInit();
-    // createIns,createSur,createPhysD,createLogD,createCommandPool
     window = win;
 
-    LOG_INFO(logger, "Creating Vulkan Device class instance...");
+    LOG_INFO(Logger::getInstance(), "Creating Vulkan Device class instance...");
 
-    vk_device = new VulkanDevice(logger, *window);
+    vk_device = new VulkanDevice(*window);
 
-    LOG_INFO(logger, "Created Vulkan Device");
+    // createPipelineLayout();
+    // createPipeline();
+    // createCommandBuffers();
     
-    //LOG_INFO(logger, "Creating Surface...");
-    //createSurface();
-    //LOG_INFO(logger, "Creating Devices...");
-    //createPhysicalDevice();
-    //createLogicalDevice();
-    LOG_INFO(logger, "Creating Swapchain...");
     createSwapChain();
-    LOG_INFO(logger, "Creating Render Context...");
     createImageViews();
-    LOG_INFO(logger, "Creating Render Pass...");
     createRenderPass();
-    LOG_INFO(logger, "Creating Descriptor Set Layout...");
     createDescriptorSetLayout();
-    LOG_INFO(logger, "Creating Graphics Pipeline...");
     createGraphicsPipeline();
     createDepthResources();
     createFramebuffers();
     createTextureImage(TEXTURE_PATH);
 
-    LOG_INFO(logger, "Creating Textures...");
     createTextureImageView();
     createTextureSampler();
     loadModel(MODEL_PATH);
 
-    LOG_INFO(logger, "Creating Buffers...");
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffers();
@@ -92,7 +75,7 @@ Faye::Vulkan::Vulkan(Window *win)
     createCommandBuffers();
     createSyncObjects();
 
-    LOG_INFO(logger, "Initializing ImGui...");
+    LOG_INFO(Logger::getInstance(), "Initializing ImGui...");
     initImGui();
 }
 
@@ -497,6 +480,26 @@ void Faye::Vulkan::createGraphicsPipeline()
     vkDestroyShaderModule(vk_device->getDevice(), vertShaderModule, nullptr);
 }
 
+// void Faye::Vulkan::createPipelineLayout() {
+//     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+//     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+//     pipelineLayoutInfo.setLayoutCount = 1;
+//     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+
+//     if (vkCreatePipelineLayout(vk_device->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
+//     {
+//         throw std::runtime_error("Failed to create pipeline layout");
+//     }
+// }
+
+// void Faye::Vulkan::createPipeline() {
+//     auto pipelineConfig = VulkanPipeline::defaultPipelineConfigInfo(vk_swapchain->width(), vk_swapchain->height());
+
+//     pipelineConfig.renderPass = vk_swapchain->getRenderPass();
+//     pipelineConfig.pipelineLayout = pipelineLayout;
+//     vk_pipeline = std::make_unique<VulkanPipeline>(*vk_device,"./src/shaders/vert.spv","./src/shaders/frag.spv", pipelineConfig);
+// }
+
 void Faye::Vulkan::createFramebuffers()
 {
     swapChainFramebuffers.resize(swapChainImageViews.size());
@@ -652,13 +655,13 @@ void Faye::Vulkan::createTextureImage(std::string texturePath)
 
     mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
-    LOG_INFO(logger, "Loaded texture image: {}x{}x{}", texWidth, texHeight, texChannels);
+    LOG_INFO(Logger::getInstance(), "Loaded texture image: {}x{}x{}", texWidth, texHeight, texChannels);
 
     VkDeviceSize imageSize = texWidth * texHeight * 4;
 
     if (!pixels)
     {
-        LOG_ERROR(logger, "Failed to load texture image with !pixels {}", stbi_failure_reason());
+        LOG_ERROR(Logger::getInstance(), "Failed to load texture image with !pixels {}", stbi_failure_reason());
         throw std::runtime_error("Failed to load texture image");
     }
 
@@ -879,7 +882,7 @@ void Faye::Vulkan::loadModel(std::string modelPath)
 void Faye::Vulkan::createVertexBuffer()
 {
     VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
-    LOG_INFO(logger, "Creating vertex buffer of size: {} with {} vertices of size {}", bufferSize, vertices.size(), sizeof(Vertex));
+    LOG_INFO(Logger::getInstance(), "Creating vertex buffer of size: {} with {} vertices of size {}", bufferSize, vertices.size(), sizeof(Vertex));
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
     vk_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
@@ -900,7 +903,7 @@ void Faye::Vulkan::createVertexBuffer()
 void Faye::Vulkan::createIndexBuffer()
 {
     VkDeviceSize bufferSize = sizeof(uint32_t) * indices.size();
-    LOG_INFO(logger, "Creating index buffer of size: {} with {} vertices of size {}", bufferSize, indices.size(), sizeof(uint16_t));
+    LOG_INFO(Logger::getInstance(), "Creating index buffer of size: {} with {} vertices of size {}", bufferSize, indices.size(), sizeof(uint16_t));
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -962,7 +965,7 @@ void Faye::Vulkan::createCommandBuffers()
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = *vk_device->getCommandPool();
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
+    allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
     if (vkAllocateCommandBuffers(vk_device->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS)
     {
@@ -1023,8 +1026,7 @@ void Faye::Vulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t i
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-    // LOG_INFO(logger, "vkDraw called with {} vertices", vertices.size());
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 2, 0, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -1032,20 +1034,11 @@ void Faye::Vulkan::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t i
 
     //ImGui::ShowDemoWindow();
 
-    Faye::Components::FrameCounter(logger, timer.getFrameTime(1), timer.getAverageFPS());
+    Faye::Components::FrameCounter(Logger::getInstance(), timer.getFrameTime(1), timer.getAverageFPS());
 
     Faye::Components::CreateDockspace();
 
     ImGui::Render();
-
-    // TODO: If windowing...
-    // ImGuiIO& io = ImGui::GetIO();
-    // // Update and Render additional Platform Windows
-    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-    // {
-    //     ImGui::UpdatePlatformWindows();
-    //     ImGui::RenderPlatformWindowsDefault();
-    // }
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, 0);
 
@@ -1213,9 +1206,11 @@ void Faye::Vulkan::updateUniformBuffer(uint32_t currentImage, Faye::Camera &came
     UniformBufferObject ubo{};
 
     ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = camera.getViewMatrix(); // glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = camera.getViewMatrix(); //glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.proj = glm::perspective(glm::radians(80.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
     ubo.proj[1][1] *= -1;
+
+    ubo.cam_view = glm::mat4(1.0f); //camera.getViewMatrix();
 
     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }

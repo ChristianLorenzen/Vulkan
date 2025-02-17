@@ -18,15 +18,15 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-VulkanDevice::VulkanDevice(quill::Logger *logger, Window &window) : logger(logger),window(window) {
-    LOG_INFO(logger, "Creating Instance...");
+VulkanDevice::VulkanDevice(Window &window) : window(window) {
+    LOG_INFO(Logger::getInstance(), "Creating Instance...");
     createInstance();
-    LOG_INFO(logger, "Creating Surface...");
+    LOG_INFO(Logger::getInstance(), "Creating Surface...");
     createSurface();
-    LOG_INFO(logger, "Creating Devices...");
+    LOG_INFO(Logger::getInstance(), "Creating Devices...");
     createPhysicalDevice();
     createLogicalDevice();
-    LOG_INFO(logger, "Creating Command Pools...");
+    LOG_INFO(Logger::getInstance(), "Creating Command Pools...");
     createCommandPools();
 }
 
@@ -47,7 +47,7 @@ bool VulkanDevice::isDeviceSuitable(VkPhysicalDevice device)
     if (extensionsSupported)
     {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-        //LOG_INFO(logger, "SwapChainSupportDetails: {} {}", swapChainSupport.formats.size(), swapChainSupport.presentModes.size());
+        LOG_INFO(Logger::getInstance(), "SwapChainSupportDetails: {} {}", swapChainSupport.formats.size(), swapChainSupport.presentModes.size());
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
 
@@ -149,7 +149,7 @@ uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
             return i;
         }
     }
-    //LOG_ERROR(logger, "Failed to find suitable memory type");
+    LOG_ERROR(Logger::getInstance(), "Failed to find suitable memory type");
     throw std::runtime_error("Failed to find suitable memory type...");
 }
 
@@ -228,7 +228,6 @@ void VulkanDevice::createInstance() {
     createInfo.enabledExtensionCount = extensionCount;
     createInfo.ppEnabledExtensionNames = extensions;
 
-    //LOG_INFO(logger, "Creating Instance...");
     if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
     {
         throw std::runtime_error("failed to create instance!");
@@ -269,7 +268,7 @@ void VulkanDevice::createPhysicalDevice()
 
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-    //LOG_INFO(logger, "Physical Device: {}", deviceProperties.deviceName);
+    LOG_INFO(Logger::getInstance(), "Physical Device: {}", deviceProperties.deviceName);
 
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
@@ -488,3 +487,35 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
+
+/// @brief Creates the vkImage, and then allocates and binds the necessary memory.
+/// @param imageInfo 
+/// @param properties 
+/// @param image 
+/// @param imageMemory 
+void VulkanDevice::createImageWithInfo(
+    const VkImageCreateInfo &imageInfo,
+    VkMemoryPropertyFlags properties,
+    VkImage &image,
+    VkDeviceMemory &imageMemory) {
+  if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create image!");
+  }
+
+  VkMemoryRequirements memRequirements;
+  vkGetImageMemoryRequirements(device, image, &memRequirements);
+
+  VkMemoryAllocateInfo allocInfo{};
+  allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  allocInfo.allocationSize = memRequirements.size;
+  allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+  if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+    throw std::runtime_error("failed to allocate image memory!");
+  }
+
+  if (vkBindImageMemory(device, image, imageMemory, 0) != VK_SUCCESS) {
+    throw std::runtime_error("failed to bind image memory!");
+  }
+}
+

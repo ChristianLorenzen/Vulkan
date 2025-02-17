@@ -28,10 +28,7 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 /// @param height Window height
 /// @param title The window name
 Faye::Window::Window(uint32_t width, uint32_t height, const char* title) {
-    logger = quill::Frontend::create_or_get_logger(
-        "root", quill::Frontend::create_or_get_sink<quill::ConsoleSink>("sink_id_1"));
-
-    LOG_INFO(logger, "Window::Window - [Constructor] - Initializing glfw and the glfwWindow");
+    LOG_INFO(Logger::getInstance(), "Window::Window - [Constructor] - Initializing glfw and the glfwWindow");
 
     WIDTH = width;
     HEIGHT = height;
@@ -50,7 +47,7 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char* title) {
         glfwTerminate();
         throw std::runtime_error("Failed to create GLFW window\n");
     } else {
-        LOG_INFO(logger, "GLFW Window created successfully.");
+        LOG_INFO(Logger::getInstance(), "GLFW Window created successfully.");
     }
 }
 
@@ -65,7 +62,7 @@ Window::~Window() {
 /// @return boolean 
 bool Window::isVulkanSupported() {
     if(!glfwVulkanSupported()) {
-        LOG_ERROR(logger, "Vulkan not supported on this device.");
+        LOG_ERROR(Logger::getInstance(), "Vulkan not supported on this device.");
         glfwTerminate();
         return false;
     }

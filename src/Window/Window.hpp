@@ -18,6 +18,8 @@ namespace Faye {
 
             GLFWwindow* getWindow() { return window; }
             
+            VkExtent2D getExtent() { return {static_cast<uint32_t>(WIDTH), static_cast<uint32_t>(HEIGHT)}; }
+
             bool isVulkanSupported();
             bool shouldClose();
             void createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
@@ -25,6 +27,5 @@ namespace Faye {
             uint32_t WIDTH;
             uint32_t HEIGHT;
             GLFWwindow* window = nullptr;
-            quill::Logger* logger;
     };
 }

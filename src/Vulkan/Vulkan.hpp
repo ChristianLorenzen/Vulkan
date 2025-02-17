@@ -14,6 +14,7 @@
 #include <optional>
 #include <set>
 #include <fstream>
+#include <memory>
 
 #include "Structures/Vertex.hpp"
 #include "Window/Window.hpp"
@@ -21,9 +22,11 @@
 #include "Physics/FrameTimer.hpp"
 #include "Camera/Camera.hpp"
 #include "vk_device.hpp"
-#include "vkTypes.hpp"
+#include "vk_swapchain.hpp"
+#include "vk_pipeline.hpp"
+#include "vk_types.hpp"
 
-#include "quill/Logger.h"
+#include "Logging/Logger.hpp"
 
 namespace Faye
 {
@@ -49,9 +52,20 @@ namespace Faye
 		//VmaAllocator allocator;
 
 	private:
-		quill::Logger *logger;
+		// TODO : Temp for vk_pipeline setup.
+		const uint32_t WIDTH = 1300;
+		const uint32_t HEIGHT = 900;
 
 		Window *window;
+
+		//VulkanSwapchain *vk_swapchain;
+
+		// std::unique_ptr<VulkanPipeline> vk_pipeline{
+		// 	vk_device,
+		// 	"./src/shaders/vert.spv",
+		// 	"./src/shaders/frag.spv",
+		// 	VulkanPipeline::defaultPipelineConfigInfo(sizeExtent)};
+		// std::unique_ptr<VulkanPipeline> vk_pipeline;
 
 		const std::vector<const char *> validationLayers = {
 		    "VK_LAYER_KHRONOS_validation"};
@@ -164,6 +178,9 @@ namespace Faye
 		void cleanupSwapChain();
 
 		void cleanup();
+
+		void createPipelineLayout();
+		void createPipeline();
 	};
 
 } // namespace

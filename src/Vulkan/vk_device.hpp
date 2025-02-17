@@ -3,18 +3,17 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
-#include "vkTypes.hpp"
+#include "vk_types.hpp"
 #include "Window/Window.hpp"
 
-#include "quill/Frontend.h"
 #include "quill/LogMacros.h"
-#include "quill/Logger.h"
-#include "quill/sinks/ConsoleSink.h"
+
+#include "Logging/Logger.hpp"
 
 namespace Faye {
     class VulkanDevice {
         public:
-            VulkanDevice(quill::Logger *logger, Window &window);
+            VulkanDevice(Window &window);
             ~VulkanDevice();
 
             VulkanDevice(const VulkanDevice &) = delete;
@@ -30,7 +29,7 @@ namespace Faye {
             VkQueue getGraphicsQueue() { return graphicsQueue; }
             VkQueue getPresentQueue() { return presentQueue; }
 
-            SwapChainSupportDetails getSwapchainSuport() { return querySwapChainSupport(physicalDevice); }
+            SwapChainSupportDetails getSwapchainSupport() { return querySwapChainSupport(physicalDevice); }
             QueueFamilyIndices findPhysicalQueueFamilies() { return findQueueFamilies(physicalDevice); }    
             VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
@@ -50,6 +49,9 @@ namespace Faye {
 
             QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
+            void createImageWithInfo(const VkImageCreateInfo &imageInfo, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
+
+
         private:
             void createInstance();
             void createSurface();
@@ -63,8 +65,6 @@ namespace Faye {
             bool checkDeviceExtensionSupport(VkPhysicalDevice device);
             VkSampleCountFlagBits getMaxUsableSampleCount();
         
-            quill::Logger *logger;
-
             VkInstance instance;
             VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
