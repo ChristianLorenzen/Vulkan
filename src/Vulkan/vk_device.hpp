@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "vk_types.hpp"
-#include "Window/Window.hpp"
+#include "../Window/Window.hpp"
 
 #include "quill/LogMacros.h"
 
@@ -18,8 +18,7 @@ namespace Faye {
 
             VulkanDevice(const VulkanDevice &) = delete;
             VulkanDevice &operator=(const VulkanDevice &) = delete;
-            VulkanDevice(VulkanDevice &&) = delete;
-            VulkanDevice &operator=(VulkanDevice &&) = delete;
+
 
             VkInstance getInstance() { return instance; }
             VkCommandPool* getCommandPool() { return &commandPool; }

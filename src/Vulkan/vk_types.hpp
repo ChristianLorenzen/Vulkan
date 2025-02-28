@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-#include <stdlib.h>
+#include <optional>
 
 namespace Faye {
     struct AllocatedImage {

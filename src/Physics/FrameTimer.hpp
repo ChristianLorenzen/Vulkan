@@ -7,9 +7,11 @@
 #include <iostream>
 #include <algorithm>
 
+#include "quill/Backend.h"
 #include "quill/Frontend.h"
 #include "quill/LogMacros.h"
 #include "quill/Logger.h"
+#include "quill/sinks/ConsoleSink.h"
 
 namespace Faye {
     class FrameTimer {
@@ -25,25 +27,28 @@ namespace Faye {
 
         void drawEnd() {
             auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = endTime - drawStartTime;
+            auto duration = std::chrono::duration<float, std::chrono::seconds::period>(endTime - drawStartTime);
             std::cout << "Render time: " << duration.count() << " ms" << std::endl;
         }
 
         // Called at the end of a frame
-        void frameEnd(quill::Logger* logger) {
+        // TODO: Fix some funky stuff going on here with FPS calc
+        void frameEnd() {
             auto endTime = std::chrono::high_resolution_clock::now();
 
             // Compute frametime in seconds
-            delta = endTime - startTime;
-            double currentFrameTime = delta.count();
+            delta = std::chrono::duration<float, std::chrono::seconds::period>(endTime - startTime);
+            double currentFrameTime = delta.count() * 1000.0;
+
+            startTime = endTime;
 
             // Update frametime history in milliseconds
-            frameTimes[frameIndex] = currentFrameTime * 1000;
+            frameTimes[frameIndex] = currentFrameTime;
             frameIndex = (frameIndex + 1) % frameTimes.size();
 
             // Update the rolling average FPS
-            if (currentFrameTime > 0.0) {
-                double fps = 1.0 / currentFrameTime;
+            if (delta.count() > 0.0) {
+                double fps = 1.0 / delta.count();
 
                 if (fpsHistory.size() >= maxHistorySize) {
                     fpsHistory.pop_front();

@@ -1,7 +1,21 @@
 #include "vk_swapchain.hpp"
 
+#include "quill/LogMacros.h"
+
+
 namespace Faye {
-    VulkanSwapchain::VulkanSwapchain(VulkanDevice* device, VkExtent2D extent) : device(device), windowExtent(extent){
+    VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkExtent2D extent) : device(device), windowExtent(extent){
+        init();
+    }
+
+    VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkExtent2D extent, std::shared_ptr<VulkanSwapchain> previous) : device(device), windowExtent(extent), oldSwapchain(previous) {
+        init();
+
+        oldSwapchain = nullptr;
+    }
+
+    void VulkanSwapchain::init() {
+        LOG_INFO(Logger::getInstance(), "Creating Swapchain...");
         createSwapChain();
         createImageViews();
         createDepthResources();
@@ -79,13 +93,13 @@ namespace Faye {
         submitInfo.pWaitDstStageMask = waitStages;
 
         submitInfo.commandBufferCount = 1;
-        // TODO: video has buffers here
         submitInfo.pCommandBuffers = buffers;
 
         VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
+        vkResetFences(device->getDevice(), 1, &inFlightFences[currentFrame]);
         if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to submit draw command buffer\n");
@@ -101,19 +115,19 @@ namespace Faye {
         presentInfo.pSwapchains = swapChains;
         presentInfo.pImageIndices = imageIndex;
 
-        presentInfo.pResults = nullptr;
+        // presentInfo.pResults = nullptr;
 
         auto result = vkQueuePresentKHR(device->getPresentQueue(), &presentInfo);
 
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
-        {
-            framebufferResized = false;
-            //recreateSwapChain();
-        }
-        else if (result != VK_SUCCESS)
-        {
-            throw std::runtime_error("Failed to present swap chain image...");
-        }
+        // if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
+        // {
+        //     framebufferResized = false;
+        //     recreateSwapChain();
+        // }
+        // else if (result != VK_SUCCESS)
+        // {
+        //     throw std::runtime_error("Failed to present swap chain image...");
+        // }
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -163,7 +177,7 @@ namespace Faye {
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         createInfo.presentMode = presentMode;
         createInfo.clipped = VK_TRUE;
-        createInfo.oldSwapchain = VK_NULL_HANDLE;
+        createInfo.oldSwapchain = oldSwapchain ? oldSwapchain->swapChain : VK_NULL_HANDLE;
     
         if (vkCreateSwapchainKHR(device->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS)
         {
@@ -266,7 +280,7 @@ namespace Faye {
         dependency.dstSubpass = 0;
         dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
         dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
         std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
@@ -287,9 +301,9 @@ namespace Faye {
     }
 
     void VulkanSwapchain::createFramebuffers() {
-        swapChainFramebuffers.resize(swapChainImageViews.size());
+        swapChainFramebuffers.resize(imageCount());
 
-        for (size_t i = 0; i < swapChainImageViews.size(); i++)
+        for (size_t i = 0; i < imageCount(); i++)
         {
             //TODO: Change depthImageView to depthImageViews
             // see what else may need to change due to this.
@@ -316,11 +330,12 @@ namespace Faye {
     void VulkanSwapchain::createDepthResources()
     {
         VkFormat depthFormat = findDepthFormat();
+        swapChainDepthFormat = depthFormat;
         VkExtent2D swapChainExtent = getSwapChainExtent();
 
         depthImages.resize(imageCount());
         depthImageMemorys.resize(imageCount());
-        depthImages.resize(imageCount());
+        depthImageViews.resize(imageCount());
 
         for (int i = 0; i < depthImages.size(); i++) {
             // Inits VkImageCreateInfo struct, and then allocates and binds the memory
@@ -333,8 +348,8 @@ namespace Faye {
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                 depthImages[i],
-                depthImageMemorys[i]);
-
+                depthImageMemorys[i]
+            );
             depthImageViews[i] = createImageView(depthImages[i], depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
         }
     }

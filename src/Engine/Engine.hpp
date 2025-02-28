@@ -9,13 +9,24 @@
 #include "Input/Input.hpp"
 #include "Camera/Camera.hpp"
 #include "Logging/Logger.hpp"
+#include "Structures/Model.hpp"
 
 #include "quill/LogMacros.h"
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
 
 using namespace Faye;
 
 const uint32_t WIDTH = 1300;
 const uint32_t HEIGHT = 900;
+
+struct SimplePushConstantData {
+    glm::vec2 offset;
+    glm::vec3 color;
+};
+
 
 class Engine {
     public: 
@@ -47,30 +58,12 @@ class Engine {
 
     FrameTimer* timer;
 
+    void loadModels() {
+
+    }
+
     void mainLoop() {        
-        Input &input = Input::getInstance();
-
-        while(!glfwWindow->shouldClose()) {
-            vkData->timer.frameStart();
-            glfwPollEvents();
-
-            input.checkMovement(glfwWindow->getWindow(), camera, vkData->timer.getDelta());
-            
-            // Handle escape press, and close window/vk instance.
-            if (input.isKeyPressed(glfwWindow->getWindow(), input.keyMap.escape)) {
-
-                glfwSetWindowShouldClose(glfwWindow->getWindow(),true);
-            }
-
-            camera->update();
-
-            vkData->drawFrame(*camera);
-
-            // End frame statistics
-            vkData->timer.frameEnd(Logger::getInstance());
-        }
-
-        vkDeviceWaitIdle(vkData->vk_device->getDevice());
+        vkData->run();
     }
 
     void cleanup() {

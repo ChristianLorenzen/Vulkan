@@ -18,7 +18,7 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-VulkanDevice::VulkanDevice(Window &window) : window(window) {
+VulkanDevice::VulkanDevice(Window &window) : window{window} {
     LOG_INFO(Logger::getInstance(), "Creating Instance...");
     createInstance();
     LOG_INFO(Logger::getInstance(), "Creating Surface...");

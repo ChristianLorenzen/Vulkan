@@ -2,7 +2,7 @@
 
 #include <vulkan/vulkan.h>
 #include <vector>
-
+#include <memory>
 
 #include "Swapchain.hpp"
 
@@ -15,11 +15,13 @@ namespace Faye {
     public:
         static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
-        VulkanSwapchain(VulkanDevice* device, VkExtent2D extent);
+        VulkanSwapchain(VulkanDevice *device, VkExtent2D extent);
+        VulkanSwapchain(VulkanDevice *device, VkExtent2D extent, std::shared_ptr<VulkanSwapchain> previous);
+
         ~VulkanSwapchain();
 
         VulkanSwapchain(const VulkanSwapchain &) = delete;
-        void operator=(const VulkanSwapchain &) = delete;
+        VulkanSwapchain& operator=(const VulkanSwapchain &) = delete;
 
         VkFramebuffer getFrameBuffer(uint32_t index) const { return swapChainFramebuffers[index]; }
         VkRenderPass getRenderPass() const { return renderPass; }
@@ -30,12 +32,19 @@ namespace Faye {
         uint32_t width() { return swapChainExtent.width; }
         uint32_t height() { return swapChainExtent.height; }
 
+        bool compareSwapFormats(const VulkanSwapchain &swapChain) const { return swapChain.swapChainDepthFormat == swapChainDepthFormat && swapChain.swapChainImageFormat == swapChainImageFormat; }
+        
         float extentAspectRatio() { return static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height); }
 
         VkResult acquireNextImage(uint32_t* imageIndex);
         VkResult submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex);
 
+        VkFormat findDepthFormat();
+
+        void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
+
     private:
+        void init();
         void createSwapChain();
         void recreateSwapChain();
         void createDepthResources();
@@ -45,10 +54,9 @@ namespace Faye {
                 
         void createImageViews();
         
-        void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
-        VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
+        std::shared_ptr<VulkanSwapchain> oldSwapchain;
 
-        VkFormat findDepthFormat();
+        VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
 
         VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats);
         VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresetModes);
@@ -57,6 +65,7 @@ namespace Faye {
         bool framebufferResized = false;
 
         VkFormat swapChainImageFormat;
+        VkFormat swapChainDepthFormat;
         VkExtent2D swapChainExtent;
 
         std::vector<VkFramebuffer> swapChainFramebuffers;

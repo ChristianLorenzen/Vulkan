@@ -2,10 +2,13 @@
 #include "../File.hpp"
 #include "../Structures/Vertex.hpp"
 
+#include "quill/LogMacros.h"
+
 using namespace Faye;
 
 VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string& vertFilepath, const std::string& fragFilepath, const PipelineConfigInfo &config) : device(device)
 {
+    LOG_INFO(Logger::getInstance(), "Creating Graphics Pipeline...");
     createGraphicsPipeline(vertFilepath, fragFilepath, config);
 }
 
@@ -28,24 +31,30 @@ void VulkanPipeline::createGraphicsPipeline(const std::string& vertFilepath, con
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
     vertShaderStageInfo.module = vertShaderModule;
     vertShaderStageInfo.pName = "main";
+    vertShaderStageInfo.flags = 0;
+    vertShaderStageInfo.pNext = nullptr;
+    vertShaderStageInfo.pSpecializationInfo = nullptr;
 
     VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
     fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
+    fragShaderStageInfo.flags = 0;
+    fragShaderStageInfo.pNext = nullptr;
+    fragShaderStageInfo.pSpecializationInfo = nullptr;
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-    auto bindingDescription = Vertex::getBindingDescription();
+    auto bindingDescriptions = Vertex::getBindingDescription();
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     std::vector<VkDynamicState> dynamicStates = {
@@ -56,36 +65,25 @@ void VulkanPipeline::createGraphicsPipeline(const std::string& vertFilepath, con
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    // Moving outside of default configInfo construction
-    // VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
-    // pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    // pipelineLayoutInfo.setLayoutCount = 1;
-    // pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-
-    VkPipelineViewportStateCreateInfo viewportInfo {};
-    viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportInfo.viewportCount = 1;
-    viewportInfo.scissorCount = 1;
-    viewportInfo.pScissors = nullptr;
-    viewportInfo.pViewports = nullptr;
-
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &config.inputAssemblyInfo;
-    pipelineInfo.pViewportState = &viewportInfo;
+    pipelineInfo.pViewportState = &config.viewportInfo;
     pipelineInfo.pRasterizationState = &config.rasterizationInfo;
     pipelineInfo.pMultisampleState = &config.multisamplingInfo;
     pipelineInfo.pColorBlendState = &config.colorBlendingInfo;
     pipelineInfo.pDepthStencilState = &config.depthStencilInfo;
-    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.pDynamicState = &config.dynamicStateInfo;
     pipelineInfo.layout = config.pipelineLayout;
     pipelineInfo.renderPass = config.renderPass;
     pipelineInfo.subpass = config.subpass;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
+
+    LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
 
     if (vkCreateGraphicsPipelines(device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
     {
@@ -107,30 +105,24 @@ VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char> &code)
     return shaderModule;
 }
 
-PipelineConfigInfo VulkanPipeline::defaultPipelineConfigInfo(uint32_t width, uint32_t height) {
-    PipelineConfigInfo configInfo{};
-
+void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo) {
     configInfo.inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     configInfo.inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     configInfo.inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-    configInfo.viewport.x = 0.0f;
-    configInfo.viewport.y = 0.0f;
-    configInfo.viewport.width = static_cast<float>(width);
-    configInfo.viewport.height = static_cast<float>(height);
-    configInfo.viewport.minDepth = 0.0f;
-    configInfo.viewport.maxDepth = 1.0f;
-
-    configInfo.scissor.offset = {0, 0};
-    configInfo.scissor.extent = {width, height};
-
+    configInfo.viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    configInfo.viewportInfo.viewportCount = 1;
+    configInfo.viewportInfo.pViewports = nullptr;
+    configInfo.viewportInfo.scissorCount = 1;
+    configInfo.viewportInfo.pScissors = nullptr;
+    
     configInfo.rasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     configInfo.rasterizationInfo.depthClampEnable = VK_FALSE;
     configInfo.rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;
     configInfo.rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
     configInfo.rasterizationInfo.lineWidth = 1.0f;
-    configInfo.rasterizationInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-    configInfo.rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    configInfo.rasterizationInfo.cullMode = VK_CULL_MODE_NONE;
+    configInfo.rasterizationInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
     configInfo.rasterizationInfo.depthBiasEnable = VK_FALSE;
     configInfo.rasterizationInfo.depthBiasConstantFactor = 0.0f;
     configInfo.rasterizationInfo.depthBiasClamp = 0.0f;
@@ -170,5 +162,14 @@ PipelineConfigInfo VulkanPipeline::defaultPipelineConfigInfo(uint32_t width, uin
     configInfo.depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
     configInfo.depthStencilInfo.stencilTestEnable = VK_FALSE;
 
-    return configInfo;
+    configInfo.dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    configInfo.dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    configInfo.dynamicStateInfo.dynamicStateCount = configInfo.dynamicStateEnables.size();
+    configInfo.dynamicStateInfo.pDynamicStates = configInfo.dynamicStateEnables.data();
+    configInfo.dynamicStateInfo.flags = 0;
+
+}
+
+void VulkanPipeline::bind(VkCommandBuffer commandBuffer) {
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 }

@@ -17,28 +17,33 @@
 
 using Faye::Window;
 
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    //TODO: Wrap my head around how this can be fucking cast like this without throwing an error.
-    auto app = reinterpret_cast<Faye::Vulkan*>(glfwGetWindowUserPointer(window));
-    app->framebufferResized = true;
+// static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+//     auto app = reinterpret_cast<Faye::Vulkan*>(glfwGetWindowUserPointer(window));
+//     app->framebufferResized = true;
+// }
+
+void Faye::Window::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    auto win = reinterpret_cast<Faye::Window*>(glfwGetWindowUserPointer(window));
+    win->framebufferResized = true;
+    win->width = width;
+    win->height = height;
 }
 
 /// @brief Initialized glfw and creates a glfw window instance.
 /// @param width Window width
 /// @param height Window height
 /// @param title The window name
-Faye::Window::Window(uint32_t width, uint32_t height, const char* title) {
+Faye::Window::Window(uint32_t width, uint32_t height, const char* title) : width{width}, height{height}, title{title} {
     LOG_INFO(Logger::getInstance(), "Window::Window - [Constructor] - Initializing glfw and the glfwWindow");
-
-    WIDTH = width;
-    HEIGHT = height;
 
     // Init GLFW 
     glfwInit();
     glfwSetErrorCallback(VKGLFW::glfwErrorCallback);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    //glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
