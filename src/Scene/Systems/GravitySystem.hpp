@@ -11,9 +11,9 @@
 // class GravityPhysicsSystem {
 //     public:
 //      GravityPhysicsSystem(float strength) : strengthGravity{strength} {}
-    
+
 //      const float strengthGravity;
-    
+
 //      // dt stands for delta time, and specifies the amount of time to advance the simulation
 //      // substeps is how many intervals to divide the forward time step in. More substeps result in a
 //      // more stable simulation, but takes longer to compute
@@ -23,21 +23,21 @@
 //          stepSimulation(objs, stepDelta);
 //        }
 //      }
-    
+
 //      glm::vec2 computeForce(GameObject& fromObj, GameObject& toObj) const {
 //        auto offset = fromObj.transform.translation - toObj.transform.translation;
 //        float distanceSquared = glm::dot(offset, offset);
-    
+
 //        // clown town - just going to return 0 if objects are too close together...
 //        if (glm::abs(distanceSquared) < 1e-10f) {
 //          return {.0f, .0f};
 //        }
-    
+
 //        float force =
 //            strengthGravity * toObj.rigidBody2d.mass * fromObj.rigidBody2d.mass / distanceSquared;
 //        return force * offset / glm::sqrt(distanceSquared);
 //      }
-    
+
 //     private:
 //      void stepSimulation(std::vector<GameObject>& physicsObjs, float dt) {
 //        // Loops through all pairs of objects and applies attractive force between them
@@ -46,20 +46,19 @@
 //          for (auto iterB = iterA; iterB != physicsObjs.end(); ++iterB) {
 //            if (iterA == iterB) continue;
 //            auto& objB = *iterB;
-    
+
 //            auto force = computeForce(objA, objB);
 //            objA.rigidBody2d.velocity += dt * -force / objA.rigidBody2d.mass;
 //            objB.rigidBody2d.velocity += dt * force / objB.rigidBody2d.mass;
 //          }
 //        }
-    
+
 //        // update each objects position based on its final velocity
 //        for (auto& obj : physicsObjs) {
 //          obj.transform.translation += dt * obj.rigidBody2d.velocity;
 //        }
 //      }
 //    };
-
 
 // class Vec2FieldSystem {
 // public:
@@ -98,7 +97,7 @@
 //     }
 //     return std::make_unique<Model>(device, vertices);
 //   }
-   
+
 //   std::unique_ptr<Model> createCircleModel(VulkanDevice& device, unsigned int numSides) {
 //     std::vector<Vertex> uniqueVertices{};
 //     for (int i = 0; i < numSides; i++) {
@@ -106,7 +105,7 @@
 //       uniqueVertices.push_back({{glm::cos(angle), glm::sin(angle)}});
 //     }
 //     uniqueVertices.push_back({});  // adds center vertex at 0, 0
-   
+
 //     std::vector<Vertex> vertices{};
 //     for (int i = 0; i < numSides; i++) {
 //       vertices.push_back(uniqueVertices[i]);

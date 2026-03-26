@@ -5,14 +5,17 @@
 #include "Renderer/Resources/Model.hpp"
 #include <memory>
 
-namespace Faye {
+namespace Faye
+{
 
-    struct RigidBody2dComponent {
-      glm::vec2 velocity;
-      float mass{1.0f};
+    struct RigidBody2dComponent
+    {
+        glm::vec2 velocity;
+        float mass{1.0f};
     };
 
-    struct TransformComponent {
+    struct TransformComponent
+    {
         glm::vec3 translation{};
         glm::vec3 scale{1.0f, 1.0f, 1.0f};
         glm::vec3 rotation{};
@@ -21,29 +24,32 @@ namespace Faye {
         glm::mat3 normalMatrix() const;
     };
 
-    class GameObject {
-        public:
-            using id_t = unsigned int;
+    class GameObject
+    {
+    public:
+        using id_t = unsigned int;
 
-            static GameObject createGameObject() {
-                static id_t currentId = 0;
-                return GameObject{currentId++};
-            }
+        static GameObject createGameObject()
+        {
+            static id_t currentId = 0;
+            return GameObject{currentId++};
+        }
 
-            GameObject(const GameObject&) = delete;
-            GameObject& operator=(const GameObject&) = delete;
-            GameObject(GameObject&&) = default;
-            GameObject& operator=(GameObject&&) = default;
+        GameObject(const GameObject &) = delete;
+        GameObject &operator=(const GameObject &) = delete;
+        GameObject(GameObject &&) = default;
+        GameObject &operator=(GameObject &&) = default;
 
-            id_t getId() const { return id; }
+        id_t getId() const { return id; }
 
-            std::shared_ptr<Model> model{};
-            glm::vec3 color{};
-            TransformComponent transform{};
-            RigidBody2dComponent rigidBody2d{};
-        private:
-            GameObject(id_t id) : id{id} {}
+        std::shared_ptr<Model> model{};
+        glm::vec3 color{};
+        TransformComponent transform{};
+        RigidBody2dComponent rigidBody2d{};
 
-            id_t id;
+    private:
+        GameObject(id_t id) : id{id} {}
+
+        id_t id;
     };
 }

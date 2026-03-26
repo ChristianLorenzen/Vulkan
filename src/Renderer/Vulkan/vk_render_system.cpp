@@ -3,31 +3,26 @@
 #include <stdio.h>
 #include <unordered_map>
 
-
 #include "Vulkan.hpp"
 #include "vk_render_system.hpp"
 
 #include "quill/LogMacros.h"
 
-
 #include <chrono>
-
 
 using namespace Faye;
 
-
-struct SimplePushConstantData {
+struct SimplePushConstantData
+{
     glm::mat4 modelMatrix{1.0f};
     glm::mat4 normalMatrix{};
 };
-
 
 Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout) : vk_device(device)
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
     createPipelineLayout(globalSetLayout);
     createPipeline(renderPass);
-
 }
 
 Faye::SimpleRenderSystem::~SimpleRenderSystem()
@@ -35,10 +30,9 @@ Faye::SimpleRenderSystem::~SimpleRenderSystem()
     vkDestroyPipelineLayout(vk_device.getDevice(), pipelineLayout, nullptr);
 }
 
-
-
 // ------------------------------------- Conversion Functions ------------------------------------- //
-void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout) {
+void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout)
+{
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
@@ -61,10 +55,11 @@ void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout global
     }
 }
 
-void Faye::SimpleRenderSystem::createPipeline(VkRenderPass renderPass) {
+void Faye::SimpleRenderSystem::createPipeline(VkRenderPass renderPass)
+{
     assert(pipelineLayout != nullptr && "Pipeline layout is null");
 
-    PipelineConfigInfo pipelineConfig {};
+    PipelineConfigInfo pipelineConfig{};
     VulkanPipeline::defaultPipelineConfigInfo(pipelineConfig);
 
     pipelineConfig.renderPass = renderPass;
@@ -77,8 +72,8 @@ void Faye::SimpleRenderSystem::createPipeline(VkRenderPass renderPass) {
         pipelineConfig);
 }
 
-
-void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene) {
+void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene)
+{
     vk_pipeline->bind(frameContext.commandBuffer);
 
     vkCmdBindDescriptorSets(
@@ -89,11 +84,12 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
         1,
         &frameContext.globalDescriptorSet,
         0,
-        nullptr
-    );
+        nullptr);
 
-    for (const auto &renderable : renderScene.renderables) {
-        if (renderable.transform == nullptr || renderable.model == nullptr) {
+    for (const auto &renderable : renderScene.renderables)
+    {
+        if (renderable.transform == nullptr || renderable.model == nullptr)
+        {
             continue;
         }
 
@@ -107,8 +103,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0,
             sizeof(SimplePushConstantData),
-            &push
-        );
+            &push);
 
         renderable.model->bind(frameContext.commandBuffer);
         renderable.model->draw(frameContext.commandBuffer);

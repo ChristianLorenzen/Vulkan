@@ -4,8 +4,8 @@
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 
-//#define VMA_IMPLEMENTATION
-//#include <vk_mem_alloc.h>
+// #define VMA_IMPLEMENTATION
+// #include <vk_mem_alloc.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +27,6 @@
 
 #include "Core/Logging/Logger.hpp"
 
-
 namespace Faye
 {
 
@@ -45,12 +44,11 @@ namespace Faye
 		void renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
 
 	private:
-
-		VulkanDevice& vk_device;
+		VulkanDevice &vk_device;
 		std::unique_ptr<VulkanPipeline> vk_pipeline;
 
 		VkPipelineLayout pipelineLayout;
-        
+
 		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
 		void createPipeline(VkRenderPass renderPass);
 	};

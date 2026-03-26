@@ -14,18 +14,21 @@
 
 using namespace Faye;
 
-
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
     quill::Backend::start();
-    
+
     Engine app;
 
-    try {
+    try
+    {
         app.run();
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         LOG_ERROR(Logger::getInstance(), "Error in Engine.run(): {}", e.what());
         return 1;
     }
-    
+
     return 0;
 }

@@ -4,8 +4,10 @@
 
 #include "Scene/Camera/Camera.hpp"
 
-namespace Faye {
-    struct FrameContext {
+namespace Faye
+{
+    struct FrameContext
+    {
         int frameIndex;
         float frameTime;
         VkCommandBuffer commandBuffer;

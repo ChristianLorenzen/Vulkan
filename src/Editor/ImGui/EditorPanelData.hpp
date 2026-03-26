@@ -2,7 +2,7 @@
 
 namespace Faye
 {
-	struct EditorPanelData
-	{
-	};
+    struct EditorPanelData
+    {
+    };
 }
