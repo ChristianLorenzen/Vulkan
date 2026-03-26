@@ -1,19 +1,19 @@
 set(FAYE_ENGINE_SOURCES
-    Camera/Camera.cpp
-    File.cpp
-    main.cpp
-    Structures/GameObject.cpp
-    Structures/Model.cpp
-    VKGLFW.cpp
-    Vulkan/vk_descriptors.cpp
-    Vulkan/vk_device.cpp
-    Vulkan/vk_pipeline.cpp
-    Vulkan/vk_render_system.cpp
-    Vulkan/vk_renderer.cpp
-    Vulkan/vk_swapchain.cpp
-    Vulkan/Vulkan.cpp
-    Vulkan/VulkanBuffer.cpp
-    Window/Window.cpp)
+    Core/IO/FileSystem.cpp
+    Platform/GLFW/VKGLFW.cpp
+    Platform/Window/Window.cpp
+    Renderer/Resources/Model.cpp
+    Renderer/Vulkan/vk_descriptors.cpp
+    Renderer/Vulkan/vk_device.cpp
+    Renderer/Vulkan/vk_pipeline.cpp
+    Renderer/Vulkan/vk_render_system.cpp
+    Renderer/Vulkan/vk_renderer.cpp
+    Renderer/Vulkan/vk_swapchain.cpp
+    Renderer/Vulkan/Vulkan.cpp
+    Renderer/Vulkan/VulkanBuffer.cpp
+    Runtime/main.cpp
+    Scene/Camera/Camera.cpp
+    Scene/Entities/GameObject.cpp)
 
 set(FAYE_IMGUI_SOURCES
     imgui/imgui.cpp
