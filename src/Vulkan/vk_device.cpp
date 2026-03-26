@@ -9,18 +9,86 @@
 #include <optional>
 #include <set>
 #include <fstream>
+#include <cstring>
+
+namespace
+{
+    VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT *callbackData,
+        void *userData)
+    {
+        auto *logger = static_cast<quill::Logger *>(userData);
+
+        if (logger == nullptr)
+        {
+            return VK_FALSE;
+        }
+
+        if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        {
+            LOG_ERROR(logger, "Vulkan validation [{}]: {}", messageType, callbackData->pMessage);
+        }
+        else if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        {
+            LOG_WARNING(logger, "Vulkan validation [{}]: {}", messageType, callbackData->pMessage);
+        }
+        else
+        {
+            LOG_INFO(logger, "Vulkan validation [{}]: {}", messageType, callbackData->pMessage);
+        }
+
+        return VK_FALSE;
+    }
+
+    VkResult createDebugUtilsMessengerEXT(
+        VkInstance instance,
+        const VkDebugUtilsMessengerCreateInfoEXT *createInfo,
+        const VkAllocationCallbacks *allocator,
+        VkDebugUtilsMessengerEXT *debugMessenger)
+    {
+        auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+
+        if (func == nullptr)
+        {
+            return VK_ERROR_EXTENSION_NOT_PRESENT;
+        }
+
+        return func(instance, createInfo, allocator, debugMessenger);
+    }
+
+    void destroyDebugUtilsMessengerEXT(
+        VkInstance instance,
+        VkDebugUtilsMessengerEXT debugMessenger,
+        const VkAllocationCallbacks *allocator)
+    {
+        auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
+
+        if (func != nullptr)
+        {
+            func(instance, debugMessenger, allocator);
+        }
+    }
+} // namespace
 
 using namespace Faye;
 
 #ifdef NDEBUG
-const bool enableValidationLayers = false;
+const bool preferValidationLayers = false;
 #else
-const bool enableValidationLayers = true;
+const bool preferValidationLayers = true;
 #endif
 
-VulkanDevice::VulkanDevice(Window &window) : window{window} {
+VulkanDevice::VulkanDevice(Window &window) : window{window}
+{
+    validationLayersEnabled = shouldEnableValidationLayers();
+
     LOG_INFO(Logger::getInstance(), "Creating Instance...");
     createInstance();
+    setupDebugMessenger();
     LOG_INFO(Logger::getInstance(), "Creating Surface...");
     createSurface();
     LOG_INFO(Logger::getInstance(), "Creating Devices...");
@@ -30,11 +98,86 @@ VulkanDevice::VulkanDevice(Window &window) : window{window} {
     createCommandPools();
 }
 
-VulkanDevice::~VulkanDevice() {
+bool VulkanDevice::shouldEnableValidationLayers()
+{
+    const char *validationOverride = std::getenv("FAYE_VK_VALIDATION");
+    bool requestedValidationLayers = preferValidationLayers;
+
+    if (validationOverride != nullptr)
+    {
+        std::string value = validationOverride;
+        if (value == "0" || value == "false" || value == "FALSE" || value == "off" || value == "OFF")
+        {
+            requestedValidationLayers = false;
+        }
+        else if (value == "1" || value == "true" || value == "TRUE" || value == "on" || value == "ON")
+        {
+            requestedValidationLayers = true;
+        }
+    }
+
+    if (!requestedValidationLayers)
+    {
+        return false;
+    }
+
+    if (checkValidationLayerSupport())
+    {
+        return true;
+    }
+
+    LOG_WARNING(
+        Logger::getInstance(),
+        "Validation layer {} was requested but is not available in this environment. Continuing without validation layers.",
+        validationLayers.front());
+    return false;
+}
+
+VulkanDevice::~VulkanDevice()
+{
     vkDestroyCommandPool(device, commandPool, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
+    destroyDebugMessenger();
     vkDestroyInstance(instance, nullptr);
+}
+
+void VulkanDevice::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) const
+{
+    createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = debugCallback;
+    createInfo.pUserData = Logger::getInstance();
+}
+
+void VulkanDevice::setupDebugMessenger()
+{
+    if (!validationLayersEnabled)
+    {
+        return;
+    }
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    populateDebugMessengerCreateInfo(createInfo);
+
+    if (createDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to set up Vulkan debug messenger");
+    }
+}
+
+void VulkanDevice::destroyDebugMessenger()
+{
+    if (debugMessenger != VK_NULL_HANDLE)
+    {
+        destroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+        debugMessenger = VK_NULL_HANDLE;
+    }
 }
 
 bool VulkanDevice::isDeviceSuitable(VkPhysicalDevice device)
@@ -188,12 +331,8 @@ VkSampleCountFlagBits VulkanDevice::getMaxUsableSampleCount()
     return VK_SAMPLE_COUNT_1_BIT;
 }
 
-void VulkanDevice::createInstance() {
-    if (enableValidationLayers && !checkValidationLayerSupport())
-    {
-        throw std::runtime_error("Validation layers requested, but not available\n");
-    }
-
+void VulkanDevice::createInstance()
+{
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Hello Triangle";
@@ -206,7 +345,7 @@ void VulkanDevice::createInstance() {
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
-    if (enableValidationLayers)
+    if (validationLayersEnabled)
     {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
         createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -216,17 +355,25 @@ void VulkanDevice::createInstance() {
         createInfo.enabledLayerCount = 0;
     }
 
-    uint32_t extensionCount = 4;
-    const char **extensions = (const char **)malloc(sizeof(const char *) * 4);
-    extensions[0] = "VK_KHR_surface";
-    extensions[1] = "VK_EXT_metal_surface";
-    extensions[2] = "VK_KHR_portability_enumeration";
-    extensions[3] = "VK_KHR_get_physical_device_properties2";
+    std::vector<const char *> extensions = getRequiredExtensions();
 
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+    if (validationLayersEnabled)
+    {
+        populateDebugMessengerCreateInfo(debugCreateInfo);
+        createInfo.pNext = &debugCreateInfo;
+    }
+    else
+    {
+        createInfo.pNext = nullptr;
+    }
+
+#ifdef __APPLE__
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
 
-    createInfo.enabledExtensionCount = extensionCount;
-    createInfo.ppEnabledExtensionNames = extensions;
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
 
     if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
     {
@@ -256,7 +403,7 @@ void VulkanDevice::createPhysicalDevice()
         if (isDeviceSuitable(device))
         {
             physicalDevice = device;
-            //msaaSamples = getMaxUsableSampleCount();
+            // msaaSamples = getMaxUsableSampleCount();
             break;
         }
     }
@@ -277,6 +424,7 @@ void VulkanDevice::createPhysicalDevice()
 void VulkanDevice::createLogicalDevice()
 {
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    graphicsQueueFamilyIndex = indices.graphicsFamily.value();
 
     // Specifying the queue to use
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
@@ -307,7 +455,7 @@ void VulkanDevice::createLogicalDevice()
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
     // Back-compat with older implementations of vulkan. Now, enabledLayerCount and ppEnabledLayerNames are ignored.
-    if (enableValidationLayers)
+    if (validationLayersEnabled)
     {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
         createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -390,6 +538,26 @@ bool VulkanDevice::checkValidationLayerSupport()
     return true;
 }
 
+std::vector<const char *> VulkanDevice::getRequiredExtensions()
+{
+    uint32_t glfwExtensionCount = 0;
+    const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+    std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+#ifdef __APPLE__
+    extensions.push_back("VK_KHR_portability_enumeration");
+    extensions.push_back("VK_KHR_get_physical_device_properties2");
+#endif
+
+    if (validationLayersEnabled)
+    {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    return extensions;
+}
+
 void VulkanDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
     VkBufferCreateInfo bufferInfo = {};
@@ -430,7 +598,7 @@ void VulkanDevice::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSi
     endSingleTimeCommands(commandBuffer);
 }
 
-void  VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+void VulkanDevice::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
 {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -489,33 +657,36 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 }
 
 /// @brief Creates the vkImage, and then allocates and binds the necessary memory.
-/// @param imageInfo 
-/// @param properties 
-/// @param image 
-/// @param imageMemory 
+/// @param imageInfo
+/// @param properties
+/// @param image
+/// @param imageMemory
 void VulkanDevice::createImageWithInfo(
     const VkImageCreateInfo &imageInfo,
     VkMemoryPropertyFlags properties,
     VkImage &image,
-    VkDeviceMemory &imageMemory) {
-  if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-    throw std::runtime_error("failed to create image!");
-  }
+    VkDeviceMemory &imageMemory)
+{
+    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create image!");
+    }
 
-  VkMemoryRequirements memRequirements;
-  vkGetImageMemoryRequirements(device, image, &memRequirements);
+    VkMemoryRequirements memRequirements;
+    vkGetImageMemoryRequirements(device, image, &memRequirements);
 
-  VkMemoryAllocateInfo allocInfo{};
-  allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  allocInfo.allocationSize = memRequirements.size;
-  allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
 
-  if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-    throw std::runtime_error("failed to allocate image memory!");
-  }
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to allocate image memory!");
+    }
 
-  if (vkBindImageMemory(device, image, imageMemory, 0) != VK_SUCCESS) {
-    throw std::runtime_error("failed to bind image memory!");
-  }
+    if (vkBindImageMemory(device, image, imageMemory, 0) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to bind image memory!");
+    }
 }
-
