@@ -6,8 +6,8 @@
 // #define STB_IMAGE_IMPLEMENTATION
 // #include "include/stb_image.h"
 
-//#define TINYOBJLOADER_IMPLEMENTATION
-//#include "include/tiny_obj_loader.h"
+// #define TINYOBJLOADER_IMPLEMENTATION
+// #include "include/tiny_obj_loader.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
@@ -21,10 +21,10 @@
 
 #include "quill/LogMacros.h"
 
-
 #include "GUIComponents/imgui_Components.hpp"
 
 #include <chrono>
+#include <fstream>
 
 #include "Camera/Camera.hpp"
 #include "vk_renderer.hpp"
@@ -39,7 +39,6 @@ const bool enableValidationLayers = true;
 const std::string MODEL_PATH = "src/include/viking_room.obj";
 const std::string TEXTURE_PATH = "src/include/viking_room.png";
 
-
 Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window{win}, vk_device{device}
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Device class instance...");
@@ -48,17 +47,18 @@ Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window
     recreateSwapchain();
     LOG_INFO(Logger::getInstance(), "Creating Vulkan CommandBuffers...");
     createCommandBuffers();
-
 }
 
-Faye::VulkanRenderer::~VulkanRenderer() {
- freeCommandBuffers();
+Faye::VulkanRenderer::~VulkanRenderer()
+{
+    shutdownImGui();
+    freeCommandBuffers();
 }
 
 VkCommandBuffer Faye::VulkanRenderer::beginFrame()
 {
     assert(!isFrameStarted && "Can't call beginFrame while already in progress.");
-    
+
     auto result = vk_swapchain->acquireNextImage(&currentImageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -105,7 +105,8 @@ void Faye::VulkanRenderer::endFrame()
         window.resetWindowResizedFlag();
         recreateSwapchain();
     }
-    else if (result != VK_SUCCESS) {
+    else if (result != VK_SUCCESS)
+    {
         throw std::runtime_error("Failed to present swap chain image");
     }
 
@@ -163,12 +164,26 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
+    const char *defaultFontPath = "src/include/fonts/Poppins,Roboto/Roboto/Roboto-Regular.ttf";
+
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
     // Add Roboto as default font.
-    io.FontDefault = io.Fonts->AddFontFromFileTTF("src/include/fonts/Poppins,Roboto/Roboto/Roboto-Regular.ttf", 16.0f);
+    std::ifstream fontFile(defaultFontPath);
+    if (fontFile.good())
+    {
+        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 16.0f);
+    }
+    else
+    {
+        LOG_WARNING(
+            Logger::getInstance(),
+            "Could not load ImGui font file {}. Falling back to the default ImGui font.",
+            defaultFontPath);
+        io.FontDefault = io.Fonts->AddFontDefault();
+    }
 
     // Add custom styling.
     ImGuiStyle &style = ImGui::GetStyle();
@@ -189,7 +204,7 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     info.Instance = vk_device.getInstance();
     info.PhysicalDevice = vk_device.getPhysicalDevice();
     info.Device = vk_device.getDevice();
-    info.QueueFamily = 0;
+    info.QueueFamily = vk_device.getGraphicsQueueFamilyIndex();
     info.Queue = vk_device.getGraphicsQueue();
     info.DescriptorPool = descriptorPool;
     info.RenderPass = vk_swapchain->getRenderPass();
@@ -206,8 +221,21 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     vk_device.endSingleTimeCommands(commandBuffer);
 
     vkDeviceWaitIdle(vk_device.getDevice());
+    imguiInitialized = true;
 }
 
+void Faye::VulkanRenderer::shutdownImGui()
+{
+    if (!imguiInitialized)
+    {
+        return;
+    }
+
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    imguiInitialized = false;
+}
 
 // void Faye::VulkanRenderer::createDescriptorSetLayout()
 // {
@@ -239,9 +267,13 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
 
 // }
 
-
 void Faye::VulkanRenderer::freeCommandBuffers()
 {
+    if (commandBuffers.empty())
+    {
+        return;
+    }
+
     vkFreeCommandBuffers(vk_device.getDevice(), *vk_device.getCommandPool(), static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
     commandBuffers.clear();
 }
@@ -489,7 +521,6 @@ void Faye::VulkanRenderer::freeCommandBuffers()
 //     vkBindImageMemory(vk_device.getDevice(), image, imageMemory, 0);
 // }
 
-
 // void Faye::VulkanRenderer::updateUniformBuffer(uint32_t currentImage, Faye::Camera &camera)
 // {
 //     static auto startTime = std::chrono::high_resolution_clock::now();
@@ -507,9 +538,7 @@ void Faye::VulkanRenderer::freeCommandBuffers()
 //     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 // }
 
-
 // ------------------------------------- Conversion Functions ------------------------------------- //
-
 
 void Faye::VulkanRenderer::recreateSwapchain()
 {
@@ -517,8 +546,14 @@ void Faye::VulkanRenderer::recreateSwapchain()
 
     while (extent.width == 0 || extent.height == 0)
     {
+        glfwWaitEventsTimeout(0.1);
+
+        if (window.shouldClose())
+        {
+            return;
+        }
+
         extent = window.getExtent();
-        glfwWaitEvents();
     }
 
     vkDeviceWaitIdle(vk_device.getDevice());
@@ -526,16 +561,18 @@ void Faye::VulkanRenderer::recreateSwapchain()
     if (vk_swapchain == nullptr)
     {
         vk_swapchain = std::make_unique<VulkanSwapchain>(&vk_device, extent);
-    } else {
+    }
+    else
+    {
         std::shared_ptr<VulkanSwapchain> oldSwapchain = std::move(vk_swapchain);
         vk_swapchain = std::make_unique<VulkanSwapchain>(&vk_device, extent, oldSwapchain);
 
-        if (!oldSwapchain->compareSwapFormats(*vk_swapchain.get())) {
+        if (!oldSwapchain->compareSwapFormats(*vk_swapchain.get()))
+        {
             throw std::runtime_error("Swap chain image or depth format has changed!");
         }
     }
 }
-
 
 void Faye::VulkanRenderer::createCommandBuffers()
 {
@@ -551,5 +588,3 @@ void Faye::VulkanRenderer::createCommandBuffers()
         throw std::runtime_error("Failed to allocate command buffers!");
     }
 }
-
-

@@ -4,8 +4,8 @@
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 
-//#define VMA_IMPLEMENTATION
-//#include <vk_mem_alloc.h>
+// #define VMA_IMPLEMENTATION
+// #include <vk_mem_alloc.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,11 +28,9 @@
 #include "vk_types.hpp"
 #include "vk_descriptors.hpp"
 
-
 #include "Logging/Logger.hpp"
 
 #include "Structures/GameObject.hpp"
-
 
 namespace Faye
 {
@@ -40,7 +38,7 @@ namespace Faye
 	class Vulkan
 	{
 	public:
-		Vulkan(Window *win);
+		explicit Vulkan(Window &win);
 		~Vulkan();
 
 		Vulkan(const Vulkan &) = delete;
@@ -52,7 +50,7 @@ namespace Faye
 
 		FrameTimer timer;
 
-		VulkanDevice *getVkDevice() { return vk_device; }
+		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
 	private:
 		// TODO : Temp for vk_pipeline setup.
@@ -60,16 +58,15 @@ namespace Faye
 		const uint32_t HEIGHT = 900;
 
 		void loadGameObjects();
-		
-		Window *window;
-		VulkanDevice *vk_device;
-		VulkanRenderer *vk_renderer;
+
+		Window &window;
+		std::unique_ptr<VulkanDevice> vk_device;
+		std::unique_ptr<VulkanRenderer> vk_renderer;
 
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
 		// Descriptor pool passed to the ImGui initialization function.
 		std::unique_ptr<VulkanDescriptorPool> imGUIPool{};
 		std::vector<GameObject> gameObjects;
-
 	};
 
 } // namespace

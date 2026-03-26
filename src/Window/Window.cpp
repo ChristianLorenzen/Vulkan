@@ -1,7 +1,5 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-#define GLFW_EXPOSE_NATIVE_COCOA
-#include <GLFW/glfw3native.h>
 #include <vulkan/vulkan.h>
 #include <VKGLFW.hpp>
 #include "Window.hpp"
@@ -22,8 +20,9 @@ using Faye::Window;
 //     app->framebufferResized = true;
 // }
 
-void Faye::Window::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
-    auto win = reinterpret_cast<Faye::Window*>(glfwGetWindowUserPointer(window));
+void Faye::Window::framebufferResizeCallback(GLFWwindow *window, int width, int height)
+{
+    auto win = reinterpret_cast<Faye::Window *>(glfwGetWindowUserPointer(window));
     win->framebufferResized = true;
     win->width = width;
     win->height = height;
@@ -33,10 +32,11 @@ void Faye::Window::framebufferResizeCallback(GLFWwindow* window, int width, int 
 /// @param width Window width
 /// @param height Window height
 /// @param title The window name
-Faye::Window::Window(uint32_t width, uint32_t height, const char* title) : width{width}, height{height}, title{title} {
+Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width{width}, height{height}, title{title}
+{
     LOG_INFO(Logger::getInstance(), "Window::Window - [Constructor] - Initializing glfw and the glfwWindow");
 
-    // Init GLFW 
+    // Init GLFW
     glfwInit();
     glfwSetErrorCallback(VKGLFW::glfwErrorCallback);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -47,26 +47,32 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char* title) : width
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
-    if (!window) {
+    if (!window)
+    {
         std::cerr << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
         throw std::runtime_error("Failed to create GLFW window\n");
-    } else {
+    }
+    else
+    {
         LOG_INFO(Logger::getInstance(), "GLFW Window created successfully.");
     }
 }
 
 /// @brief Destroys the glfwWindow instance, and terminated glfw.
 /// Ensure only one Window instance is created so as to not call glfwTerminate early.
-Window::~Window() {
+Window::~Window()
+{
     glfwDestroyWindow(window);
     glfwTerminate();
 }
 
 /// @brief Returns t/f based on if the current device supports Vulkan.
-/// @return boolean 
-bool Window::isVulkanSupported() {
-    if(!glfwVulkanSupported()) {
+/// @return boolean
+bool Window::isVulkanSupported()
+{
+    if (!glfwVulkanSupported())
+    {
         LOG_ERROR(Logger::getInstance(), "Vulkan not supported on this device.");
         glfwTerminate();
         return false;
@@ -75,13 +81,28 @@ bool Window::isVulkanSupported() {
 }
 
 /// @brief Returns the result of glfwWindowShouldClose()
-/// @return boolean 
-bool Window::shouldClose() {
+/// @return boolean
+bool Window::shouldClose()
+{
     return glfwWindowShouldClose(window);
 }
 
-void Window::createWindowSurface(VkInstance instance, VkSurfaceKHR* surface) {
-    if (glfwCreateWindowSurface(instance, window, nullptr, surface) != VK_SUCCESS) {
+VkExtent2D Window::getExtent()
+{
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+
+    width = static_cast<uint32_t>(std::max(framebufferWidth, 0));
+    height = static_cast<uint32_t>(std::max(framebufferHeight, 0));
+
+    return {width, height};
+}
+
+void Window::createWindowSurface(VkInstance instance, VkSurfaceKHR *surface)
+{
+    if (glfwCreateWindowSurface(instance, window, nullptr, surface) != VK_SUCCESS)
+    {
         throw std::runtime_error("Window.createWindowSurface() - Failed to create window surface.");
     }
 }

@@ -6,12 +6,14 @@
 
 #include "vk_device.hpp"
 
-namespace Faye {
+namespace Faye
+{
 
-    struct PipelineConfigInfo {
+    struct PipelineConfigInfo
+    {
         PipelineConfigInfo() = default;
-        PipelineConfigInfo(const PipelineConfigInfo&) = delete;
-        PipelineConfigInfo& operator=(const PipelineConfigInfo&) = delete;
+        PipelineConfigInfo(const PipelineConfigInfo &) = delete;
+        PipelineConfigInfo &operator=(const PipelineConfigInfo &) = delete;
 
         VkPipelineViewportStateCreateInfo viewportInfo;
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
@@ -27,27 +29,28 @@ namespace Faye {
         uint32_t subpass = 0;
     };
 
-    class VulkanPipeline : Pipeline {
-        public:
-            VulkanPipeline(VulkanDevice &device, const std::string& vertFilepath, const std::string& fragFilepath, const PipelineConfigInfo &config);
-            ~VulkanPipeline();
+    class VulkanPipeline : Pipeline
+    {
+    public:
+        VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config);
+        ~VulkanPipeline();
 
-            VulkanPipeline(const VulkanPipeline &) = delete;
-            VulkanPipeline& operator=(const VulkanPipeline &) = delete;
+        VulkanPipeline(const VulkanPipeline &) = delete;
+        VulkanPipeline &operator=(const VulkanPipeline &) = delete;
 
-            void bind(VkCommandBuffer commandBuffer);
+        void bind(VkCommandBuffer commandBuffer);
 
-            static void defaultPipelineConfigInfo(PipelineConfigInfo &configInfo);
+        static void defaultPipelineConfigInfo(PipelineConfigInfo &configInfo);
 
-        private:
-            void createGraphicsPipeline(const std::string& vertFilepath, const std::string& fragFilepath, const PipelineConfigInfo &config);
+    private:
+        void createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config);
 
-            VkShaderModule createShaderModule(const std::vector<char> &code);
-            // Dangling references to the Vulkan device.
-            // Only done as this should exist as long as this pipeline does.
-            VulkanDevice& device;
-            VkPipeline graphicsPipeline;
-            VkShaderModule vertShaderModule;
-            VkShaderModule fragShaderModule;
+        VkShaderModule createShaderModule(const std::vector<char> &code);
+        // Dangling references to the Vulkan device.
+        // Only done as this should exist as long as this pipeline does.
+        VulkanDevice &device;
+        VkPipeline graphicsPipeline{VK_NULL_HANDLE};
+        VkShaderModule vertShaderModule{VK_NULL_HANDLE};
+        VkShaderModule fragShaderModule{VK_NULL_HANDLE};
     };
 }

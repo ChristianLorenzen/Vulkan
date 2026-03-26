@@ -6,7 +6,7 @@
 
 using namespace Faye;
 
-VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string& vertFilepath, const std::string& fragFilepath, const PipelineConfigInfo &config) : device(device)
+VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config) : device(device)
 {
     LOG_INFO(Logger::getInstance(), "Creating Graphics Pipeline...");
     createGraphicsPipeline(vertFilepath, fragFilepath, config);
@@ -14,17 +14,29 @@ VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string& vertFile
 
 VulkanPipeline::~VulkanPipeline()
 {
-    vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
-    vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
-    vkDestroyPipeline(device.getDevice(), graphicsPipeline, nullptr);
+    if (fragShaderModule != VK_NULL_HANDLE)
+    {
+        vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
+    }
+
+    if (vertShaderModule != VK_NULL_HANDLE)
+    {
+        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+    }
+
+    if (graphicsPipeline != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(device.getDevice(), graphicsPipeline, nullptr);
+    }
 }
 
-void VulkanPipeline::createGraphicsPipeline(const std::string& vertFilepath, const std::string& fragFilepath, const PipelineConfigInfo &config) {
+void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config)
+{
     auto vertShaderCode = File::readFile(vertFilepath);
     auto fragShaderCode = File::readFile(fragFilepath);
 
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+    vertShaderModule = createShaderModule(vertShaderCode);
+    fragShaderModule = createShaderModule(fragShaderCode);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -87,6 +99,10 @@ void VulkanPipeline::createGraphicsPipeline(const std::string& vertFilepath, con
 
     if (vkCreateGraphicsPipelines(device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
     {
+        vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
+        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+        fragShaderModule = VK_NULL_HANDLE;
+        vertShaderModule = VK_NULL_HANDLE;
         throw std::runtime_error("Failed to create graphics pipeline");
     }
 }
@@ -105,7 +121,8 @@ VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char> &code)
     return shaderModule;
 }
 
-void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo) {
+void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo)
+{
     configInfo.inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     configInfo.inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     configInfo.inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
@@ -115,7 +132,7 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo) {
     configInfo.viewportInfo.pViewports = nullptr;
     configInfo.viewportInfo.scissorCount = 1;
     configInfo.viewportInfo.pScissors = nullptr;
-    
+
     configInfo.rasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     configInfo.rasterizationInfo.depthClampEnable = VK_FALSE;
     configInfo.rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;
@@ -167,9 +184,9 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo) {
     configInfo.dynamicStateInfo.dynamicStateCount = configInfo.dynamicStateEnables.size();
     configInfo.dynamicStateInfo.pDynamicStates = configInfo.dynamicStateEnables.data();
     configInfo.dynamicStateInfo.flags = 0;
-
 }
 
-void VulkanPipeline::bind(VkCommandBuffer commandBuffer) {
+void VulkanPipeline::bind(VkCommandBuffer commandBuffer)
+{
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 }

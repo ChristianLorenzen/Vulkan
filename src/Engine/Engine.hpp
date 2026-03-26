@@ -3,6 +3,7 @@
 #include <exception>
 #include <iostream>
 #include <fstream>
+#include <memory>
 
 #include "Window/Window.hpp"
 #include "Vulkan/Vulkan.hpp"
@@ -22,53 +23,46 @@ using namespace Faye;
 const uint32_t WIDTH = 1300;
 const uint32_t HEIGHT = 900;
 
-struct SimplePushConstantData {
+struct SimplePushConstantData
+{
     glm::vec2 offset;
     glm::vec3 color;
 };
 
+class Engine
+{
+public:
+    Engine() = default;
 
-class Engine {
-    public: 
-    Engine() {}
-    void run() {
-        glfwWindow = new Window(WIDTH, HEIGHT, "[Faye] - Vulkan Renderer");
+    void run()
+    {
+        glfwWindow = std::make_unique<Window>(WIDTH, HEIGHT, "[Faye] - Vulkan Renderer");
 
-        camera = new Camera();
+        camera = std::make_unique<Camera>();
 
         LOG_INFO(Logger::getInstance(), "Init Vulkan...");
 
-        vkData = new Vulkan(glfwWindow);
+        vkData = std::make_unique<Vulkan>(*glfwWindow);
 
         LOG_INFO(Logger::getInstance(), "Starting main loop...");
         mainLoop();
-
-        LOG_INFO(Logger::getInstance(), "Starting cleanup...");
-        cleanup();
     }
 
-    private:
+private:
     // Custom class for glfw window related functionality.
-    Window* glfwWindow;
+    std::unique_ptr<Window> glfwWindow;
 
     // Custom class for Vulkan init/functionality.
-    Vulkan* vkData;
+    std::unique_ptr<Vulkan> vkData;
 
-    Camera* camera;
+    std::unique_ptr<Camera> camera;
 
-    FrameTimer* timer;
-
-    void loadModels() {
-
+    void loadModels()
+    {
     }
 
-    void mainLoop() {        
+    void mainLoop()
+    {
         vkData->run();
-    }
-
-    void cleanup() {
-        delete vkData;
-        delete glfwWindow;
-        delete camera;
     }
 };

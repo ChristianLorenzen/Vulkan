@@ -9,52 +9,57 @@
 
 #include <cassert>
 
-namespace Faye {
-    class VulkanRenderer {
-        
-        public:
-            VulkanRenderer(Window &window, VulkanDevice &device);
-            ~VulkanRenderer();
+namespace Faye
+{
+    class VulkanRenderer
+    {
 
-            VulkanRenderer(const VulkanRenderer &) = delete;
-            VulkanRenderer &operator=(const VulkanRenderer &) = delete;
+    public:
+        VulkanRenderer(Window &window, VulkanDevice &device);
+        ~VulkanRenderer();
 
-            VkCommandBuffer beginFrame();
-            void endFrame();
-            
-            void beginSwapchainRenderPass(VkCommandBuffer commandBuffer);
-            void endSwapchainRenderPass(VkCommandBuffer commandBuffer);
-            
-            VkRenderPass getSwapChainRenderPass() const {return vk_swapchain->getRenderPass();}
-            float getAspectRatio() const {return vk_swapchain->extentAspectRatio();}
-            bool isFrameInProgress() const {return isFrameStarted;}
+        VulkanRenderer(const VulkanRenderer &) = delete;
+        VulkanRenderer &operator=(const VulkanRenderer &) = delete;
 
+        VkCommandBuffer beginFrame();
+        void endFrame();
 
-            VkCommandBuffer getCurrentCommandBuffer() const {
-                assert(isFrameStarted && "Cannot get command buffer when frame not in progress.");
-                return commandBuffers[currentFrameIndex];
-            }
+        void beginSwapchainRenderPass(VkCommandBuffer commandBuffer);
+        void endSwapchainRenderPass(VkCommandBuffer commandBuffer);
 
-            int getFrameIndex() const {
-                assert(isFrameStarted && "Cannot get frame index when frame not in progress.");
-                return currentFrameIndex;
-            }
+        VkRenderPass getSwapChainRenderPass() const { return vk_swapchain->getRenderPass(); }
+        float getAspectRatio() const { return vk_swapchain->extentAspectRatio(); }
+        bool isFrameInProgress() const { return isFrameStarted; }
 
-            void initImGui(VkDescriptorPool descriptorPool);
+        VkCommandBuffer getCurrentCommandBuffer() const
+        {
+            assert(isFrameStarted && "Cannot get command buffer when frame not in progress.");
+            return commandBuffers[currentFrameIndex];
+        }
 
-        private:
-            void createCommandBuffers();
-            void freeCommandBuffers();
-            void recreateSwapchain();
+        int getFrameIndex() const
+        {
+            assert(isFrameStarted && "Cannot get frame index when frame not in progress.");
+            return currentFrameIndex;
+        }
 
-            Window &window;
-            VulkanDevice &vk_device;
-            std::unique_ptr<VulkanSwapchain> vk_swapchain;
-            std::vector<VkCommandBuffer> commandBuffers;
+        void initImGui(VkDescriptorPool descriptorPool);
 
-            uint32_t currentImageIndex;
-            int currentFrameIndex = 0;
-            bool isFrameStarted = false;
-    };   
+    private:
+        void createCommandBuffers();
+        void freeCommandBuffers();
+        void recreateSwapchain();
+        void shutdownImGui();
+
+        Window &window;
+        VulkanDevice &vk_device;
+        std::unique_ptr<VulkanSwapchain> vk_swapchain;
+        std::vector<VkCommandBuffer> commandBuffers;
+
+        uint32_t currentImageIndex;
+        int currentFrameIndex = 0;
+        bool isFrameStarted = false;
+        bool imguiInitialized = false;
+    };
 
 }

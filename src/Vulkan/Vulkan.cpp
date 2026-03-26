@@ -22,17 +22,17 @@
 
 using namespace Faye;
 
-
 const std::string MODEL_PATH = "src/include/viking_room.obj";
 const std::string TEXTURE_PATH = "src/include/viking_room.png";
 
-
-struct GlobalUBO {
+struct GlobalUBO
+{
     glm::mat4 projectionView{1.f};
     glm::vec3 lightDirection = glm::normalize(glm::vec3{1.f, -3.f, -1.f});
 };
 
-std::unique_ptr<Model> createCubeModel(VulkanDevice& device, glm::vec3 offset) {
+std::unique_ptr<Model> createCubeModel(VulkanDevice &device, glm::vec3 offset)
+{
     Builder builder{};
 
     // left face (white)
@@ -42,10 +42,10 @@ std::unique_ptr<Model> createCubeModel(VulkanDevice& device, glm::vec3 offset) {
     Vertex v4 = {{-.5f, .5f, -.5f}, {.9f, .9f, .9f}};
 
     // right face (yellow)
-    Vertex v5 =  {{.5f, -.5f, -.5f}, {.8f, .8f, .1f}};
+    Vertex v5 = {{.5f, -.5f, -.5f}, {.8f, .8f, .1f}};
     Vertex v6 = {{.5f, .5f, .5f}, {.8f, .8f, .1f}};
     Vertex v7 = {{.5f, -.5f, .5f}, {.8f, .8f, .1f}};
-    Vertex v8 =  {{.5f, .5f, -.5f}, {.8f, .8f, .1f}};
+    Vertex v8 = {{.5f, .5f, -.5f}, {.8f, .8f, .1f}};
 
     // top face (orange, remember y axis points down)
     Vertex v9 = {{-.5f, -.5f, -.5f}, {.9f, .6f, .1f}};
@@ -70,59 +70,59 @@ std::unique_ptr<Model> createCubeModel(VulkanDevice& device, glm::vec3 offset) {
     Vertex v22 = {{.5f, .5f, -0.5f}, {.1f, .8f, .1f}};
     Vertex v23 = {{-.5f, .5f, -0.5f}, {.1f, .8f, .1f}};
     Vertex v24 = {{.5f, -.5f, -0.5f}, {.1f, .8f, .1f}};
-   
+
     std::vector<Vertex> vertices = {
-        v1, v2, v3, v4, v5, v6, // left face
-        v7, v8, v9, v10, v11, v12, // right face
+        v1, v2, v3, v4, v5, v6,       // left face
+        v7, v8, v9, v10, v11, v12,    // right face
         v13, v14, v15, v16, v17, v18, // top face
-        v19, v20, v21, v22, v23, v24 // bottom face
+        v19, v20, v21, v22, v23, v24  // bottom face
     };
 
     builder.vertices = vertices;
     builder.indices = {
-        0, 1, 2, 0, 3, 1, 4, 5, 6, 4, 7, 5, 8, 9, 10, 8, 11, 9, 12, 13, 14, 12, 15, 13, 16, 17, 18, 16, 19, 17,20, 21, 22, 20, 23, 21
-    };
+        0, 1, 2, 0, 3, 1, 4, 5, 6, 4, 7, 5, 8, 9, 10, 8, 11, 9, 12, 13, 14, 12, 15, 13, 16, 17, 18, 16, 19, 17, 20, 21, 22, 20, 23, 21};
 
-    for (auto& v : builder.vertices) {
-      v.pos += offset;
+    for (auto &v : builder.vertices)
+    {
+        v.pos += offset;
     };
     return std::make_unique<Model>(device, builder);
-  }
+}
 
-
-Faye::Vulkan::Vulkan(Window *win) : window{win}
+Faye::Vulkan::Vulkan(Window &win) : window{win}
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Device class instance...");
 
-    vk_device = new VulkanDevice(*window);
+    vk_device = std::make_unique<VulkanDevice>(window);
 
-    vk_renderer = new VulkanRenderer(*window, *vk_device);
+    vk_renderer = std::make_unique<VulkanRenderer>(window, *vk_device);
     globalPool = VulkanDescriptorPool::Builder(*vk_device)
-        .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .build();
+                     .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                     .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                     .build();
     loadGameObjects();
 
     imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
-        .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-        .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
-        .build();
+                    .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
+                    .build();
 
     vk_renderer->initImGui(imGUIPool->getPool());
 }
 
-void Faye::Vulkan::loadGameObjects() {
+void Faye::Vulkan::loadGameObjects()
+{
     std::shared_ptr<Model> model = Model::createModelFromFile(*vk_device, MODEL_PATH);
     auto go = GameObject::createGameObject();
     go.model = std::move(model);
@@ -134,27 +134,33 @@ void Faye::Vulkan::loadGameObjects() {
 
 Faye::Vulkan::~Vulkan()
 {
+    if (vk_device != nullptr)
+    {
+        vkDeviceWaitIdle(vk_device->getDevice());
+    }
 }
 
-void Faye::Vulkan::run() {
+void Faye::Vulkan::run()
+{
     std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < uboBuffers.size(); i++) {
+    for (int i = 0; i < uboBuffers.size(); i++)
+    {
         uboBuffers[i] = std::make_unique<VulkanBuffer>(
             *vk_device,
             sizeof(GlobalUBO),
             1,
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-        );
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
         uboBuffers[i]->map();
     }
 
     auto globalSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
-        .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
-        .build();
+                               .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+                               .build();
 
     std::vector<VkDescriptorSet> globalDescriptorSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < globalDescriptorSets.size(); i++) {
+    for (int i = 0; i < globalDescriptorSets.size(); i++)
+    {
         auto bufferInfo = uboBuffers[i]->descriptorInfo();
         VulkanDescriptorWriter(*globalSetLayout, *globalPool)
             .writeBuffer(0, &bufferInfo)
@@ -174,51 +180,53 @@ void Faye::Vulkan::run() {
 
     timer.frameStart();
 
-    while(!window->shouldClose()) {
+    while (!window.shouldClose())
+    {
         glfwPollEvents();
 
         timer.frameEnd();
 
-        input.moveInPlaneXZ(window->getWindow(), viewObject, timer.getDelta());
+        input.moveInPlaneXZ(window.getWindow(), viewObject, timer.getDelta());
         camera.setViewYXZ(viewObject.transform.translation, viewObject.transform.rotation);
 
         float aspect = vk_renderer->getAspectRatio();
         camera.setPerspectiveProjection(glm::radians(50.f), aspect, 0.1f, 100.f);
-        
-        // Handle escape press, and close window/vk instance.
-        if (input.isKeyPressed(window->getWindow(), input.keyMap.escape)) {
 
-            glfwSetWindowShouldClose(window->getWindow(),true);
+        // Handle escape press, and close window/vk instance.
+        if (input.isKeyPressed(window.getWindow(), input.keyMap.escape))
+        {
+
+            glfwSetWindowShouldClose(window.getWindow(), true);
         }
 
-        if (auto commandBuffer = vk_renderer->beginFrame()) {
+        if (auto commandBuffer = vk_renderer->beginFrame())
+        {
             // update
             int frameIndex = vk_renderer->getFrameIndex();
 
-            FrameInfo frameInfo {
+            FrameInfo frameInfo{
                 frameIndex,
                 0,
                 commandBuffer,
                 camera,
-                globalDescriptorSets[frameIndex]
-            };
+                globalDescriptorSets[frameIndex]};
 
             GlobalUBO ubo{};
             ubo.projectionView = camera.getProjection() * camera.getView();
             uboBuffers[frameIndex]->writeToBuffer(&ubo);
             uboBuffers[frameIndex]->flush();
             // Other render passes will go here eventually
-    
+
             // render
             vk_renderer->beginSwapchainRenderPass(commandBuffer);
-    
+
             simpleRenderSystem.renderGameObjects(frameInfo, gameObjects);
 
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
 
-            //ImGui::ShowDemoWindow();
+            // ImGui::ShowDemoWindow();
 
             Faye::Components::FrameCounter(Logger::getInstance(), timer.getFrameTime(1), timer.getAverageFPS());
 
@@ -229,7 +237,7 @@ void Faye::Vulkan::run() {
             ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, 0);
 
             vk_renderer->endSwapchainRenderPass(commandBuffer);
-    
+
             vk_renderer->endFrame();
         }
     }
