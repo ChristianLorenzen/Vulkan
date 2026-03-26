@@ -92,7 +92,7 @@ public:
         camera->pitch -= (lastMousePos.y - mousePos.y) * 0.01f;
     }
 
-    void moveInPlaneXZ(GLFWwindow *window, Faye::GameObject &go, float dt)
+    void moveInPlaneXZ(GLFWwindow *window, Faye::TransformComponent &transform, float dt)
     {
         glm::vec3 rotate{0};
 
@@ -115,13 +115,13 @@ public:
 
         if (glm::dot(rotate, rotate) > std::numeric_limits<float>::epsilon())
         {
-            go.transform.rotation += dt * glm::normalize(rotate);
+            transform.rotation += dt * glm::normalize(rotate);
         }
 
-        go.transform.rotation.x = glm::clamp(go.transform.rotation.x, -1.5f, 1.5f);
-        go.transform.rotation.y = glm::mod(go.transform.rotation.y, glm::two_pi<float>());
+        transform.rotation.x = glm::clamp(transform.rotation.x, -1.5f, 1.5f);
+        transform.rotation.y = glm::mod(transform.rotation.y, glm::two_pi<float>());
 
-        float yaw = go.transform.rotation.y;
+        float yaw = transform.rotation.y;
         const glm::vec3 forwardDir{sin(yaw), 0.f, cos(yaw)};
         const glm::vec3 rightDir{forwardDir.z, 0.f, -forwardDir.x};
         const glm::vec3 upDir{0.f, -1.f, 0.f};
@@ -146,13 +146,13 @@ public:
 
         if (glm::dot(move, move) > std::numeric_limits<float>::epsilon())
         {
-            go.transform.translation += 2 * dt * glm::normalize(move);
+            transform.translation += 2 * dt * glm::normalize(move);
         }
 
         if (isInputDebugLoggingEnabled())
         {
             LOG_INFO(Logger::getInstance(), "Variables Move: {} {} {}, Rot: {} {} {}", move.x, move.y, move.z, rotate.x, rotate.y, rotate.z);
-            LOG_INFO(Logger::getInstance(), "Move: {} {} {}, Rot: {} {} {}", go.transform.translation.x, go.transform.translation.y, go.transform.translation.z, go.transform.rotation.x, go.transform.rotation.y, go.transform.rotation.z);
+            LOG_INFO(Logger::getInstance(), "Move: {} {} {}, Rot: {} {} {}", transform.translation.x, transform.translation.y, transform.translation.z, transform.rotation.x, transform.rotation.y, transform.rotation.z);
         }
     }
 

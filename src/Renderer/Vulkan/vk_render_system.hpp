@@ -19,14 +19,13 @@
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Frame/FrameContext.hpp"
 #include "Renderer/Resources/Model.hpp"
+#include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/Resources/Vertex.hpp"
 #include "vk_device.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_types.hpp"
 
 #include "Core/Logging/Logger.hpp"
-
-#include "Scene/Entities/GameObject.hpp"
 
 
 namespace Faye
@@ -43,7 +42,7 @@ namespace Faye
 		SimpleRenderSystem(SimpleRenderSystem &&) = delete;
 		SimpleRenderSystem &operator=(SimpleRenderSystem &&) = delete;
 
-		void renderGameObjects(FrameContext &frameContext, std::vector<GameObject> &gameObjects);
+		void renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
 
 	private:
 

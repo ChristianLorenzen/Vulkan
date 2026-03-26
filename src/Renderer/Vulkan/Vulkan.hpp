@@ -19,6 +19,8 @@
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Frame/FrameContext.hpp"
 #include "Renderer/Resources/Model.hpp"
+#include "Renderer/Scene/RenderScene.hpp"
+#include "Renderer/View/RenderView.hpp"
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
 #include "vk_device.hpp"
@@ -29,13 +31,12 @@
 
 #include "Core/Logging/Logger.hpp"
 
-#include "Scene/Entities/GameObject.hpp"
-
 namespace Faye
 {
 	struct VulkanFrameInput
 	{
-		Camera &camera;
+		const RenderView &renderView;
+		const RenderSceneSnapshot &renderScene;
 		int frameTimeMs = 0;
 		int averageFps = 0;
 	};
@@ -57,12 +58,6 @@ namespace Faye
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
 	private:
-		// TODO : Temp for vk_pipeline setup.
-		const uint32_t WIDTH = 1300;
-		const uint32_t HEIGHT = 900;
-
-		void loadGameObjects();
-
 		Window &window;
 		std::unique_ptr<VulkanDevice> vk_device;
 		std::unique_ptr<VulkanRenderer> vk_renderer;
@@ -74,7 +69,6 @@ namespace Faye
 		std::unique_ptr<VulkanDescriptorPool> imGUIPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;
 		std::vector<VkDescriptorSet> globalDescriptorSets;
-		std::vector<GameObject> gameObjects;
 
 		void initializeFrameResources();
 	};

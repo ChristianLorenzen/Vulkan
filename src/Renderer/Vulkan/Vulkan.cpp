@@ -94,7 +94,6 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                      .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
                      .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
                      .build();
-    loadGameObjects();
 
     imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
                     .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
@@ -149,17 +148,6 @@ void Faye::Vulkan::initializeFrameResources()
         globalSetLayout->getDescriptorSetLayout());
 }
 
-void Faye::Vulkan::loadGameObjects()
-{
-    std::shared_ptr<Model> model = Model::createModelFromFile(*vk_device, MODEL_PATH);
-    auto go = GameObject::createGameObject();
-    go.model = std::move(model);
-    go.transform.translation = {0.f, 0.f, 2.5f};
-    go.transform.rotation = glm::vec3(45.f, 90.f, 0.f);
-    go.transform.scale = {.5f, .5f, .5f};
-    gameObjects.push_back(std::move(go));
-}
-
 Faye::Vulkan::~Vulkan()
 {
     if (vk_device != nullptr)
@@ -175,6 +163,17 @@ float Faye::Vulkan::getAspectRatio() const
 
 void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput)
 {
+    const auto *primaryCamera = frameInput.renderView.camera;
+    if (primaryCamera == nullptr)
+    {
+        throw std::runtime_error("Render view does not have a camera");
+    }
+
+    if (frameInput.renderView.outputTarget != RenderOutputTarget::Swapchain)
+    {
+        throw std::runtime_error("Offscreen render target path is not implemented yet");
+    }
+
     if (auto commandBuffer = vk_renderer->beginFrame())
     {
         int frameIndex = vk_renderer->getFrameIndex();
@@ -183,17 +182,17 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput)
             frameIndex,
             static_cast<float>(frameInput.frameTimeMs),
             commandBuffer,
-            frameInput.camera,
+            *primaryCamera,
             globalDescriptorSets[frameIndex]};
 
         GlobalUBO ubo{};
-        ubo.projectionView = frameInput.camera.getProjection() * frameInput.camera.getView();
+        ubo.projectionView = primaryCamera->getProjection() * primaryCamera->getView();
         uboBuffers[frameIndex]->writeToBuffer(&ubo);
         uboBuffers[frameIndex]->flush();
 
         vk_renderer->beginSwapchainRenderPass(commandBuffer);
 
-        simpleRenderSystem->renderGameObjects(frameContext, gameObjects);
+        simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();

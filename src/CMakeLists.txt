@@ -1,8 +1,12 @@
 set(FAYE_ENGINE_SOURCES
+    Assets/ModelRegistry.cpp
     Core/IO/FileSystem.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Resources/Model.cpp
+    Renderer/Scene/Extractors/CameraRenderExtractor.cpp
+    Renderer/Scene/Extractors/MeshRenderExtractor.cpp
+    Renderer/Scene/RenderExtractionManager.cpp
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
@@ -13,6 +17,8 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/VulkanBuffer.cpp
     Runtime/main.cpp
     Scene/Camera/Camera.cpp
+    Scene/Scene.cpp
+    Scene/SceneManager.cpp
     Scene/Entities/GameObject.cpp)
 
 set(FAYE_IMGUI_SOURCES

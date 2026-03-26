@@ -6,26 +6,33 @@
 
 namespace Faye
 {
-    enum class DebugViewMode
-    {
-        Lit,
-        Depth,
-        Normals,
-        Wireframe
-    };
-
     enum class RenderOutputTarget
     {
         Swapchain,
-        OffscreenViewport
+        OffscreenSceneColor
+    };
+
+    enum class RenderDebugMode
+    {
+        Lit
+    };
+
+    struct RenderViewport
+    {
+        uint32_t width = 0;
+        uint32_t height = 0;
+
+        float aspectRatio() const
+        {
+            return height == 0 ? 1.f : static_cast<float>(width) / static_cast<float>(height);
+        }
     };
 
     struct RenderView
     {
-        Camera *camera = nullptr;
-        uint32_t width = 0;
-        uint32_t height = 0;
+        const Camera *camera = nullptr;
+        RenderViewport viewport{};
         RenderOutputTarget outputTarget = RenderOutputTarget::Swapchain;
-        DebugViewMode debugMode = DebugViewMode::Lit;
+        RenderDebugMode debugMode = RenderDebugMode::Lit;
     };
 }

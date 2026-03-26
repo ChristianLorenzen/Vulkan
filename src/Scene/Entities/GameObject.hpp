@@ -17,8 +17,8 @@ namespace Faye {
         glm::vec3 scale{1.0f, 1.0f, 1.0f};
         glm::vec3 rotation{};
 
-        glm::mat4 mat4();
-        glm::mat3 normalMatrix();
+        glm::mat4 mat4() const;
+        glm::mat3 normalMatrix() const;
     };
 
     class GameObject {

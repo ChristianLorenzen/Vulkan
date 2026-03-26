@@ -78,7 +78,7 @@ void Faye::SimpleRenderSystem::createPipeline(VkRenderPass renderPass) {
 }
 
 
-void Faye::SimpleRenderSystem::renderGameObjects(FrameContext &frameContext, std::vector<GameObject> &gameObjects) {
+void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene) {
     vk_pipeline->bind(frameContext.commandBuffer);
 
     vkCmdBindDescriptorSets(
@@ -92,10 +92,14 @@ void Faye::SimpleRenderSystem::renderGameObjects(FrameContext &frameContext, std
         nullptr
     );
 
-    for (auto& go : gameObjects) {
+    for (const auto &renderable : renderScene.renderables) {
+        if (renderable.transform == nullptr || renderable.model == nullptr) {
+            continue;
+        }
+
         SimplePushConstantData push{};
-        push.modelMatrix = go.transform.mat4();
-        push.normalMatrix = go.transform.normalMatrix();
+        push.modelMatrix = renderable.transform->mat4();
+        push.normalMatrix = renderable.transform->normalMatrix();
 
         vkCmdPushConstants(
             frameContext.commandBuffer,
@@ -106,7 +110,7 @@ void Faye::SimpleRenderSystem::renderGameObjects(FrameContext &frameContext, std
             &push
         );
 
-        go.model->bind(frameContext.commandBuffer);
-        go.model->draw(frameContext.commandBuffer);
+        renderable.model->bind(frameContext.commandBuffer);
+        renderable.model->draw(frameContext.commandBuffer);
     }
 }

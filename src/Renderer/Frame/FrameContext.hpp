@@ -9,7 +9,7 @@ namespace Faye {
         int frameIndex;
         float frameTime;
         VkCommandBuffer commandBuffer;
-        Camera &camera;
+        const Camera &camera;
         VkDescriptorSet globalDescriptorSet;
     };
 
