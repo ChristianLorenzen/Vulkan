@@ -2,6 +2,7 @@
 
 #include "Renderer/Scene/Extractors/CameraRenderExtractor.hpp"
 #include "Renderer/Scene/Extractors/MeshRenderExtractor.hpp"
+#include "Renderer/Scene/Extractors/PointLightRenderExtractor.hpp"
 #include "Renderer/Scene/RenderExtractionContext.hpp"
 
 namespace Faye
@@ -10,6 +11,7 @@ namespace Faye
     {
         extractors.push_back(std::make_unique<CameraRenderExtractor>());
         extractors.push_back(std::make_unique<MeshRenderExtractor>());
+        extractors.push_back(std::make_unique<PointLightRenderExtractor>());
     }
 
     RenderSceneSnapshot RenderExtractionManager::extract(const Scene &scene, ModelRegistry &modelRegistry) const
