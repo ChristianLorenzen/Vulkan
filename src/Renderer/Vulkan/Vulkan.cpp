@@ -5,9 +5,8 @@
 #include <vector>
 
 #include "Vulkan.hpp"
-#include "Editor/ImGui/EditorPanels.hpp"
+#include "Renderer/Frame/ImGuiFrameData.hpp"
 #include "Renderer/Resources/Vertex.hpp"
-#include "Scene/Systems/GravitySystem.hpp"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_glfw.h"
@@ -18,69 +17,9 @@
 using namespace Faye;
 
 const std::string MODEL_PATH = "src/include/viking_room.obj";
-
-struct GlobalUBO
+namespace
 {
-    glm::mat4 projectionView{1.f};
-    glm::vec3 lightDirection = glm::normalize(glm::vec3{1.f, -3.f, -1.f});
-};
-
-std::unique_ptr<Model> createCubeModel(VulkanDevice &device, glm::vec3 offset)
-{
-    Builder builder{};
-
-    // left face (white)
-    Vertex v1 = {{-.5f, -.5f, -.5f}, {.9f, .9f, .9f}};
-    Vertex v2 = {{-.5f, .5f, .5f}, {.9f, .9f, .9f}};
-    Vertex v3 = {{-.5f, -.5f, .5f}, {.9f, .9f, .9f}};
-    Vertex v4 = {{-.5f, .5f, -.5f}, {.9f, .9f, .9f}};
-
-    // right face (yellow)
-    Vertex v5 = {{.5f, -.5f, -.5f}, {.8f, .8f, .1f}};
-    Vertex v6 = {{.5f, .5f, .5f}, {.8f, .8f, .1f}};
-    Vertex v7 = {{.5f, -.5f, .5f}, {.8f, .8f, .1f}};
-    Vertex v8 = {{.5f, .5f, -.5f}, {.8f, .8f, .1f}};
-
-    // top face (orange, remember y axis points down)
-    Vertex v9 = {{-.5f, -.5f, -.5f}, {.9f, .6f, .1f}};
-    Vertex v10 = {{.5f, -.5f, .5f}, {.9f, .6f, .1f}};
-    Vertex v11 = {{-.5f, -.5f, .5f}, {.9f, .6f, .1f}};
-    Vertex v12 = {{.5f, -.5f, -.5f}, {.9f, .6f, .1f}};
-
-    // bottom face (red)
-    Vertex v13 = {{-.5f, .5f, -.5f}, {.8f, .1f, .1f}};
-    Vertex v14 = {{.5f, .5f, .5f}, {.8f, .1f, .1f}};
-    Vertex v15 = {{-.5f, .5f, .5f}, {.8f, .1f, .1f}};
-    Vertex v16 = {{.5f, .5f, -.5f}, {.8f, .1f, .1f}};
-
-    // nose face (blue)
-    Vertex v17 = {{-.5f, -.5f, 0.5f}, {.1f, .1f, .8f}};
-    Vertex v18 = {{.5f, .5f, 0.5f}, {.1f, .1f, .8f}};
-    Vertex v19 = {{-.5f, .5f, 0.5f}, {.1f, .1f, .8f}};
-    Vertex v20 = {{.5f, -.5f, 0.5f}, {.1f, .1f, .8f}};
-
-    // tail face (green)
-    Vertex v21 = {{-.5f, -.5f, -0.5f}, {.1f, .8f, .1f}};
-    Vertex v22 = {{.5f, .5f, -0.5f}, {.1f, .8f, .1f}};
-    Vertex v23 = {{-.5f, .5f, -0.5f}, {.1f, .8f, .1f}};
-    Vertex v24 = {{.5f, -.5f, -0.5f}, {.1f, .8f, .1f}};
-
-    std::vector<Vertex> vertices = {
-        v1, v2, v3, v4, v5, v6,       // left face
-        v7, v8, v9, v10, v11, v12,    // right face
-        v13, v14, v15, v16, v17, v18, // top face
-        v19, v20, v21, v22, v23, v24  // bottom face
-    };
-
-    builder.vertices = vertices;
-    builder.indices = {
-        0, 1, 2, 0, 3, 1, 4, 5, 6, 4, 7, 5, 8, 9, 10, 8, 11, 9, 12, 13, 14, 12, 15, 13, 16, 17, 18, 16, 19, 17, 20, 21, 22, 20, 23, 21};
-
-    for (auto &v : builder.vertices)
-    {
-        v.pos += offset;
-    };
-    return std::make_unique<Model>(device, builder);
+    constexpr uint32_t kImGuiDescriptorBudget = 64;
 }
 
 Faye::Vulkan::Vulkan(Window &win) : window{win}
@@ -96,18 +35,18 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                      .build();
 
     imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
-                    .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                    .setMaxSets(kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kImGuiDescriptorBudget)
+                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, kImGuiDescriptorBudget)
                     .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                     .build();
 
@@ -130,7 +69,7 @@ void Faye::Vulkan::initializeFrameResources()
     }
 
     globalSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
-                          .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+                          .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
                           .build();
 
     globalDescriptorSets.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
@@ -144,7 +83,12 @@ void Faye::Vulkan::initializeFrameResources()
 
     simpleRenderSystem = std::make_unique<SimpleRenderSystem>(
         *vk_device,
-        vk_renderer->getSwapChainRenderPass(),
+        vk_renderer->getSceneRenderPass(),
+        globalSetLayout->getDescriptorSetLayout());
+
+    pointLightRenderSystem = std::make_unique<PointLightRenderSystem>(
+        *vk_device,
+        vk_renderer->getSceneRenderPass(),
         globalSetLayout->getDescriptorSetLayout());
 }
 
@@ -154,6 +98,16 @@ Faye::Vulkan::~Vulkan()
     {
         vkDeviceWaitIdle(vk_device->getDevice());
     }
+
+    simpleRenderSystem.reset();
+    pointLightRenderSystem.reset();
+    vk_renderer.reset();
+    globalSetLayout.reset();
+    uboBuffers.clear();
+    globalDescriptorSets.clear();
+    imGUIPool.reset();
+    globalPool.reset();
+    vk_device.reset();
 }
 
 float Faye::Vulkan::getAspectRatio() const
@@ -161,7 +115,12 @@ float Faye::Vulkan::getAspectRatio() const
     return vk_renderer->getAspectRatio();
 }
 
-void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput)
+VkExtent2D Faye::Vulkan::getSceneRenderExtent() const
+{
+    return vk_renderer->getSceneRenderExtent();
+}
+
+void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFrameCallback &drawImGui)
 {
     const auto *primaryCamera = frameInput.renderView.camera;
     if (primaryCamera == nullptr)
@@ -171,7 +130,16 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput)
 
     if (frameInput.renderView.outputTarget != RenderOutputTarget::Swapchain)
     {
-        throw std::runtime_error("Offscreen render target path is not implemented yet");
+        if (frameInput.renderView.outputTarget != RenderOutputTarget::OffscreenSceneColor)
+        {
+            throw std::runtime_error("Unsupported render output target");
+        }
+    }
+
+    // Resize offscreen scene targets to whatever the viewport panel requested last frame.
+    if (pendingViewportWidth > 0 && pendingViewportHeight > 0)
+    {
+        vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight);
     }
 
     if (auto commandBuffer = vk_renderer->beginFrame())
@@ -186,20 +154,54 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput)
             globalDescriptorSets[frameIndex]};
 
         GlobalUBO ubo{};
-        ubo.projectionView = primaryCamera->getProjection() * primaryCamera->getView();
+        ubo.projection = primaryCamera->getProjection();
+        ubo.view = primaryCamera->getView();
+        ubo.inverseView = primaryCamera->getInverseView();
+
+        // Update point light system UBO with the point light data from this frame's render scene.
+        pointLightRenderSystem->update(frameContext, frameInput.renderScene, ubo);
+
         uboBuffers[frameIndex]->writeToBuffer(&ubo);
         uboBuffers[frameIndex]->flush();
 
-        vk_renderer->beginSwapchainRenderPass(commandBuffer);
+        vk_renderer->beginSceneRenderPass(commandBuffer);
 
         simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
+
+        if (!frameInput.renderScene.pointLights.empty())
+        {
+            pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+        }
+
+        vk_renderer->endSceneRenderPass(commandBuffer);
+
+        vk_renderer->beginSwapchainRenderPass(commandBuffer);
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        Faye::EditorPanels::FrameCounter(Logger::getInstance(), frameInput.frameTimeMs, frameInput.averageFps);
-        Faye::EditorPanels::CreateDockspace();
+        ImGuiFrameData frameData{};
+        frameData.frameTimeMs = frameInput.frameTimeMs;
+        frameData.averageFps = frameInput.averageFps;
+
+        VkExtent2D sceneRenderExtent = vk_renderer->getSceneRenderExtent();
+        frameData.sceneViewportTexture = reinterpret_cast<ImTextureID>(vk_renderer->getSceneViewportDescriptorSet());
+        frameData.sceneViewportSize = ImVec2(
+            static_cast<float>(sceneRenderExtent.width),
+            static_cast<float>(sceneRenderExtent.height));
+
+        if (drawImGui)
+        {
+            drawImGui(frameData);
+        }
+
+        // Save the viewport size requested this frame; resize will happen at the next frame start.
+        if (frameData.requestedSceneViewportSize.x > 0.0f && frameData.requestedSceneViewportSize.y > 0.0f)
+        {
+            pendingViewportWidth = static_cast<uint32_t>(frameData.requestedSceneViewportSize.x);
+            pendingViewportHeight = static_cast<uint32_t>(frameData.requestedSceneViewportSize.y);
+        }
 
         ImGui::Render();
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, 0);

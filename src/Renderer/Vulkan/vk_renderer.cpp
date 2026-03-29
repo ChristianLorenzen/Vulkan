@@ -17,8 +17,7 @@
 
 #include "quill/LogMacros.h"
 
-#include "Editor/ImGui/EditorPanels.hpp"
-
+#include <array>
 #include <chrono>
 #include <fstream>
 
@@ -47,6 +46,9 @@ Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window
 Faye::VulkanRenderer::~VulkanRenderer()
 {
     shutdownImGui();
+    cleanupSceneRenderTargets();
+    destroySceneViewportSampler();
+    destroySceneRenderPass();
     freeCommandBuffers();
 }
 
@@ -109,6 +111,50 @@ void Faye::VulkanRenderer::endFrame()
     currentFrameIndex = (currentFrameIndex + 1) % VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
 }
 
+void Faye::VulkanRenderer::beginSceneRenderPass(VkCommandBuffer commandBuffer)
+{
+    assert(isFrameStarted && "Can't call beginSceneRenderPass while frame is not in progress.");
+    assert(commandBuffer == getCurrentCommandBuffer() && "Can't begin render pass on command buffer from a different frame.");
+
+    VkRenderPassBeginInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = sceneRenderPass;
+    renderPassInfo.framebuffer = sceneFramebuffers[currentFrameIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = sceneRenderExtent;
+
+    std::array<VkClearValue, 2> clearValues = {};
+    clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
+    clearValues[1].depthStencil = {1.0f, 0};
+
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(sceneRenderExtent.width);
+    viewport.height = static_cast<float>(sceneRenderExtent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset = {0, 0};
+    scissor.extent = sceneRenderExtent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+}
+
+void Faye::VulkanRenderer::endSceneRenderPass(VkCommandBuffer commandBuffer)
+{
+    assert(isFrameStarted && "Can't call endSceneRenderPass while frame is not in progress.");
+    assert(commandBuffer == getCurrentCommandBuffer() && "Can't end render pass on command buffer from a different frame.");
+
+    vkCmdEndRenderPass(commandBuffer);
+}
+
 void Faye::VulkanRenderer::beginSwapchainRenderPass(VkCommandBuffer commandBuffer)
 {
     assert(isFrameStarted && "Can't call beginSwapchainRenderPass while frame is not in progress.");
@@ -154,6 +200,329 @@ void Faye::VulkanRenderer::endSwapchainRenderPass(VkCommandBuffer commandBuffer)
     vkCmdEndRenderPass(commandBuffer);
 }
 
+void Faye::VulkanRenderer::createSceneRenderPass()
+{
+    VkAttachmentDescription colorAttachment = {};
+    colorAttachment.format = sceneColorFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkAttachmentDescription depthAttachment = {};
+    depthAttachment.format = sceneDepthFormat;
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorAttachmentRef = {};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthAttachmentRef = {};
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+    VkSubpassDependency colorAttachmentDependency{};
+    colorAttachmentDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    colorAttachmentDependency.dstSubpass = 0;
+    colorAttachmentDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    colorAttachmentDependency.srcAccessMask = 0;
+    colorAttachmentDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    colorAttachmentDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    VkSubpassDependency transferDependency{};
+    transferDependency.srcSubpass = 0;
+    transferDependency.dstSubpass = VK_SUBPASS_EXTERNAL;
+    transferDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    transferDependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    transferDependency.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    transferDependency.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
+    std::array<VkSubpassDependency, 2> dependencies = {colorAttachmentDependency, transferDependency};
+
+    VkRenderPassCreateInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+    renderPassInfo.pDependencies = dependencies.data();
+
+    if (vkCreateRenderPass(vk_device.getDevice(), &renderPassInfo, nullptr, &sceneRenderPass) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create scene render pass");
+    }
+}
+
+void Faye::VulkanRenderer::createSceneRenderTargets()
+{
+    // Default to swapchain extent only on first creation; thereafter respect panel-driven size.
+    if (sceneRenderExtent.width == 0 || sceneRenderExtent.height == 0)
+    {
+        sceneRenderExtent = vk_swapchain->getSwapChainExtent();
+    }
+    sceneColorFormat = vk_swapchain->getSwapChainImageFormat();
+    sceneDepthFormat = vk_swapchain->findDepthFormat();
+
+    if (sceneRenderPass == VK_NULL_HANDLE)
+    {
+        createSceneRenderPass();
+    }
+
+    createSceneImages();
+    createSceneFramebuffers();
+
+    if (imguiInitialized)
+    {
+        registerSceneViewportTextures();
+    }
+}
+
+void Faye::VulkanRenderer::resizeSceneIfNeeded(uint32_t w, uint32_t h)
+{
+    if (w == 0 || h == 0)
+        return;
+    if (sceneRenderExtent.width == w && sceneRenderExtent.height == h)
+        return;
+
+    vkDeviceWaitIdle(vk_device.getDevice());
+    sceneRenderExtent = {w, h};
+    cleanupSceneRenderTargets();
+    createSceneRenderTargets();
+}
+
+void Faye::VulkanRenderer::createSceneImages()
+{
+    sceneColorImages.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneColorImageMemorys.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneColorImageViews.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneDepthImages.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneDepthImageMemorys.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneDepthImageViews.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+
+    for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        VkImageCreateInfo colorImageInfo{};
+        colorImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        colorImageInfo.imageType = VK_IMAGE_TYPE_2D;
+        colorImageInfo.extent.width = sceneRenderExtent.width;
+        colorImageInfo.extent.height = sceneRenderExtent.height;
+        colorImageInfo.extent.depth = 1;
+        colorImageInfo.mipLevels = 1;
+        colorImageInfo.arrayLayers = 1;
+        colorImageInfo.format = sceneColorFormat;
+        colorImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        colorImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorImageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        colorImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        vk_device.createImageWithInfo(
+            colorImageInfo,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            sceneColorImages[i],
+            sceneColorImageMemorys[i]);
+        sceneColorImageViews[i] = createImageView(sceneColorImages[i], sceneColorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        VkImageCreateInfo depthImageInfo{};
+        depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
+        depthImageInfo.extent.width = sceneRenderExtent.width;
+        depthImageInfo.extent.height = sceneRenderExtent.height;
+        depthImageInfo.extent.depth = 1;
+        depthImageInfo.mipLevels = 1;
+        depthImageInfo.arrayLayers = 1;
+        depthImageInfo.format = sceneDepthFormat;
+        depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        vk_device.createImageWithInfo(
+            depthImageInfo,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            sceneDepthImages[i],
+            sceneDepthImageMemorys[i]);
+        sceneDepthImageViews[i] = createImageView(sceneDepthImages[i], sceneDepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+    }
+}
+
+void Faye::VulkanRenderer::createSceneFramebuffers()
+{
+    sceneFramebuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+
+    for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        std::array<VkImageView, 2> attachments = {sceneColorImageViews[i], sceneDepthImageViews[i]};
+
+        VkFramebufferCreateInfo framebufferInfo = {};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = sceneRenderPass;
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        framebufferInfo.pAttachments = attachments.data();
+        framebufferInfo.width = sceneRenderExtent.width;
+        framebufferInfo.height = sceneRenderExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(vk_device.getDevice(), &framebufferInfo, nullptr, &sceneFramebuffers[i]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create scene framebuffer");
+        }
+    }
+}
+
+void Faye::VulkanRenderer::cleanupSceneRenderTargets()
+{
+    if (imguiInitialized)
+    {
+        unregisterSceneViewportTextures();
+    }
+
+    for (auto framebuffer : sceneFramebuffers)
+    {
+        vkDestroyFramebuffer(vk_device.getDevice(), framebuffer, nullptr);
+    }
+    sceneFramebuffers.clear();
+
+    for (size_t i = 0; i < sceneColorImageViews.size(); i++)
+    {
+        vkDestroyImageView(vk_device.getDevice(), sceneColorImageViews[i], nullptr);
+        vkDestroyImage(vk_device.getDevice(), sceneColorImages[i], nullptr);
+        vkFreeMemory(vk_device.getDevice(), sceneColorImageMemorys[i], nullptr);
+    }
+
+    for (size_t i = 0; i < sceneDepthImageViews.size(); i++)
+    {
+        vkDestroyImageView(vk_device.getDevice(), sceneDepthImageViews[i], nullptr);
+        vkDestroyImage(vk_device.getDevice(), sceneDepthImages[i], nullptr);
+        vkFreeMemory(vk_device.getDevice(), sceneDepthImageMemorys[i], nullptr);
+    }
+
+    sceneColorImages.clear();
+    sceneColorImageMemorys.clear();
+    sceneColorImageViews.clear();
+    sceneDepthImages.clear();
+    sceneDepthImageMemorys.clear();
+    sceneDepthImageViews.clear();
+}
+
+void Faye::VulkanRenderer::createSceneViewportSampler()
+{
+    if (sceneViewportSampler != VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.anisotropyEnable = VK_FALSE;
+    samplerInfo.maxAnisotropy = 1.0f;
+    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = 0.0f;
+    samplerInfo.mipLodBias = 0.0f;
+
+    if (vkCreateSampler(vk_device.getDevice(), &samplerInfo, nullptr, &sceneViewportSampler) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create scene viewport sampler");
+    }
+}
+
+void Faye::VulkanRenderer::destroySceneViewportSampler()
+{
+    if (sceneViewportSampler != VK_NULL_HANDLE)
+    {
+        vkDestroySampler(vk_device.getDevice(), sceneViewportSampler, nullptr);
+        sceneViewportSampler = VK_NULL_HANDLE;
+    }
+}
+
+void Faye::VulkanRenderer::registerSceneViewportTextures()
+{
+    if (!imguiInitialized || sceneViewportSampler == VK_NULL_HANDLE || sceneColorImageViews.empty())
+    {
+        return;
+    }
+
+    unregisterSceneViewportTextures();
+    sceneViewportDescriptorSets.reserve(sceneColorImageViews.size());
+
+    for (const auto &imageView : sceneColorImageViews)
+    {
+        sceneViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
+            sceneViewportSampler,
+            imageView,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+    }
+}
+
+void Faye::VulkanRenderer::unregisterSceneViewportTextures()
+{
+    for (auto descriptorSet : sceneViewportDescriptorSets)
+    {
+        ImGui_ImplVulkan_RemoveTexture(descriptorSet);
+    }
+
+    sceneViewportDescriptorSets.clear();
+}
+
+void Faye::VulkanRenderer::destroySceneRenderPass()
+{
+    if (sceneRenderPass != VK_NULL_HANDLE)
+    {
+        vkDestroyRenderPass(vk_device.getDevice(), sceneRenderPass, nullptr);
+        sceneRenderPass = VK_NULL_HANDLE;
+    }
+}
+
+VkImageView Faye::VulkanRenderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+{
+    VkImageViewCreateInfo viewInfo = {};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = aspectFlags;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VkImageView imageView = VK_NULL_HANDLE;
+    if (vkCreateImageView(vk_device.getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create scene image view");
+    }
+
+    return imageView;
+}
+
 void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
 {
     IMGUI_CHECKVERSION();
@@ -188,12 +557,6 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
 
     ImGui::StyleColorsCustom();
 
-    // ImGuiStyle& style = ImGui::GetStyle();
-    // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-    //     style.WindowRounding = 0.0f;
-    //     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-    // }
-
     ImGui_ImplGlfw_InitForVulkan(window.getWindow(), true);
     ImGui_ImplVulkan_InitInfo info = {};
     info.Instance = vk_device.getInstance();
@@ -217,6 +580,8 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
 
     vkDeviceWaitIdle(vk_device.getDevice());
     imguiInitialized = true;
+    createSceneViewportSampler();
+    registerSceneViewportTextures();
 }
 
 void Faye::VulkanRenderer::shutdownImGui()
@@ -226,6 +591,7 @@ void Faye::VulkanRenderer::shutdownImGui()
         return;
     }
 
+    unregisterSceneViewportTextures();
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -566,6 +932,11 @@ void Faye::VulkanRenderer::recreateSwapchain()
         {
             throw std::runtime_error("Swap chain image or depth format has changed!");
         }
+    }
+
+    if (sceneFramebuffers.empty())
+    {
+        createSceneRenderTargets();
     }
 }
 

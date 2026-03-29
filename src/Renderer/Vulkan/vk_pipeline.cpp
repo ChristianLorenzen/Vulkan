@@ -61,8 +61,8 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-    auto bindingDescriptions = Vertex::getBindingDescription();
-    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+    auto &bindingDescriptions = config.bindingDescriptions;
+    auto &attributeDescriptions = config.attributeDescriptions;
 
     vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
@@ -184,6 +184,9 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo)
     configInfo.dynamicStateInfo.dynamicStateCount = configInfo.dynamicStateEnables.size();
     configInfo.dynamicStateInfo.pDynamicStates = configInfo.dynamicStateEnables.data();
     configInfo.dynamicStateInfo.flags = 0;
+
+    configInfo.bindingDescriptions = Vertex::getBindingDescription();
+    configInfo.attributeDescriptions = Vertex::getAttributeDescriptions();
 }
 
 void VulkanPipeline::bind(VkCommandBuffer commandBuffer)

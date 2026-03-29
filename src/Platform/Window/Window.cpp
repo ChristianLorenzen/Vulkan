@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 #include "Platform/GLFW/VKGLFW.hpp"
+#include "Platform/Input/Input.hpp"
 #include "Window.hpp"
 #include "Core/Logging/Logger.hpp"
 #include <stdlib.h>
@@ -44,9 +45,6 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width
 
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
-    glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-
     if (!window)
     {
         std::cerr << "Failed to create GLFW window" << std::endl;
@@ -55,6 +53,13 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width
     }
     else
     {
+        glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+        glfwSetKeyCallback(window, Input::keyCallback);
+        glfwSetCursorPosCallback(window, Input::cursorCallback);
+        glfwSetMouseButtonCallback(window, Input::mouseButtonCallback);
+        glfwSetScrollCallback(window, Input::scrollCallback);
+
         LOG_INFO(Logger::getInstance(), "GLFW Window created successfully.");
     }
 }

@@ -2,19 +2,22 @@
 
 #include "quill/LogMacros.h"
 
-
-namespace Faye {
-    VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkExtent2D extent) : device(device), windowExtent(extent){
+namespace Faye
+{
+    VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkExtent2D extent) : device(device), windowExtent(extent)
+    {
         init();
     }
 
-    VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkExtent2D extent, std::shared_ptr<VulkanSwapchain> previous) : device(device), windowExtent(extent), oldSwapchain(previous) {
+    VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkExtent2D extent, std::shared_ptr<VulkanSwapchain> previous) : device(device), windowExtent(extent), oldSwapchain(previous)
+    {
         init();
 
         oldSwapchain = nullptr;
     }
 
-    void VulkanSwapchain::init() {
+    void VulkanSwapchain::init()
+    {
         LOG_INFO(Logger::getInstance(), "Creating Swapchain...");
         createSwapChain();
         createImageViews();
@@ -24,67 +27,61 @@ namespace Faye {
         createSyncObjects();
     }
 
-    VulkanSwapchain::~VulkanSwapchain() {
-        for (auto imageView : swapChainImageViews) {
+    VulkanSwapchain::~VulkanSwapchain()
+    {
+        for (auto imageView : swapChainImageViews)
+        {
             vkDestroyImageView(device->getDevice(), imageView, nullptr);
         }
 
         swapChainImageViews.clear();
 
-        if (swapChain != nullptr) {
+        if (swapChain != nullptr)
+        {
             vkDestroySwapchainKHR(device->getDevice(), swapChain, nullptr);
             swapChain = nullptr;
         }
 
-        for (int i = 0; i < depthImages.size(); i++) {
+        for (int i = 0; i < depthImages.size(); i++)
+        {
             vkDestroyImageView(device->getDevice(), depthImageViews[i], nullptr);
             vkDestroyImage(device->getDevice(), depthImages[i], nullptr);
             vkFreeMemory(device->getDevice(), depthImageMemorys[i], nullptr);
         }
 
-        for (auto framebuffer : swapChainFramebuffers) {
+        for (auto framebuffer : swapChainFramebuffers)
+        {
             vkDestroyFramebuffer(device->getDevice(), framebuffer, nullptr);
         }
 
         vkDestroyRenderPass(device->getDevice(), renderPass, nullptr);
 
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
             vkDestroySemaphore(device->getDevice(), renderFinishedSemaphores[i], nullptr);
             vkDestroySemaphore(device->getDevice(), imageAvailableSemaphores[i], nullptr);
             vkDestroyFence(device->getDevice(), inFlightFences[i], nullptr);
         }
     }
 
-    VkResult VulkanSwapchain::acquireNextImage(uint32_t* imageIndex) {
+    VkResult VulkanSwapchain::acquireNextImage(uint32_t *imageIndex)
+    {
         vkWaitForFences(device->getDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
         VkResult result = vkAcquireNextImageKHR(device->getDevice(), swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, imageIndex);
         return result;
     }
 
-    VkResult VulkanSwapchain::submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex) {
-        if (imagesInFlight[*imageIndex] != VK_NULL_HANDLE) {
+    VkResult VulkanSwapchain::submitCommandBuffers(const VkCommandBuffer *buffers, uint32_t *imageIndex)
+    {
+        if (imagesInFlight[*imageIndex] != VK_NULL_HANDLE)
+        {
             vkWaitForFences(device->getDevice(), 1, &imagesInFlight[*imageIndex], VK_TRUE, UINT64_MAX);
         }
-
-        // Handles resizing. Not in example video code yet, but readd when compiles
-        // uint32_t imageIndex;
-        // VkResult result = vkAcquireNextImageKHR(device->getDevice(), swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-
-        // if (result == VK_ERROR_OUT_OF_DATE_KHR)
-        // {
-        //     recreateSwapChain();
-        //     return;
-        // }
-        // else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-        // {
-        //     throw std::runtime_error("Failed to acquire swap chain image...");
-        // }
 
         imagesInFlight[*imageIndex] = inFlightFences[currentFrame];
 
         VkSubmitInfo submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
 
         VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -115,26 +112,15 @@ namespace Faye {
         presentInfo.pSwapchains = swapChains;
         presentInfo.pImageIndices = imageIndex;
 
-        // presentInfo.pResults = nullptr;
-
         auto result = vkQueuePresentKHR(device->getPresentQueue(), &presentInfo);
-
-        // if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
-        // {
-        //     framebufferResized = false;
-        //     recreateSwapChain();
-        // }
-        // else if (result != VK_SUCCESS)
-        // {
-        //     throw std::runtime_error("Failed to present swap chain image...");
-        // }
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         return result;
     }
 
-    void VulkanSwapchain::createSwapChain() {
+    void VulkanSwapchain::createSwapChain()
+    {
         SwapChainSupportDetails swapChainSupport = device->getSwapchainSupport();
 
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -156,7 +142,7 @@ namespace Faye {
         createInfo.imageExtent = extent;
         createInfo.imageArrayLayers = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    
+
         QueueFamilyIndices indices = device->findPhysicalQueueFamilies();
         uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
@@ -172,44 +158,28 @@ namespace Faye {
             createInfo.queueFamilyIndexCount = 0;
             createInfo.pQueueFamilyIndices = nullptr;
         }
-    
+
         createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         createInfo.presentMode = presentMode;
         createInfo.clipped = VK_TRUE;
         createInfo.oldSwapchain = oldSwapchain ? oldSwapchain->swapChain : VK_NULL_HANDLE;
-    
+
         if (vkCreateSwapchainKHR(device->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create swap chain");
         }
-    
+
         vkGetSwapchainImagesKHR(device->getDevice(), swapChain, &imageCount, nullptr);
         swapChainImages.resize(imageCount);
         vkGetSwapchainImagesKHR(device->getDevice(), swapChain, &imageCount, swapChainImages.data());
-    
+
         swapChainImageFormat = surfaceFormat.format;
         swapChainExtent = extent;
     }
 
-    // TODO: Maybe move out of swapchain. Maybe pipeline should do check and then call func.
-    // void VulkanSwapchain::recreateSwapChain() {
-    //     int width = 0, height = 0;
-    //     glfwGetFramebufferSize(window->getWindow(), &width, &height);
-    //     while (width == 0 || height == 0)
-    //     {
-    //         glfwGetFramebufferSize(window->getWindow(), &width, &height);
-    //         glfwWaitEvents();
-    //     }
-    //     vkDeviceWaitIdle(device->getDevice());
-    //     cleanupSwapChain();
-    //     createSwapChain();
-    //     createImageViews();
-    //     createDepthResources();
-    //     createFramebuffers();
-    // }
-
-    void VulkanSwapchain::createImageViews() {
+    void VulkanSwapchain::createImageViews()
+    {
         swapChainImageViews.resize(swapChainImages.size());
 
         for (size_t i = 0; i < swapChainImages.size(); i++)
@@ -240,7 +210,8 @@ namespace Faye {
         return imageView;
     }
 
-    void VulkanSwapchain::createRenderPass() {
+    void VulkanSwapchain::createRenderPass()
+    {
         VkAttachmentDescription colorAttachment = {};
         colorAttachment.format = getSwapChainImageFormat();
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -300,15 +271,14 @@ namespace Faye {
         }
     }
 
-    void VulkanSwapchain::createFramebuffers() {
+    void VulkanSwapchain::createFramebuffers()
+    {
         swapChainFramebuffers.resize(imageCount());
 
         for (size_t i = 0; i < imageCount(); i++)
         {
-            //TODO: Change depthImageView to depthImageViews
-            // see what else may need to change due to this.
-            std::array<VkImageView, 2> attachments = { swapChainImageViews[i], depthImageViews[i]};
-    
+            std::array<VkImageView, 2> attachments = {swapChainImageViews[i], depthImageViews[i]};
+
             VkExtent2D swapChainExtent = getSwapChainExtent();
 
             VkFramebufferCreateInfo framebufferInfo = {};
@@ -319,7 +289,7 @@ namespace Faye {
             framebufferInfo.width = swapChainExtent.width;
             framebufferInfo.height = swapChainExtent.height;
             framebufferInfo.layers = 1;
-    
+
             if (vkCreateFramebuffer(device->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS)
             {
                 throw std::runtime_error("Failed to create framebuffer");
@@ -337,7 +307,8 @@ namespace Faye {
         depthImageMemorys.resize(imageCount());
         depthImageViews.resize(imageCount());
 
-        for (int i = 0; i < depthImages.size(); i++) {
+        for (int i = 0; i < depthImages.size(); i++)
+        {
             // Inits VkImageCreateInfo struct, and then allocates and binds the memory
             createImage(
                 swapChainExtent.width,
@@ -348,8 +319,7 @@ namespace Faye {
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                 depthImages[i],
-                depthImageMemorys[i]
-            );
+                depthImageMemorys[i]);
             depthImageViews[i] = createImageView(depthImages[i], depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
         }
     }
@@ -374,32 +344,34 @@ namespace Faye {
         device->createImageWithInfo(imageInfo, properties, image, imageMemory);
     }
 
-    void VulkanSwapchain::createSyncObjects() {
+    void VulkanSwapchain::createSyncObjects()
+    {
         imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
         renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
         inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
         imagesInFlight.resize(imageCount(), VK_NULL_HANDLE);
-    
+
         VkSemaphoreCreateInfo semaphoreInfo = {};
         semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    
+
         VkFenceCreateInfo fenceInfo = {};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    
+
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         {
             if (vkCreateSemaphore(device->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
                 vkCreateSemaphore(device->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
                 vkCreateFence(device->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
             {
-    
+
                 throw std::runtime_error("failed to create synchronization objects for a frame!");
             }
         }
     }
 
-    VkSurfaceFormatKHR VulkanSwapchain::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
+    VkSurfaceFormatKHR VulkanSwapchain::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats)
+    {
         for (const auto &availableFormat : availableFormats)
         {
             // TODO VK_FORMAT_B8G8R8A8_SRGB gives better color for Vulkan rendered items
@@ -424,19 +396,14 @@ namespace Faye {
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    VkExtent2D VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities) {
+    VkExtent2D VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities)
+    {
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
         {
             return capabilities.currentExtent;
         }
         else
         {
-            // TODO: Old implementation. If new one breaks anything then try this.
-            // int width, height;
-            // glfwGetFramebufferSize(window->getWindow(), &width, &height);
-            // VkExtent2D actualExtent = {
-            //     static_cast<uint32_t>(width),
-            //     static_cast<uint32_t>(height)};
             VkExtent2D actualExtent = windowExtent;
             actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
             actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);

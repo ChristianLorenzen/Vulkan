@@ -24,6 +24,7 @@ namespace Faye {
         VulkanSwapchain& operator=(const VulkanSwapchain &) = delete;
 
         VkFramebuffer getFrameBuffer(uint32_t index) const { return swapChainFramebuffers[index]; }
+        VkImage getImage(uint32_t index) const { return swapChainImages[index]; }
         VkRenderPass getRenderPass() const { return renderPass; }
         VkImageView getImageView(uint32_t index) const { return swapChainImageViews[index]; }
         size_t imageCount() const { return swapChainImages.size(); }

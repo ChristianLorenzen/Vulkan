@@ -14,6 +14,7 @@
 #include <optional>
 #include <set>
 #include <fstream>
+#include <functional>
 #include <memory>
 
 #include "Platform/Window/Window.hpp"
@@ -23,6 +24,7 @@
 #include "Renderer/View/RenderView.hpp"
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
+#include "point_light_render_system.hpp"
 #include "vk_device.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_renderer.hpp"
@@ -33,6 +35,8 @@
 
 namespace Faye
 {
+	struct ImGuiFrameData;
+
 	struct VulkanFrameInput
 	{
 		const RenderView &renderView;
@@ -40,6 +44,8 @@ namespace Faye
 		int frameTimeMs = 0;
 		int averageFps = 0;
 	};
+
+	using ImGuiFrameCallback = std::function<void(ImGuiFrameData &)>;
 
 	class Vulkan
 	{
@@ -52,8 +58,9 @@ namespace Faye
 		Vulkan(Vulkan &&) = delete;
 		Vulkan &operator=(Vulkan &&) = delete;
 
-		void renderFrame(const VulkanFrameInput &frameInput);
+		void renderFrame(const VulkanFrameInput &frameInput, const ImGuiFrameCallback &drawImGui);
 		float getAspectRatio() const;
+		VkExtent2D getSceneRenderExtent() const;
 
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
@@ -63,12 +70,15 @@ namespace Faye
 		std::unique_ptr<VulkanRenderer> vk_renderer;
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
+		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
 
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
 		// Descriptor pool passed to the ImGui initialization function.
 		std::unique_ptr<VulkanDescriptorPool> imGUIPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;
 		std::vector<VkDescriptorSet> globalDescriptorSets;
+		uint32_t pendingViewportWidth = 0;
+		uint32_t pendingViewportHeight = 0;
 
 		void initializeFrameResources();
 	};

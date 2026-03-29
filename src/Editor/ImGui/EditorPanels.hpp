@@ -1,56 +1,48 @@
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_vulkan.h"
+#pragma once
 
-#include "quill/Frontend.h"
-#include "quill/LogMacros.h"
-#include "quill/Logger.h"
+#include <functional>
+#include <memory>
+#include <vector>
+
+#include "Renderer/Resources/PrimitiveType.hpp"
+#include "Renderer/Frame/ImGuiFrameData.hpp"
+#include "Scene/Scene.hpp"
 
 namespace Faye
 {
+    class IEditorPanel
+    {
+    public:
+        virtual ~IEditorPanel() = default;
+
+        virtual const char *getName() const = 0;
+        virtual bool isOpen() const = 0;
+        virtual void setOpen(bool open) = 0;
+        virtual bool showInViewMenu() const { return true; }
+        virtual void draw(ImGuiFrameData &frameData, Scene *scene, Entity &selectedEntity) = 0;
+    };
+
     class EditorPanels
     {
     public:
-        static void FrameCounter(quill::Logger *logger, int frametime, int fps)
-        {
-            ImGuiIO &io = ImGui::GetIO();
-            ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+        using PrimitiveCreateCallback = std::function<Entity(PrimitiveType)>;
 
-            const float PAD = 10.0f;
-            const ImGuiViewport *viewport = ImGui::GetMainViewport();
-            ImVec2 work_pos = viewport->WorkPos; // Use work area to avoid menu-bar/task-bar, if any!
-            ImVec2 work_size = viewport->WorkSize;
-            ImVec2 window_pos, window_pos_pivot;
+        EditorPanels();
+        ~EditorPanels();
 
-            window_pos.x = (work_pos.x + work_size.x - PAD);
-            window_pos.y = work_pos.y + work_size.y - PAD; // (work_pos.y + work_size.y - PAD);
-            window_pos_pivot.x = 1.0f;
-            window_pos_pivot.y = 1.0f;
-            ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
-            ImGui::SetNextWindowViewport(viewport->ID);
-            window_flags |= ImGuiWindowFlags_NoMove;
+        void bindScene(Scene *scene) { boundScene = scene; }
+        void setPrimitiveCreateCallback(PrimitiveCreateCallback callback) { primitiveCreateCallback = std::move(callback); }
+        void setSelectedEntity(Entity entity) { selectedEntity = entity; }
+        Entity getSelectedEntity() const { return selectedEntity; }
+        void draw(ImGuiFrameData &frameData);
 
-            ImGui::SetNextWindowBgAlpha(0.35f); // Transparent background
+    private:
+        void drawDockspace();
+        void drawPrimitiveMenuItem(PrimitiveType primitiveType);
 
-            if (ImGui::Begin("Frame Counter", nullptr, window_flags))
-            {
-                ImGui::Text("Frame statistics:");
-                ImGui::Separator();
-                ImGui::Text("Frame Time: %d ms", frametime);
-                ImGui::Text("FPS: %d", fps);
-            }
-
-            ImGui::End();
-        }
-
-        static void CreateDockspace()
-        {
-            if (ImGui::Begin("Dockspace", nullptr))
-            {
-                ImGui::DockSpace(ImGui::GetID("MyDockSpace"), ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
-            }
-
-            ImGui::End();
-        }
+        Scene *boundScene = nullptr;
+        Entity selectedEntity;
+        PrimitiveCreateCallback primitiveCreateCallback;
+        std::vector<std::unique_ptr<IEditorPanel>> panels;
     };
 }

@@ -67,8 +67,8 @@ void Faye::SimpleRenderSystem::createPipeline(VkRenderPass renderPass)
 
     vk_pipeline = std::make_unique<VulkanPipeline>(
         vk_device,
-        "./src/shaders/vert.spv",
-        "./src/shaders/frag.spv",
+        "./src/shaders/shader.vert.spv",
+        "./src/shaders/shader.frag.spv",
         pipelineConfig);
 }
 
