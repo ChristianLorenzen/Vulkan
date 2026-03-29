@@ -12,7 +12,7 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-option(FAYE_BUILD_IMGUI_DEMO "Build Dear ImGui demo sources" ON)
+option(FAYE_BUILD_IMGUI_DEMO "Build Dear ImGui demo sources" OFF)
 option(FAYE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(FAYE_COPY_BIN_TO_REPO_BIN "Write executable output to the repository bin/ directory" ON)
 

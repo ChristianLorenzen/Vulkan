@@ -35,14 +35,12 @@ function(faye_add_shader_target target_name)
     foreach(_shader IN LISTS FAYE_SHADER_SHADERS)
         get_filename_component(_shader_name "${_shader}" NAME)
         get_filename_component(_shader_dir "${_shader}" DIRECTORY)
-        get_filename_component(_shader_ext "${_shader}" LAST_EXT)
-        string(REGEX REPLACE "^\\." "" _shader_output_stem "${_shader_ext}")
 
-        if(NOT _shader_output_stem)
+        if(NOT _shader_name MATCHES "\\.[^.]+$")
             message(FATAL_ERROR "Shader '${_shader}' must have a stage extension such as .vert or .frag.")
         endif()
 
-        set(_output "${_shader_dir}/${_shader_output_stem}.spv")
+        set(_output "${_shader}.spv")
         list(APPEND _outputs "${_output}")
 
         add_custom_command(

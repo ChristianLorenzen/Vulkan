@@ -1,25 +1,32 @@
 set(FAYE_ENGINE_SOURCES
     Assets/ModelRegistry.cpp
     Core/IO/FileSystem.cpp
+    Editor/ImGui/EditorPanels.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Resources/Model.cpp
     Renderer/Scene/Extractors/CameraRenderExtractor.cpp
     Renderer/Scene/Extractors/MeshRenderExtractor.cpp
+    Renderer/Scene/Extractors/PointLightRenderExtractor.cpp
     Renderer/Scene/RenderExtractionManager.cpp
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
+    Renderer/Vulkan/vk_render_pass.cpp
     Renderer/Vulkan/vk_render_system.cpp
+    Renderer/Vulkan/point_light_render_system.cpp
     Renderer/Vulkan/vk_renderer.cpp
     Renderer/Vulkan/vk_swapchain.cpp
     Renderer/Vulkan/Vulkan.cpp
     Renderer/Vulkan/VulkanBuffer.cpp
     Runtime/main.cpp
     Scene/Camera/Camera.cpp
+    Scene/Entities/Components.cpp
+    Scene/Entities/Entity.cpp
+    Scene/Entities/EntityManager.cpp
     Scene/Scene.cpp
-    Scene/SceneManager.cpp
-    Scene/Entities/GameObject.cpp)
+    Scene/SceneQueries.cpp
+    Scene/SceneManager.cpp)
 
 set(FAYE_IMGUI_SOURCES
     imgui/imgui.cpp
@@ -35,7 +42,10 @@ endif()
 
 set(FAYE_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag)
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/point_light.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/point_light.frag
+)
 
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})
 add_library(Faye::ImGui ALIAS faye_imgui)
