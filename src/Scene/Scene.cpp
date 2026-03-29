@@ -3,183 +3,263 @@
 #include <algorithm>
 #include <stdexcept>
 
-using namespace Faye;
-
-Faye::Scene::Scene(std::string sceneName) : name(std::move(sceneName))
+namespace Faye
 {
-}
-
-Faye::Scene::EntityId Faye::Scene::createEntity()
-{
-    const EntityId entity = nextEntityId++;
-    entities.push_back(entity);
-    return entity;
-}
-
-void Faye::Scene::destroyEntity(EntityId entity)
-{
-    if (!isValid(entity))
+    Scene::Scene(std::string sceneName) : name(std::move(sceneName))
     {
-        return;
     }
 
-    entities.erase(std::remove(entities.begin(), entities.end(), entity), entities.end());
-    transforms.erase(entity);
-    rigidBody2dComponents.erase(entity);
-    meshComponents.erase(entity);
-    cameraComponents.erase(entity);
-
-    if (primaryCameraEntity == entity)
+    Entity Scene::createEntity(std::string name)
     {
-        primaryCameraEntity = invalidEntity;
-    }
-}
-
-bool Faye::Scene::isValid(EntityId entity) const
-{
-    return entity != invalidEntity &&
-           std::find(entities.begin(), entities.end(), entity) != entities.end();
-}
-
-Faye::TransformComponent &Faye::Scene::addTransform(EntityId entity)
-{
-    requireEntity(entity);
-    return transforms[entity];
-}
-
-Faye::RigidBody2dComponent &Faye::Scene::addRigidBody2d(EntityId entity)
-{
-    requireEntity(entity);
-    return rigidBody2dComponents[entity];
-}
-
-Faye::Scene::MeshComponent &Faye::Scene::addMesh(EntityId entity, ModelHandle modelHandle)
-{
-    requireEntity(entity);
-    auto &mesh = meshComponents[entity];
-    mesh.modelHandle = modelHandle;
-    return mesh;
-}
-
-Faye::Scene::CameraComponent &Faye::Scene::addCamera(EntityId entity, bool primary)
-{
-    requireEntity(entity);
-    auto &camera = cameraComponents[entity];
-    camera.primary = primary;
-
-    if (primary || primaryCameraEntity == invalidEntity)
-    {
-        setPrimaryCamera(entity);
+        return Entity{this, entityManager.createEntity(std::move(name))};
     }
 
-    return camera;
-}
-
-Faye::TransformComponent *Faye::Scene::tryGetTransform(EntityId entity)
-{
-    auto iterator = transforms.find(entity);
-    return iterator != transforms.end() ? &iterator->second : nullptr;
-}
-
-const Faye::TransformComponent *Faye::Scene::tryGetTransform(EntityId entity) const
-{
-    auto iterator = transforms.find(entity);
-    return iterator != transforms.end() ? &iterator->second : nullptr;
-}
-
-Faye::RigidBody2dComponent *Faye::Scene::tryGetRigidBody2d(EntityId entity)
-{
-    auto iterator = rigidBody2dComponents.find(entity);
-    return iterator != rigidBody2dComponents.end() ? &iterator->second : nullptr;
-}
-
-const Faye::RigidBody2dComponent *Faye::Scene::tryGetRigidBody2d(EntityId entity) const
-{
-    auto iterator = rigidBody2dComponents.find(entity);
-    return iterator != rigidBody2dComponents.end() ? &iterator->second : nullptr;
-}
-
-Faye::Scene::MeshComponent *Faye::Scene::tryGetMesh(EntityId entity)
-{
-    auto iterator = meshComponents.find(entity);
-    return iterator != meshComponents.end() ? &iterator->second : nullptr;
-}
-
-const Faye::Scene::MeshComponent *Faye::Scene::tryGetMesh(EntityId entity) const
-{
-    auto iterator = meshComponents.find(entity);
-    return iterator != meshComponents.end() ? &iterator->second : nullptr;
-}
-
-Faye::Scene::CameraComponent *Faye::Scene::tryGetCamera(EntityId entity)
-{
-    auto iterator = cameraComponents.find(entity);
-    return iterator != cameraComponents.end() ? &iterator->second : nullptr;
-}
-
-const Faye::Scene::CameraComponent *Faye::Scene::tryGetCamera(EntityId entity) const
-{
-    auto iterator = cameraComponents.find(entity);
-    return iterator != cameraComponents.end() ? &iterator->second : nullptr;
-}
-
-void Faye::Scene::setPrimaryCamera(EntityId entity)
-{
-    requireEntity(entity);
-
-    for (auto &[cameraEntity, camera] : cameraComponents)
+    Entity Scene::getEntity(EntityId entity)
     {
-        camera.primary = false;
+        return Entity{this, isValid(entity) ? entity : invalidEntity};
     }
 
-    auto *camera = tryGetCamera(entity);
-    if (camera == nullptr)
+    Entity Scene::getPrimaryCameraEntity()
     {
-        throw std::runtime_error("Cannot set primary camera on entity without a camera component");
+        return getEntity(primaryCameraEntity);
     }
 
-    camera->primary = true;
-    primaryCameraEntity = entity;
-}
-
-Faye::Scene::CameraComponent *Faye::Scene::getPrimaryCamera()
-{
-    return tryGetCamera(primaryCameraEntity);
-}
-
-const Faye::Scene::CameraComponent *Faye::Scene::getPrimaryCamera() const
-{
-    return tryGetCamera(primaryCameraEntity);
-}
-
-std::vector<Faye::Scene::RenderableView> Faye::Scene::getRenderableViews() const
-{
-    std::vector<RenderableView> renderables;
-    renderables.reserve(meshComponents.size());
-
-    for (auto entity : entities)
+    void Scene::destroyEntity(EntityId entity)
     {
-        auto transformIterator = transforms.find(entity);
-        auto meshIterator = meshComponents.find(entity);
-
-        if (transformIterator == transforms.end() || meshIterator == meshComponents.end())
+        if (!isValid(entity))
         {
-            continue;
+            return;
         }
 
-        renderables.push_back(RenderableView{
-            entity,
-            &transformIterator->second,
-            &meshIterator->second});
+        entityManager.destroyEntity(entity);
+        if (primaryCameraEntity == entity)
+        {
+            primaryCameraEntity = invalidEntity;
+        }
     }
 
-    return renderables;
-}
-
-void Faye::Scene::requireEntity(EntityId entity) const
-{
-    if (!isValid(entity))
+    void Scene::destroyEntity(Entity entity)
     {
-        throw std::runtime_error("Attempted to access an entity that does not exist in the scene");
+        destroyEntity(entity.id());
+    }
+
+    bool Scene::isValid(EntityId entity) const
+    {
+        return entityManager.isValid(entity);
+    }
+
+    void Scene::setEntityName(EntityId entity, std::string name)
+    {
+        entityManager.setEntityName(entity, std::move(name));
+    }
+
+    std::string_view Scene::getEntityName(EntityId entity) const
+    {
+        return entityManager.getEntityName(entity);
+    }
+
+    const Scene::EntityMetadata *Scene::tryGetEntityMetadata(EntityId entity) const
+    {
+        return entityManager.tryGetEntityMetadata(entity);
+    }
+
+    Scene::ComponentMask Scene::getComponentMask(EntityId entity) const
+    {
+        return entityManager.getComponentMask(entity);
+    }
+
+    bool Scene::hasComponent(EntityId entity, ComponentKind kind) const
+    {
+        return entityManager.hasComponent(entity, kind);
+    }
+
+    std::vector<Scene::ComponentKind> Scene::getComponentKinds(EntityId entity) const
+    {
+        return entityManager.getComponentKinds(entity);
+    }
+
+    TransformComponent &Scene::addTransform(EntityId entity)
+    {
+        return entityManager.addTransform(entity);
+    }
+
+    RigidBody2dComponent &Scene::addRigidBody2d(EntityId entity)
+    {
+        return entityManager.addRigidBody2d(entity);
+    }
+
+    MeshComponent &Scene::addMesh(EntityId entity, ModelHandle modelHandle)
+    {
+        return entityManager.addMesh(entity, modelHandle);
+    }
+
+    CameraComponent &Scene::addCamera(EntityId entity, bool primary)
+    {
+        auto &camera = entityManager.addCamera(entity);
+        camera.primary = primary;
+
+        if (primary || primaryCameraEntity == invalidEntity)
+        {
+            setPrimaryCamera(getEntity(entity));
+        }
+
+        return camera;
+    }
+
+    PointLightComponent &Scene::addPointLight(EntityId entity)
+    {
+        return entityManager.addPointLight(entity);
+    }
+
+    void Scene::removeTransform(EntityId entity)
+    {
+        entityManager.removeTransform(entity);
+    }
+
+    void Scene::removeRigidBody2d(EntityId entity)
+    {
+        entityManager.removeRigidBody2d(entity);
+    }
+
+    void Scene::removeMesh(EntityId entity)
+    {
+        entityManager.removeMesh(entity);
+    }
+
+    void Scene::removeCamera(EntityId entity)
+    {
+        entityManager.removeCamera(entity);
+        if (primaryCameraEntity == entity)
+        {
+            primaryCameraEntity = invalidEntity;
+        }
+    }
+
+    void Scene::removePointLight(EntityId entity)
+    {
+        entityManager.removePointLight(entity);
+    }
+
+    TransformComponent *Scene::tryGetTransform(EntityId entity)
+    {
+        return entityManager.tryGetTransform(entity);
+    }
+
+    const TransformComponent *Scene::tryGetTransform(EntityId entity) const
+    {
+        return entityManager.tryGetTransform(entity);
+    }
+
+    RigidBody2dComponent *Scene::tryGetRigidBody2d(EntityId entity)
+    {
+        return entityManager.tryGetRigidBody2d(entity);
+    }
+
+    const RigidBody2dComponent *Scene::tryGetRigidBody2d(EntityId entity) const
+    {
+        return entityManager.tryGetRigidBody2d(entity);
+    }
+
+    MeshComponent *Scene::tryGetMesh(EntityId entity)
+    {
+        return entityManager.tryGetMesh(entity);
+    }
+
+    const MeshComponent *Scene::tryGetMesh(EntityId entity) const
+    {
+        return entityManager.tryGetMesh(entity);
+    }
+
+    CameraComponent *Scene::tryGetCamera(EntityId entity)
+    {
+        return entityManager.tryGetCamera(entity);
+    }
+
+    const CameraComponent *Scene::tryGetCamera(EntityId entity) const
+    {
+        return entityManager.tryGetCamera(entity);
+    }
+
+    PointLightComponent *Scene::tryGetPointLight(EntityId entity)
+    {
+        return entityManager.tryGetPointLight(entity);
+    }
+
+    const PointLightComponent *Scene::tryGetPointLight(EntityId entity) const
+    {
+        return entityManager.tryGetPointLight(entity);
+    }
+
+    void Scene::setPrimaryCamera(EntityId entity)
+    {
+        auto *camera = tryGetCamera(entity);
+        if (camera == nullptr)
+        {
+            throw std::runtime_error("Cannot set primary camera on entity without a camera component");
+        }
+
+        for (EntityId cameraEntity : getEntities())
+        {
+            if (auto *cameraComponent = tryGetCamera(cameraEntity))
+            {
+                cameraComponent->primary = false;
+            }
+        }
+
+        camera->primary = true;
+        primaryCameraEntity = entity;
+    }
+
+    void Scene::setPrimaryCamera(Entity entity)
+    {
+        setPrimaryCamera(entity.id());
+    }
+
+    CameraComponent *Scene::getPrimaryCamera()
+    {
+        return tryGetCamera(primaryCameraEntity);
+    }
+
+    const CameraComponent *Scene::getPrimaryCamera() const
+    {
+        return tryGetCamera(primaryCameraEntity);
+    }
+
+    std::vector<Scene::RenderableView> Scene::getRenderableViews() const
+    {
+        std::vector<RenderableView> renderables;
+
+        for (EntityId entity : getEntities())
+        {
+            const auto *transform = tryGetTransform(entity);
+            const auto *mesh = tryGetMesh(entity);
+            if (transform == nullptr || mesh == nullptr)
+            {
+                continue;
+            }
+
+            renderables.push_back(RenderableView{entity, transform, mesh});
+        }
+
+        return renderables;
+    }
+
+    std::vector<Scene::PointLightView> Scene::getPointLightViews() const
+    {
+        std::vector<PointLightView> pointLights;
+
+        for (EntityId entity : getEntities())
+        {
+            const auto *transform = tryGetTransform(entity);
+            const auto *pointLight = tryGetPointLight(entity);
+            if (transform == nullptr || pointLight == nullptr)
+            {
+                continue;
+            }
+
+            pointLights.push_back(PointLightView{entity, transform, pointLight});
+        }
+
+        return pointLights;
     }
 }

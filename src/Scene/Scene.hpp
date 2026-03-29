@@ -1,35 +1,22 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
-#include "Assets/ModelRegistry.hpp"
-#include "Scene/Camera/Camera.hpp"
-#include "Scene/Entities/GameObject.hpp"
+#include "Scene/Entities/Entity.hpp"
+#include "Scene/Entities/EntityManager.hpp"
 
 namespace Faye
 {
     class Scene
     {
     public:
-        using EntityId = uint32_t;
-        static constexpr EntityId invalidEntity = 0;
-
-        struct MeshComponent
-        {
-            ModelHandle modelHandle{};
-            glm::vec3 color{};
-        };
-
-        struct CameraComponent
-        {
-            Camera camera{};
-            bool primary = false;
-        };
+        using EntityId = Faye::EntityId;
+        static constexpr EntityId invalidEntity = Faye::invalidEntity;
+        using EntityMetadata = Faye::EntityMetadata;
+        using ComponentKind = Faye::ComponentKind;
+        using ComponentMask = Faye::ComponentMask;
 
         struct RenderableView
         {
@@ -38,18 +25,43 @@ namespace Faye
             const MeshComponent *mesh = nullptr;
         };
 
+        struct PointLightView
+        {
+            EntityId entity = invalidEntity;
+            const TransformComponent *transform = nullptr;
+            const PointLightComponent *pointLight = nullptr;
+        };
+
         explicit Scene(std::string sceneName = "Scene");
 
-        EntityId createEntity();
+        Entity createEntity(std::string name = {});
+        Entity getEntity(EntityId entity);
+        Entity getPrimaryCameraEntity();
         void destroyEntity(EntityId entity);
+        void destroyEntity(Entity entity);
         bool isValid(EntityId entity) const;
 
         std::string_view getName() const { return name; }
+        const std::vector<EntityId> &getEntities() const { return entityManager.getEntities(); }
+
+        void setEntityName(EntityId entity, std::string name);
+        std::string_view getEntityName(EntityId entity) const;
+        const EntityMetadata *tryGetEntityMetadata(EntityId entity) const;
+        ComponentMask getComponentMask(EntityId entity) const;
+        bool hasComponent(EntityId entity, ComponentKind kind) const;
+        std::vector<ComponentKind> getComponentKinds(EntityId entity) const;
 
         TransformComponent &addTransform(EntityId entity);
         RigidBody2dComponent &addRigidBody2d(EntityId entity);
         MeshComponent &addMesh(EntityId entity, ModelHandle modelHandle = {});
         CameraComponent &addCamera(EntityId entity, bool primary = false);
+        PointLightComponent &addPointLight(EntityId entity);
+
+        void removeTransform(EntityId entity);
+        void removeRigidBody2d(EntityId entity);
+        void removeMesh(EntityId entity);
+        void removeCamera(EntityId entity);
+        void removePointLight(EntityId entity);
 
         TransformComponent *tryGetTransform(EntityId entity);
         const TransformComponent *tryGetTransform(EntityId entity) const;
@@ -63,24 +75,21 @@ namespace Faye
         CameraComponent *tryGetCamera(EntityId entity);
         const CameraComponent *tryGetCamera(EntityId entity) const;
 
+        PointLightComponent *tryGetPointLight(EntityId entity);
+        const PointLightComponent *tryGetPointLight(EntityId entity) const;
+
         void setPrimaryCamera(EntityId entity);
-        EntityId getPrimaryCameraEntity() const { return primaryCameraEntity; }
+        void setPrimaryCamera(Entity entity);
+        EntityId getPrimaryCameraEntityId() const { return primaryCameraEntity; }
         CameraComponent *getPrimaryCamera();
         const CameraComponent *getPrimaryCamera() const;
 
         std::vector<RenderableView> getRenderableViews() const;
+        std::vector<PointLightView> getPointLightViews() const;
 
     private:
-        void requireEntity(EntityId entity) const;
-
         std::string name;
-        EntityId nextEntityId = 1;
+        EntityManager entityManager;
         EntityId primaryCameraEntity = invalidEntity;
-
-        std::vector<EntityId> entities;
-        std::unordered_map<EntityId, TransformComponent> transforms;
-        std::unordered_map<EntityId, RigidBody2dComponent> rigidBody2dComponents;
-        std::unordered_map<EntityId, MeshComponent> meshComponents;
-        std::unordered_map<EntityId, CameraComponent> cameraComponents;
     };
 }

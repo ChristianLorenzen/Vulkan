@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Renderer/Resources/PrimitiveType.hpp"
 #include "Renderer/Resources/Vertex.hpp"
 #include "Renderer/Vulkan/VulkanBuffer.hpp"
 #include "Renderer/Vulkan/vk_device.hpp"
@@ -19,11 +20,21 @@ namespace Faye
         std::vector<uint32_t> indices{};
 
         void loadModel(const std::string &modelPath);
+        static Builder makePrimitive(PrimitiveType primitiveType);
     };
 
     class Model
     {
     public:
+        struct Bounds
+        {
+            glm::vec3 min{0.0f};
+            glm::vec3 max{0.0f};
+
+            glm::vec3 center() const { return (min + max) * 0.5f; }
+            glm::vec3 extents() const { return (max - min) * 0.5f; }
+        };
+
         Model(VulkanDevice &device, const Builder &builder);
         Model(VulkanDevice &device, const std::vector<Vertex> &vertices);
         ~Model();
@@ -32,11 +43,14 @@ namespace Faye
         Model &operator=(const Model &) = delete;
 
         static std::unique_ptr<Model> createModelFromFile(VulkanDevice &device, const std::string &modelPath);
+        static std::unique_ptr<Model> createPrimitive(VulkanDevice &device, PrimitiveType primitiveType);
 
         void bind(VkCommandBuffer commandBuffer);
         void draw(VkCommandBuffer commandBuffer);
+        const Bounds &getLocalBounds() const { return localBounds; }
 
     private:
+        void calculateLocalBounds(const std::vector<Vertex> &vertices);
         void createVertexBuffers(const std::vector<Vertex> &vertices);
         void createIndexBuffers(const std::vector<uint32_t> &indices);
 
@@ -52,5 +66,6 @@ namespace Faye
         uint32_t indexCount;
 
         bool hasIndexBuffer = false;
+        Bounds localBounds{};
     };
 }

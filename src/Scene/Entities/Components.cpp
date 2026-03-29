@@ -1,8 +1,7 @@
-#include "GameObject.hpp"
+#include "Scene/Entities/Components.hpp"
 
 namespace Faye
 {
-
     glm::mat4 TransformComponent::mat4() const
     {
         const float c3 = glm::cos(rotation.z);

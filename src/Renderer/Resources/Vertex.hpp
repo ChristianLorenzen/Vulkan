@@ -29,9 +29,9 @@ namespace Faye
             return pos == other.pos && color == other.color && normal == other.normal && uv == other.uv;
         }
 
-        static std::array<VkVertexInputBindingDescription, 1> getBindingDescription()
+        static std::vector<VkVertexInputBindingDescription> getBindingDescription()
         {
-            std::array<VkVertexInputBindingDescription, 1> bindingDescriptions{};
+            std::vector<VkVertexInputBindingDescription> bindingDescriptions(1);
             bindingDescriptions[0].binding = 0;
             bindingDescriptions[0].stride = sizeof(Vertex);
             bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
@@ -39,9 +39,9 @@ namespace Faye
             return bindingDescriptions;
         }
 
-        static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions()
+        static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions()
         {
-            std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions{};
+            std::vector<VkVertexInputAttributeDescription> attributeDescriptions(4);
 
             // attributesDescriptions.push_back({0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)});
             // attributesDescriptions.push_back({1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)});
