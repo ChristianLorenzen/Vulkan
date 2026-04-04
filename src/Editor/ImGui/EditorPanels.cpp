@@ -1,5 +1,7 @@
 #include "Editor/ImGui/EditorPanels.hpp"
 
+#include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
+
 #include "imgui/imgui.h"
 
 #include <algorithm>
@@ -13,6 +15,56 @@ namespace Faye
     {
         constexpr ImVec2 kViewportUvMin{0.0f, 1.0f};
         constexpr ImVec2 kViewportUvMax{1.0f, 0.0f};
+
+        const char *viewportDebugModeLabel(RenderDebugMode mode)
+        {
+            switch (mode)
+            {
+            case RenderDebugMode::Lit:
+                return "Lit";
+            case RenderDebugMode::SceneColor:
+                return "Scene Color";
+            case RenderDebugMode::SceneDepth:
+                return "Depth";
+            case RenderDebugMode::SceneMotion:
+                return "Motion";
+            }
+
+            return "Unknown";
+        }
+
+        void drawViewportDebugModeMenu(ImGuiFrameData &frameData)
+        {
+            if (!ImGui::BeginMenu("Viewport Output"))
+                return;
+
+            const std::array<std::pair<RenderDebugMode, const char *>, 4> modeOptions{{
+                {RenderDebugMode::Lit, "Lit"},
+                {RenderDebugMode::SceneColor, "Scene Color"},
+                {RenderDebugMode::SceneDepth, "Depth"},
+                {RenderDebugMode::SceneMotion, "Motion"},
+            }};
+
+            for (const auto &[mode, label] : modeOptions)
+            {
+                if (ImGui::MenuItem(label, nullptr, frameData.viewportDebugMode == mode))
+                {
+                    frameData.viewportDebugMode = mode;
+                }
+            }
+
+            ImGui::EndMenu();
+        }
+
+        const char *effectDisplayName(const PostProcessEffectComponent &effect)
+        {
+            if (const auto *definition = findPostProcessEffectDefinition(effect.definitionId))
+            {
+                return definition->displayName.c_str();
+            }
+
+            return effect.definitionId.c_str();
+        }
 
         void copyNameToBuffer(std::string_view value, std::array<char, 128> &buffer)
         {
@@ -91,28 +143,43 @@ namespace Faye
 
                 if (visible)
                 {
-                    frameData.sceneViewportHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-                    frameData.sceneViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+                    frameData.viewportHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+                    frameData.viewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
                     ImVec2 avail = ImGui::GetContentRegionAvail();
                     if (avail.x > 1.0f && avail.y > 1.0f)
                     {
                         // Report desired render size back to the engine for next frame's resize.
-                        frameData.requestedSceneViewportSize = avail;
+                        frameData.requestedViewportSize = avail;
 
-                        if (frameData.sceneViewportTexture != 0)
+                        if (frameData.viewportTexture != 0)
                         {
                             const ImVec2 imageMin = ImGui::GetCursorScreenPos();
-                            ImGui::Image(frameData.sceneViewportTexture, avail, kViewportUvMin, kViewportUvMax);
+                            ImGui::Image(frameData.viewportTexture, avail, kViewportUvMin, kViewportUvMax);
+
+                            if (ImGui::BeginPopupContextWindow("EditorViewContextMenu", ImGuiPopupFlags_MouseButtonRight))
+                            {
+                                drawViewportDebugModeMenu(frameData);
+                                ImGui::Separator();
+                                ImGui::Text("Current: %s", viewportDebugModeLabel(frameData.viewportDebugMode));
+                                ImGui::EndPopup();
+                            }
 
                             if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                             {
                                 const ImVec2 mousePosition = ImGui::GetMousePos();
-                                frameData.sceneViewportClicked = true;
-                                frameData.sceneViewportClickUv = ImVec2(
+                                frameData.viewportClicked = true;
+                                frameData.viewportClickUv = ImVec2(
                                     std::clamp((mousePosition.x - imageMin.x) / avail.x, 0.0f, 1.0f),
                                     std::clamp((mousePosition.y - imageMin.y) / avail.y, 0.0f, 1.0f));
                             }
+                        }
+                        else if (ImGui::BeginPopupContextWindow("EditorViewContextMenu", ImGuiPopupFlags_MouseButtonRight))
+                        {
+                            drawViewportDebugModeMenu(frameData);
+                            ImGui::Separator();
+                            ImGui::Text("Current: %s", viewportDebugModeLabel(frameData.viewportDebugMode));
+                            ImGui::EndPopup();
                         }
                     }
                 }
@@ -145,16 +212,16 @@ namespace Faye
 
                 if (visible)
                 {
-                    if (frameData.sceneViewportTexture == 0 ||
-                        frameData.sceneViewportSize.x <= 0.0f ||
-                        frameData.sceneViewportSize.y <= 0.0f)
+                    if (frameData.viewportTexture == 0 ||
+                        frameData.viewportSize.x <= 0.0f ||
+                        frameData.viewportSize.y <= 0.0f)
                     {
                         ImGui::TextUnformatted("Scene image unavailable.");
                     }
                     else
                     {
                         ImVec2 avail = ImGui::GetContentRegionAvail();
-                        float srcAspect = frameData.sceneViewportSize.x / frameData.sceneViewportSize.y;
+                        float srcAspect = frameData.viewportSize.x / frameData.viewportSize.y;
                         ImVec2 imageSize = avail;
                         if (avail.y > 0.0f)
                         {
@@ -168,7 +235,7 @@ namespace Faye
                         ImVec2 cursor = ImGui::GetCursorPos();
                         ImGui::SetCursorPos({cursor.x + (avail.x - imageSize.x) * 0.5f,
                                              cursor.y + (avail.y - imageSize.y) * 0.5f});
-                        ImGui::Image(frameData.sceneViewportTexture, imageSize, kViewportUvMin, kViewportUvMax);
+                        ImGui::Image(frameData.viewportTexture, imageSize, kViewportUvMin, kViewportUvMax);
                     }
                 }
                 ImGui::End();
@@ -247,6 +314,7 @@ namespace Faye
                         drawMesh(selectedEntity);
                         drawCamera(selectedEntity);
                         drawPointLight(selectedEntity);
+                        drawPostProcessStack(selectedEntity);
                     }
                 }
                 ImGui::End();
@@ -303,7 +371,7 @@ namespace Faye
                     if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         ImGui::Text("Model Handle: %u", mesh->modelHandle.value);
-                        ImGui::ColorEdit3("Color", &mesh->color.x);
+                        ImGui::Text("Material Handle: %u", mesh->materialHandle.value);
                     }
                 }
             }
@@ -333,6 +401,143 @@ namespace Faye
                         ImGui::DragFloat("Intensity", &pointLight->intensity, 0.05f, 0.0f, 100.0f);
                         ImGui::DragFloat("Radius", &pointLight->radius, 0.01f, 0.01f, 10.0f);
                     }
+                }
+            }
+
+            void drawPostProcessStack(const Entity &entity)
+            {
+                auto *postProcessStack = entity.tryGetPostProcessStack();
+                if (postProcessStack == nullptr)
+                {
+                    return;
+                }
+
+                if (!ImGui::CollapsingHeader("Post Process Stack", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    return;
+                }
+
+                ImGui::Checkbox("Enabled", &postProcessStack->enabled);
+                ImGui::Separator();
+
+                int moveUpIndex = -1;
+                int moveDownIndex = -1;
+                int removeIndex = -1;
+
+                for (size_t i = 0; i < postProcessStack->effects.size(); ++i)
+                {
+                    auto &effect = postProcessStack->effects[i];
+                    ImGui::PushID(static_cast<int>(i));
+
+                    const bool open = ImGui::TreeNodeEx(
+                        "Effect",
+                        ImGuiTreeNodeFlags_DefaultOpen,
+                        "%zu. %s",
+                        i + 1,
+                        effectDisplayName(effect));
+
+                    if (open)
+                    {
+                        const auto *effectDefinition = findPostProcessEffectDefinition(effect.definitionId);
+
+                        if (ImGui::BeginCombo("Type", effectDisplayName(effect)))
+                        {
+                            for (const auto &definition : getPostProcessEffectDefinitions())
+                            {
+                                if (!definition.showInEditor)
+                                {
+                                    continue;
+                                }
+
+                                const bool isSelected = definition.id == effect.definitionId;
+                                if (ImGui::Selectable(definition.displayName.c_str(), isSelected))
+                                {
+                                    const bool wasEnabled = effect.enabled;
+                                    effect = makeDefaultPostProcessEffect(definition.id);
+                                    effect.enabled = wasEnabled;
+                                    effectDefinition = findPostProcessEffectDefinition(effect.definitionId);
+                                }
+
+                                if (isSelected)
+                                {
+                                    ImGui::SetItemDefaultFocus();
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+
+                        ImGui::Checkbox("Effect Enabled", &effect.enabled);
+
+                        if (effectDefinition == nullptr)
+                        {
+                            ImGui::TextUnformatted("Effect definition is missing.");
+                        }
+                        else
+                        {
+                            for (const auto &parameter : effectDefinition->parameters)
+                            {
+                                if (parameter.controlType == PostProcessParameterControlType::Color4)
+                                {
+                                    ImGui::ColorEdit4(parameter.label.c_str(), &effect.parameters.color.x);
+                                    continue;
+                                }
+
+                                if (float *value = getPostProcessFloatParameter(effect, parameter.binding))
+                                {
+                                    ImGui::SliderFloat(parameter.label.c_str(), value, parameter.minValue, parameter.maxValue);
+                                }
+                            }
+                        }
+
+                        if (ImGui::Button("Move Up") && i > 0)
+                        {
+                            moveUpIndex = static_cast<int>(i);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Move Down") && i + 1 < postProcessStack->effects.size())
+                        {
+                            moveDownIndex = static_cast<int>(i);
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Remove"))
+                        {
+                            removeIndex = static_cast<int>(i);
+                        }
+
+                        ImGui::TreePop();
+                    }
+
+                    ImGui::PopID();
+                }
+
+                if (removeIndex >= 0)
+                {
+                    postProcessStack->effects.erase(postProcessStack->effects.begin() + removeIndex);
+                }
+                else if (moveUpIndex > 0)
+                {
+                    std::swap(postProcessStack->effects[moveUpIndex], postProcessStack->effects[moveUpIndex - 1]);
+                }
+                else if (moveDownIndex >= 0 && static_cast<size_t>(moveDownIndex + 1) < postProcessStack->effects.size())
+                {
+                    std::swap(postProcessStack->effects[moveDownIndex], postProcessStack->effects[moveDownIndex + 1]);
+                }
+
+                if (ImGui::BeginCombo("Add Effect", "Select Effect"))
+                {
+                    for (const auto &definition : getPostProcessEffectDefinitions())
+                    {
+                        if (!definition.showInEditor)
+                        {
+                            continue;
+                        }
+
+                        if (ImGui::Selectable(definition.displayName.c_str()))
+                        {
+                            postProcessStack->effects.push_back(makeDefaultPostProcessEffect(definition.id));
+                        }
+                    }
+                    ImGui::EndCombo();
                 }
             }
 
