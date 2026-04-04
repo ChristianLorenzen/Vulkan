@@ -15,7 +15,6 @@ namespace Faye
 
     struct Vertex
     {
-#define INDEX_SIZE = uint32_t
         glm::vec3 pos;
         glm::vec3 color;
         glm::vec3 normal;

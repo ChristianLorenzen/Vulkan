@@ -23,7 +23,6 @@ namespace Faye
             Material *material = context.materialRegistry.getMaterial(renderable.mesh->materialHandle);
             if (material == nullptr)
             {
-                material = context.materialRegistry.getMaterial(MaterialRegistry::invalidHandle);
                 continue;
             }
 

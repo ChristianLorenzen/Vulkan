@@ -16,6 +16,8 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Frame/FrameContext.hpp"
@@ -66,7 +68,7 @@ namespace Faye
 
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
-		void notifyShaderRecompliation(const std::string &compiledShader);
+		void notifyShaderRecompilation(const std::string &compiledShader);
 
 	private:
 		Window &window;

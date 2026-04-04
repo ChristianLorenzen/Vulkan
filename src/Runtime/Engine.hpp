@@ -141,7 +141,7 @@ private:
             std::string compileResult = shaderManager.shaderFileChange(path);
             if (!compileResult.empty())
             {
-                vkData->notifyShaderRecompliation(compileResult);
+                vkData->notifyShaderRecompilation(compileResult);
             }
         }
     }
@@ -286,7 +286,7 @@ private:
                 RenderOutputTarget::OffscreenSceneColor,
                 editorViewportDebugMode};
 
-            cameraComponent->camera.saveViewProjectionMatix();
+            cameraComponent->camera.saveViewProjectionMatrix();
             input.updateEditorCamera(
                 glfwWindow->getWindow(),
                 *cameraTransform,

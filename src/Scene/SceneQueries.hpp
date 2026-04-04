@@ -1,8 +1,10 @@
 #pragma once
 
 #include <optional>
+#include <glm/glm.hpp>
 
 #include "Assets/ModelRegistry.hpp"
+#include "Scene/Camera/Camera.hpp"
 #include "Scene/Scene.hpp"
 
 namespace Faye

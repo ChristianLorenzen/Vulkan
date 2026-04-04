@@ -127,7 +127,7 @@ VkExtent2D Faye::Vulkan::getSceneRenderExtent() const
     return vk_renderer->getSceneRenderExtent();
 }
 
-void Faye::Vulkan::notifyShaderRecompliation(const std::string &compiledShader)
+void Faye::Vulkan::notifyShaderRecompilation(const std::string &compiledShader)
 {
     simpleRenderSystem->invalidatePipelines(compiledShader);
     postProcessChain->invalidatePipelines(compiledShader);
