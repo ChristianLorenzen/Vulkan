@@ -1,0 +1,12 @@
+id=depthFog
+displayName=Depth Fog
+vertexShader=./src/shaders/compiled/post_process.vert.spv
+fragmentShader=./src/shaders/compiled/post_process_depth_fog.frag.spv
+showInEditor=true
+input=sourceColor,0
+input=sceneDepth,1
+parameter=fogColor,Fog Color,Color4,Color,0.0,1.0,0.01
+parameter=fogNear,Fog Near,Float,ParamX,0.1,100.0,0.1
+parameter=fogFar,Fog Far,Float,ParamY,0.1,200.0,0.1
+defaultColor=0.22,0.28,0.38,1.0
+defaultParams=2.0,18.0,0.0,0.0
