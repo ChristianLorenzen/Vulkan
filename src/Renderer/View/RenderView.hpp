@@ -14,7 +14,10 @@ namespace Faye
 
     enum class RenderDebugMode
     {
-        Lit
+        Lit,
+        SceneColor,
+        SceneDepth,
+        SceneMotion
     };
 
     struct RenderViewport

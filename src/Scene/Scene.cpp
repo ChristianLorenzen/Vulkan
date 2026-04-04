@@ -88,7 +88,7 @@ namespace Faye
         return entityManager.addRigidBody2d(entity);
     }
 
-    MeshComponent &Scene::addMesh(EntityId entity, ModelHandle modelHandle)
+    MeshRendererComponent &Scene::addMesh(EntityId entity, ModelHandle modelHandle)
     {
         return entityManager.addMesh(entity, modelHandle);
     }
@@ -109,6 +109,11 @@ namespace Faye
     PointLightComponent &Scene::addPointLight(EntityId entity)
     {
         return entityManager.addPointLight(entity);
+    }
+
+    PostProcessStackComponent &Scene::addPostProcessStack(EntityId entity)
+    {
+        return entityManager.addPostProcessStack(entity);
     }
 
     void Scene::removeTransform(EntityId entity)
@@ -140,6 +145,11 @@ namespace Faye
         entityManager.removePointLight(entity);
     }
 
+    void Scene::removePostProcessStack(EntityId entity)
+    {
+        entityManager.removePostProcessStack(entity);
+    }
+
     TransformComponent *Scene::tryGetTransform(EntityId entity)
     {
         return entityManager.tryGetTransform(entity);
@@ -160,12 +170,12 @@ namespace Faye
         return entityManager.tryGetRigidBody2d(entity);
     }
 
-    MeshComponent *Scene::tryGetMesh(EntityId entity)
+    MeshRendererComponent *Scene::tryGetMesh(EntityId entity)
     {
         return entityManager.tryGetMesh(entity);
     }
 
-    const MeshComponent *Scene::tryGetMesh(EntityId entity) const
+    const MeshRendererComponent *Scene::tryGetMesh(EntityId entity) const
     {
         return entityManager.tryGetMesh(entity);
     }
@@ -188,6 +198,16 @@ namespace Faye
     const PointLightComponent *Scene::tryGetPointLight(EntityId entity) const
     {
         return entityManager.tryGetPointLight(entity);
+    }
+
+    PostProcessStackComponent *Scene::tryGetPostProcessStack(EntityId entity)
+    {
+        return entityManager.tryGetPostProcessStack(entity);
+    }
+
+    const PostProcessStackComponent *Scene::tryGetPostProcessStack(EntityId entity) const
+    {
+        return entityManager.tryGetPostProcessStack(entity);
     }
 
     void Scene::setPrimaryCamera(EntityId entity)

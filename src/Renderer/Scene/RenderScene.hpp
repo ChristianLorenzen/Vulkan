@@ -1,5 +1,7 @@
 #pragma once
 
+#include <glm/glm.hpp>
+
 #include <vector>
 
 #include "Renderer/Resources/Model.hpp"
@@ -12,9 +14,10 @@ namespace Faye
     struct RenderableInstance
     {
         Scene::EntityId entity = Scene::invalidEntity;
-        const TransformComponent *transform = nullptr;
+        glm::mat4 modelMatrix{1.0f};
+        glm::mat4 priorModelMatrix{1.0f};
         Model *model = nullptr;
-        glm::vec3 color{};
+        Material *material = nullptr;
     };
 
     struct PointLightInstance

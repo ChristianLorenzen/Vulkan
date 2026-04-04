@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 namespace Faye
@@ -8,6 +9,7 @@ namespace Faye
     {
     public:
         static std::vector<char> readFile(const std::string &filename);
+        static std::string readTextFile(const std::string &filename);
     };
 
 }

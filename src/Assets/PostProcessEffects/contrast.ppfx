@@ -1,0 +1,9 @@
+id=contrast
+displayName=Contrast
+vertexShader=./src/shaders/compiled/post_process.vert.spv
+fragmentShader=./src/shaders/compiled/post_process_contrast.frag.spv
+showInEditor=true
+input=sourceColor,0
+parameter=contrast,Contrast,Float,ParamY,0.0,2.5,0.01
+defaultColor=1.0,1.0,1.0,1.0
+defaultParams=0.0,1.15,0.0,0.0

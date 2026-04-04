@@ -2,6 +2,7 @@
 
 layout (location =0) in vec2 fragOffset;
 layout (location = 0) out vec4 outColor;
+layout (location = 1) out vec2 outMotion;
 
 struct PointLight {
     vec4 position;
@@ -12,6 +13,7 @@ layout(set = 0, binding = 0) uniform GlobalUbo {
     mat4 projection;
     mat4 view;
     mat4 inverseView;
+    mat4 priorViewProjection;
     vec4 ambientLightColor;
     PointLight pointLights[10];
     int numLights;
@@ -29,4 +31,5 @@ void main() {
         discard;
     }
     outColor = vec4(push.color.xyz, 1.0);
+    outMotion = vec2(0.0);
 }

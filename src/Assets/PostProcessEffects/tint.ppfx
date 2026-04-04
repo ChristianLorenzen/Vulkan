@@ -1,0 +1,9 @@
+id=tint
+displayName=Tint
+vertexShader=./src/shaders/compiled/post_process.vert.spv
+fragmentShader=./src/shaders/compiled/post_process_tint.frag.spv
+showInEditor=false
+input=sourceColor,0
+parameter=tint,Tint,Color4,Color,0.0,1.0,0.01
+defaultColor=0.5451,0.2471,0.4314,1.0
+defaultParams=0.0,0.0,0.0,0.0

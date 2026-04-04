@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Renderer/View/RenderView.hpp"
 #include "imgui/imgui.h"
 
 namespace Faye
@@ -8,12 +9,13 @@ namespace Faye
     {
         int frameTimeMs = 0;
         int averageFps = 0;
-        ImTextureID sceneViewportTexture = 0;
-        ImVec2 sceneViewportSize{0.0f, 0.0f};
-        ImVec2 requestedSceneViewportSize{0.0f, 0.0f};
-        bool sceneViewportHovered = false;
-        bool sceneViewportFocused = false;
-        bool sceneViewportClicked = false;
-        ImVec2 sceneViewportClickUv{-1.0f, -1.0f};
+        ImTextureID viewportTexture = 0;
+        ImVec2 viewportSize{0.0f, 0.0f};
+        ImVec2 requestedViewportSize{0.0f, 0.0f};
+        bool viewportHovered = false;
+        bool viewportFocused = false;
+        bool viewportClicked = false;
+        ImVec2 viewportClickUv{-1.0f, -1.0f};
+        RenderDebugMode viewportDebugMode = RenderDebugMode::Lit;
     };
 }

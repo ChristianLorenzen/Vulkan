@@ -37,6 +37,7 @@ namespace Faye
         meshComponents.erase(entity);
         cameraComponents.erase(entity);
         pointLightComponents.erase(entity);
+        postProcessStackComponents.erase(entity);
     }
 
     bool EntityManager::isValid(EntityId entity) const
@@ -110,7 +111,7 @@ namespace Faye
         return rigidBody2dComponents[entity];
     }
 
-    MeshComponent &EntityManager::addMesh(EntityId entity, ModelHandle modelHandle)
+    MeshRendererComponent &EntityManager::addMesh(EntityId entity, ModelHandle modelHandle)
     {
         requireEntity(entity);
         setComponent(entity, ComponentKind::Mesh);
@@ -132,6 +133,13 @@ namespace Faye
         requireEntity(entity);
         setComponent(entity, ComponentKind::PointLight);
         return pointLightComponents[entity];
+    }
+
+    PostProcessStackComponent &EntityManager::addPostProcessStack(EntityId entity)
+    {
+        requireEntity(entity);
+        setComponent(entity, ComponentKind::PostProcessStack);
+        return postProcessStackComponents[entity];
     }
 
     void EntityManager::removeTransform(EntityId entity)
@@ -164,6 +172,12 @@ namespace Faye
         clearComponent(entity, ComponentKind::PointLight);
     }
 
+    void EntityManager::removePostProcessStack(EntityId entity)
+    {
+        postProcessStackComponents.erase(entity);
+        clearComponent(entity, ComponentKind::PostProcessStack);
+    }
+
     TransformComponent *EntityManager::tryGetTransform(EntityId entity)
     {
         auto iterator = transforms.find(entity);
@@ -188,13 +202,13 @@ namespace Faye
         return iterator != rigidBody2dComponents.end() ? &iterator->second : nullptr;
     }
 
-    MeshComponent *EntityManager::tryGetMesh(EntityId entity)
+    MeshRendererComponent *EntityManager::tryGetMesh(EntityId entity)
     {
         auto iterator = meshComponents.find(entity);
         return iterator != meshComponents.end() ? &iterator->second : nullptr;
     }
 
-    const MeshComponent *EntityManager::tryGetMesh(EntityId entity) const
+    const MeshRendererComponent *EntityManager::tryGetMesh(EntityId entity) const
     {
         auto iterator = meshComponents.find(entity);
         return iterator != meshComponents.end() ? &iterator->second : nullptr;
@@ -222,6 +236,18 @@ namespace Faye
     {
         auto iterator = pointLightComponents.find(entity);
         return iterator != pointLightComponents.end() ? &iterator->second : nullptr;
+    }
+
+    PostProcessStackComponent *EntityManager::tryGetPostProcessStack(EntityId entity)
+    {
+        auto iterator = postProcessStackComponents.find(entity);
+        return iterator != postProcessStackComponents.end() ? &iterator->second : nullptr;
+    }
+
+    const PostProcessStackComponent *EntityManager::tryGetPostProcessStack(EntityId entity) const
+    {
+        auto iterator = postProcessStackComponents.find(entity);
+        return iterator != postProcessStackComponents.end() ? &iterator->second : nullptr;
     }
 
     void EntityManager::requireEntity(EntityId entity) const

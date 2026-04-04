@@ -15,7 +15,10 @@
 #include <set>
 #include <fstream>
 #include <memory>
+#include <string>
+#include <unordered_map>
 
+#include "Renderer/Material/Material.hpp"
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Frame/FrameContext.hpp"
 #include "Renderer/Resources/Model.hpp"
@@ -41,16 +44,34 @@ namespace Faye
 		SimpleRenderSystem(SimpleRenderSystem &&) = delete;
 		SimpleRenderSystem &operator=(SimpleRenderSystem &&) = delete;
 
+		void invalidatePipelines(const std::string &compiledShader);
 		void renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
 
 	private:
-		VulkanDevice &vk_device;
-		std::unique_ptr<VulkanPipeline> vk_pipeline;
+		struct MaterialPipelineKey
+		{
+			std::string vertexShaderPath;
+			std::string fragmentShaderPath;
 
-		VkPipelineLayout pipelineLayout;
+			friend bool operator==(const MaterialPipelineKey &left, const MaterialPipelineKey &right) = default;
+		};
+
+		struct MaterialPipelineKeyHasher
+		{
+			size_t operator()(const MaterialPipelineKey &key) const;
+		};
+
+		VulkanDevice &vk_device;
+		VkRenderPass renderPass;
+		std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
+
+		VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
 
 		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
-		void createPipeline(VkRenderPass renderPass);
+		VulkanPipeline &getOrCreatePipeline(const Material *material);
+		std::unique_ptr<VulkanPipeline> createPipeline(const MaterialPipelineKey &key) const;
+		static MaterialPipelineKey makePipelineKey(const Material *material);
+		static std::string resolveCompiledShaderPath(const std::string &shaderPath);
 	};
 
 } // namespace

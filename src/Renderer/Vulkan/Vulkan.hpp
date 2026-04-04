@@ -25,6 +25,7 @@
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
 #include "point_light_render_system.hpp"
+#include "vk_post_process.hpp"
 #include "vk_device.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_renderer.hpp"
@@ -41,6 +42,7 @@ namespace Faye
 	{
 		const RenderView &renderView;
 		const RenderSceneSnapshot &renderScene;
+		const PostProcessStackComponent *postProcessStack = nullptr;
 		int frameTimeMs = 0;
 		int averageFps = 0;
 	};
@@ -64,6 +66,8 @@ namespace Faye
 
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
+		void notifyShaderRecompliation(const std::string &compiledShader);
+
 	private:
 		Window &window;
 		std::unique_ptr<VulkanDevice> vk_device;
@@ -71,6 +75,7 @@ namespace Faye
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
 		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
+		std::unique_ptr<PostProcessChain> postProcessChain{};
 
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
 		// Descriptor pool passed to the ImGui initialization function.

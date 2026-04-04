@@ -63,6 +63,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
 
     auto &bindingDescriptions = config.bindingDescriptions;
     auto &attributeDescriptions = config.attributeDescriptions;
+    auto &colorBlendAttachments = config.colorBlendAttachments;
 
     vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
@@ -94,6 +95,11 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     pipelineInfo.subpass = config.subpass;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
+
+    VkPipelineColorBlendStateCreateInfo colorBlendingInfo = config.colorBlendingInfo;
+    colorBlendingInfo.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
+    colorBlendingInfo.pAttachments = colorBlendAttachments.data();
+    pipelineInfo.pColorBlendState = &colorBlendingInfo;
 
     LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
 
@@ -153,20 +159,22 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo)
     configInfo.multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
     configInfo.multisamplingInfo.alphaToOneEnable = VK_FALSE;
 
-    configInfo.colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    configInfo.colorBlendAttachment.blendEnable = VK_FALSE;
-    configInfo.colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    configInfo.colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-    configInfo.colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-    configInfo.colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    configInfo.colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    configInfo.colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    VkPipelineColorBlendAttachmentState defaultAttachment{};
+    defaultAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    defaultAttachment.blendEnable = VK_FALSE;
+    defaultAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    defaultAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    defaultAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    defaultAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    defaultAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    defaultAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    configInfo.colorBlendAttachments = {defaultAttachment};
 
     configInfo.colorBlendingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     configInfo.colorBlendingInfo.logicOpEnable = VK_FALSE;
     configInfo.colorBlendingInfo.logicOp = VK_LOGIC_OP_COPY;
-    configInfo.colorBlendingInfo.attachmentCount = 1;
-    configInfo.colorBlendingInfo.pAttachments = &configInfo.colorBlendAttachment;
+    configInfo.colorBlendingInfo.attachmentCount = static_cast<uint32_t>(configInfo.colorBlendAttachments.size());
+    configInfo.colorBlendingInfo.pAttachments = configInfo.colorBlendAttachments.data();
     configInfo.colorBlendingInfo.blendConstants[0] = 0.0f;
     configInfo.colorBlendingInfo.blendConstants[1] = 0.0f;
     configInfo.colorBlendingInfo.blendConstants[2] = 0.0f;

@@ -14,14 +14,24 @@ namespace Faye
         extractors.push_back(std::make_unique<PointLightRenderExtractor>());
     }
 
-    RenderSceneSnapshot RenderExtractionManager::extract(const Scene &scene, ModelRegistry &modelRegistry) const
+    RenderSceneSnapshot RenderExtractionManager::extract(const Scene &scene, ModelRegistry &modelRegistry, MaterialRegistry &materialRegistry)
     {
         RenderSceneSnapshot snapshot{};
-        RenderExtractionContext context{scene, modelRegistry, snapshot};
+        const uint64_t currentExtractionIndex = ++extractionIndex;
+        RenderExtractionContext context{scene, modelRegistry, materialRegistry, snapshot, previousModelTransforms, currentExtractionIndex};
 
         for (const auto &extractor : extractors)
         {
             extractor->extract(context);
+        }
+
+        // Update the previous model transforms for all renderables in this scene.
+        // This is used for motion vectors
+        for (const auto &renderable : snapshot.renderables)
+        {
+            previousModelTransforms[renderable.entity] = RenderTransformHistoryEntry{
+                renderable.modelMatrix,
+                currentExtractionIndex};
         }
 
         return snapshot;

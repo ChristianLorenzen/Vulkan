@@ -22,7 +22,7 @@ namespace Faye
         {
             EntityId entity = invalidEntity;
             const TransformComponent *transform = nullptr;
-            const MeshComponent *mesh = nullptr;
+            const MeshRendererComponent *mesh = nullptr;
         };
 
         struct PointLightView
@@ -53,15 +53,17 @@ namespace Faye
 
         TransformComponent &addTransform(EntityId entity);
         RigidBody2dComponent &addRigidBody2d(EntityId entity);
-        MeshComponent &addMesh(EntityId entity, ModelHandle modelHandle = {});
+        MeshRendererComponent &addMesh(EntityId entity, ModelHandle modelHandle = {});
         CameraComponent &addCamera(EntityId entity, bool primary = false);
         PointLightComponent &addPointLight(EntityId entity);
+        PostProcessStackComponent &addPostProcessStack(EntityId entity);
 
         void removeTransform(EntityId entity);
         void removeRigidBody2d(EntityId entity);
         void removeMesh(EntityId entity);
         void removeCamera(EntityId entity);
         void removePointLight(EntityId entity);
+        void removePostProcessStack(EntityId entity);
 
         TransformComponent *tryGetTransform(EntityId entity);
         const TransformComponent *tryGetTransform(EntityId entity) const;
@@ -69,14 +71,17 @@ namespace Faye
         RigidBody2dComponent *tryGetRigidBody2d(EntityId entity);
         const RigidBody2dComponent *tryGetRigidBody2d(EntityId entity) const;
 
-        MeshComponent *tryGetMesh(EntityId entity);
-        const MeshComponent *tryGetMesh(EntityId entity) const;
+        MeshRendererComponent *tryGetMesh(EntityId entity);
+        const MeshRendererComponent *tryGetMesh(EntityId entity) const;
 
         CameraComponent *tryGetCamera(EntityId entity);
         const CameraComponent *tryGetCamera(EntityId entity) const;
 
         PointLightComponent *tryGetPointLight(EntityId entity);
         const PointLightComponent *tryGetPointLight(EntityId entity) const;
+
+        PostProcessStackComponent *tryGetPostProcessStack(EntityId entity);
+        const PostProcessStackComponent *tryGetPostProcessStack(EntityId entity) const;
 
         void setPrimaryCamera(EntityId entity);
         void setPrimaryCamera(Entity entity);

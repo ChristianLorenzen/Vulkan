@@ -27,6 +27,7 @@ namespace Faye
         Mesh,
         Camera,
         PointLight,
+        PostProcessStack,
         Count,
     };
 
@@ -49,6 +50,8 @@ namespace Faye
             return "Camera";
         case ComponentKind::PointLight:
             return "Point Light";
+        case ComponentKind::PostProcessStack:
+            return "Post Process Stack";
         case ComponentKind::Count:
             break;
         }
@@ -75,15 +78,17 @@ namespace Faye
 
         TransformComponent &addTransform(EntityId entity);
         RigidBody2dComponent &addRigidBody2d(EntityId entity);
-        MeshComponent &addMesh(EntityId entity, ModelHandle modelHandle = {});
+        MeshRendererComponent &addMesh(EntityId entity, ModelHandle modelHandle = {});
         CameraComponent &addCamera(EntityId entity);
         PointLightComponent &addPointLight(EntityId entity);
+        PostProcessStackComponent &addPostProcessStack(EntityId entity);
 
         void removeTransform(EntityId entity);
         void removeRigidBody2d(EntityId entity);
         void removeMesh(EntityId entity);
         void removeCamera(EntityId entity);
         void removePointLight(EntityId entity);
+        void removePostProcessStack(EntityId entity);
 
         TransformComponent *tryGetTransform(EntityId entity);
         const TransformComponent *tryGetTransform(EntityId entity) const;
@@ -91,14 +96,17 @@ namespace Faye
         RigidBody2dComponent *tryGetRigidBody2d(EntityId entity);
         const RigidBody2dComponent *tryGetRigidBody2d(EntityId entity) const;
 
-        MeshComponent *tryGetMesh(EntityId entity);
-        const MeshComponent *tryGetMesh(EntityId entity) const;
+        MeshRendererComponent *tryGetMesh(EntityId entity);
+        const MeshRendererComponent *tryGetMesh(EntityId entity) const;
 
         CameraComponent *tryGetCamera(EntityId entity);
         const CameraComponent *tryGetCamera(EntityId entity) const;
 
         PointLightComponent *tryGetPointLight(EntityId entity);
         const PointLightComponent *tryGetPointLight(EntityId entity) const;
+
+        PostProcessStackComponent *tryGetPostProcessStack(EntityId entity);
+        const PostProcessStackComponent *tryGetPostProcessStack(EntityId entity) const;
 
     private:
         void requireEntity(EntityId entity) const;
@@ -113,8 +121,9 @@ namespace Faye
         std::unordered_map<EntityId, ComponentMask> componentMasks;
         std::unordered_map<EntityId, TransformComponent> transforms;
         std::unordered_map<EntityId, RigidBody2dComponent> rigidBody2dComponents;
-        std::unordered_map<EntityId, MeshComponent> meshComponents;
+        std::unordered_map<EntityId, MeshRendererComponent> meshComponents;
         std::unordered_map<EntityId, CameraComponent> cameraComponents;
         std::unordered_map<EntityId, PointLightComponent> pointLightComponents;
+        std::unordered_map<EntityId, PostProcessStackComponent> postProcessStackComponents;
     };
 }

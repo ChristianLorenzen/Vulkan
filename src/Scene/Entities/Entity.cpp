@@ -57,7 +57,7 @@ namespace Faye
         return requireScene().addRigidBody2d(entityId);
     }
 
-    MeshComponent &Entity::addMesh(ModelHandle modelHandle) const
+    MeshRendererComponent &Entity::addMesh(ModelHandle modelHandle) const
     {
         return requireScene().addMesh(entityId, modelHandle);
     }
@@ -70,6 +70,11 @@ namespace Faye
     PointLightComponent &Entity::addPointLight() const
     {
         return requireScene().addPointLight(entityId);
+    }
+
+    PostProcessStackComponent &Entity::addPostProcessStack() const
+    {
+        return requireScene().addPostProcessStack(entityId);
     }
 
     void Entity::removeTransform() const
@@ -97,6 +102,11 @@ namespace Faye
         requireScene().removePointLight(entityId);
     }
 
+    void Entity::removePostProcessStack() const
+    {
+        requireScene().removePostProcessStack(entityId);
+    }
+
     TransformComponent *Entity::tryGetTransform() const
     {
         return scene != nullptr ? scene->tryGetTransform(entityId) : nullptr;
@@ -107,7 +117,7 @@ namespace Faye
         return scene != nullptr ? scene->tryGetRigidBody2d(entityId) : nullptr;
     }
 
-    MeshComponent *Entity::tryGetMesh() const
+    MeshRendererComponent *Entity::tryGetMesh() const
     {
         return scene != nullptr ? scene->tryGetMesh(entityId) : nullptr;
     }
@@ -120,6 +130,11 @@ namespace Faye
     PointLightComponent *Entity::tryGetPointLight() const
     {
         return scene != nullptr ? scene->tryGetPointLight(entityId) : nullptr;
+    }
+
+    PostProcessStackComponent *Entity::tryGetPostProcessStack() const
+    {
+        return scene != nullptr ? scene->tryGetPostProcessStack(entityId) : nullptr;
     }
 
     Scene &Entity::requireScene() const

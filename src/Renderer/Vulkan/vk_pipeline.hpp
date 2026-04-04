@@ -21,7 +21,7 @@ namespace Faye
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
         VkPipelineRasterizationStateCreateInfo rasterizationInfo;
         VkPipelineMultisampleStateCreateInfo multisamplingInfo;
-        VkPipelineColorBlendAttachmentState colorBlendAttachment;
+        std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
         VkPipelineColorBlendStateCreateInfo colorBlendingInfo;
         VkPipelineDepthStencilStateCreateInfo depthStencilInfo;
         std::vector<VkDynamicState> dynamicStateEnables;

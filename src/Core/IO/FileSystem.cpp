@@ -1,6 +1,7 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 #include "Core/IO/FileSystem.hpp"
 
@@ -24,4 +25,18 @@ std::vector<char> Faye::FileSystem::readFile(const std::string &filename)
     file.close();
 
     return buffer;
+}
+
+std::string Faye::FileSystem::readTextFile(const std::string &filename)
+{
+    std::ifstream file(filename);
+
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Failed to open file");
+    }
+
+    std::ostringstream stream;
+    stream << file.rdbuf();
+    return stream.str();
 }

@@ -2,7 +2,11 @@
 
 #include <glm/glm.hpp>
 
+#include <vector>
+
 #include "Assets/ModelRegistry.hpp"
+#include "Renderer/Material/MaterialRegistry.hpp"
+#include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 #include "Scene/Camera/Camera.hpp"
 
 namespace Faye
@@ -23,10 +27,10 @@ namespace Faye
         glm::mat3 normalMatrix() const;
     };
 
-    struct MeshComponent
+    struct MeshRendererComponent
     {
         ModelHandle modelHandle{};
-        glm::vec3 color{};
+        MaterialHandle materialHandle{};
     };
 
     struct CameraComponent

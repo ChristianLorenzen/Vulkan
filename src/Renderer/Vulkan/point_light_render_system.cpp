@@ -64,13 +64,14 @@ void Faye::PointLightRenderSystem::createPipeline(VkRenderPass renderPass)
     VulkanPipeline::defaultPipelineConfigInfo(pipelineConfig);
     pipelineConfig.attributeDescriptions.clear();
     pipelineConfig.bindingDescriptions.clear();
+    pipelineConfig.colorBlendAttachments.resize(2, pipelineConfig.colorBlendAttachments.front());
     pipelineConfig.renderPass = renderPass;
     pipelineConfig.pipelineLayout = pipelineLayout;
 
     vk_pipeline = std::make_unique<VulkanPipeline>(
         vk_device,
-        "./src/shaders/point_light.vert.spv",
-        "./src/shaders/point_light.frag.spv",
+        "./src/shaders/compiled/point_light.vert.spv",
+        "./src/shaders/compiled/point_light.frag.spv",
         pipelineConfig);
 }
 

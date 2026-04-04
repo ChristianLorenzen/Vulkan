@@ -20,11 +20,29 @@ namespace Faye
                 continue;
             }
 
+            Material *material = context.materialRegistry.getMaterial(renderable.mesh->materialHandle);
+            if (material == nullptr)
+            {
+                material = context.materialRegistry.getMaterial(MaterialRegistry::invalidHandle);
+                continue;
+            }
+
+            const glm::mat4 modelMatrix = renderable.transform->mat4();
+            glm::mat4 priorModelMatrix = modelMatrix;
+
+            if (const auto historyIt = context.previousModelTransforms.find(renderable.entity);
+                historyIt != context.previousModelTransforms.end() &&
+                historyIt->second.lastSeenExtraction + 1 == context.extractionIndex)
+            {
+                priorModelMatrix = historyIt->second.modelMatrix;
+            }
+
             context.snapshot.renderables.push_back(RenderableInstance{
                 renderable.entity,
-                renderable.transform,
+                modelMatrix,
+                priorModelMatrix,
                 model,
-                renderable.mesh->color});
+                material});
         }
     }
 }

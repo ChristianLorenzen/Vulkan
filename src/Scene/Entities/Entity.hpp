@@ -32,21 +32,24 @@ namespace Faye
 
         TransformComponent &addTransform() const;
         RigidBody2dComponent &addRigidBody2d() const;
-        MeshComponent &addMesh(ModelHandle modelHandle = {}) const;
+        MeshRendererComponent &addMesh(ModelHandle modelHandle = {}) const;
         CameraComponent &addCamera(bool primary = false) const;
         PointLightComponent &addPointLight() const;
+        PostProcessStackComponent &addPostProcessStack() const;
 
         void removeTransform() const;
         void removeRigidBody2d() const;
         void removeMesh() const;
         void removeCamera() const;
         void removePointLight() const;
+        void removePostProcessStack() const;
 
         TransformComponent *tryGetTransform() const;
         RigidBody2dComponent *tryGetRigidBody2d() const;
-        MeshComponent *tryGetMesh() const;
+        MeshRendererComponent *tryGetMesh() const;
         CameraComponent *tryGetCamera() const;
         PointLightComponent *tryGetPointLight() const;
+        PostProcessStackComponent *tryGetPostProcessStack() const;
 
     private:
         Scene &requireScene() const;
