@@ -1,4 +1,5 @@
 #include "vk_device.hpp"
+#include <algorithm>
 #include <vector>
 #include <stdio.h>
 #include <unordered_map>
@@ -13,6 +14,88 @@
 
 namespace
 {
+    struct PhysicalDeviceEvaluation
+    {
+        VkPhysicalDevice device = VK_NULL_HANDLE;
+        VkPhysicalDeviceProperties properties{};
+        VkPhysicalDeviceFeatures features{};
+        Faye::QueueFamilyIndices queueFamilies{};
+        Faye::SwapChainSupportDetails swapChainSupport{};
+        VkDeviceSize deviceLocalMemoryBytes = 0;
+        bool extensionsSupported = false;
+        bool swapChainAdequate = false;
+        bool samplerAnisotropy = false;
+        bool suitable = false;
+        uint64_t score = 0;
+        std::string priorityLabel{"Unsupported"};
+        std::string rejectionReason{};
+    };
+
+    const char *physicalDeviceTypeToString(VkPhysicalDeviceType deviceType)
+    {
+        switch (deviceType)
+        {
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+            return "Discrete";
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+            return "Integrated";
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+            return "Virtual";
+        case VK_PHYSICAL_DEVICE_TYPE_CPU:
+            return "CPU";
+        default:
+            return "Other";
+        }
+    }
+
+    uint64_t scoreDeviceType(VkPhysicalDeviceType deviceType)
+    {
+        switch (deviceType)
+        {
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+            return 1'000'000;
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+            return 250'000;
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+            return 125'000;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU:
+            return 10'000;
+        default:
+            return 50'000;
+        }
+    }
+
+    std::string classifyPriority(uint64_t score, VkPhysicalDeviceType deviceType)
+    {
+        if (deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+        {
+            return score >= 1'500'000 ? "Highest" : "High";
+        }
+
+        if (deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+        {
+            return score >= 500'000 ? "Medium" : "Low";
+        }
+
+        if (deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU)
+        {
+            return "Low";
+        }
+
+        if (deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
+        {
+            return "Fallback";
+        }
+
+        return score >= 400'000 ? "Medium" : "Low";
+    }
+
+    double bytesToGiB(VkDeviceSize bytes)
+    {
+        constexpr double kGiB = 1024.0 * 1024.0 * 1024.0;
+        return static_cast<double>(bytes) / kGiB;
+    }
+
     VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -398,14 +481,123 @@ void VulkanDevice::createPhysicalDevice()
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
+    auto evaluatePhysicalDevice = [this](VkPhysicalDevice candidate)
+    {
+        PhysicalDeviceEvaluation evaluation{};
+        evaluation.device = candidate;
+
+        vkGetPhysicalDeviceProperties(candidate, &evaluation.properties);
+        vkGetPhysicalDeviceFeatures(candidate, &evaluation.features);
+        evaluation.queueFamilies = findQueueFamilies(candidate);
+        evaluation.extensionsSupported = checkDeviceExtensionSupport(candidate);
+
+        if (evaluation.extensionsSupported)
+        {
+            evaluation.swapChainSupport = querySwapChainSupport(candidate);
+            evaluation.swapChainAdequate = !evaluation.swapChainSupport.formats.empty() &&
+                                           !evaluation.swapChainSupport.presentModes.empty();
+        }
+
+        evaluation.samplerAnisotropy = evaluation.features.samplerAnisotropy == VK_TRUE;
+        evaluation.suitable = evaluation.queueFamilies.isComplete() &&
+                              evaluation.extensionsSupported &&
+                              evaluation.swapChainAdequate &&
+                              evaluation.samplerAnisotropy;
+
+        VkPhysicalDeviceMemoryProperties memoryProperties{};
+        vkGetPhysicalDeviceMemoryProperties(candidate, &memoryProperties);
+        for (uint32_t heapIndex = 0; heapIndex < memoryProperties.memoryHeapCount; ++heapIndex)
+        {
+            const auto &heap = memoryProperties.memoryHeaps[heapIndex];
+            if ((heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
+            {
+                evaluation.deviceLocalMemoryBytes += heap.size;
+            }
+        }
+
+        if (!evaluation.queueFamilies.isComplete())
+        {
+            evaluation.rejectionReason = "missing graphics/present queue support";
+        }
+        else if (!evaluation.extensionsSupported)
+        {
+            evaluation.rejectionReason = "missing required device extensions";
+        }
+        else if (!evaluation.swapChainAdequate)
+        {
+            evaluation.rejectionReason = "swapchain support is incomplete";
+        }
+        else if (!evaluation.samplerAnisotropy)
+        {
+            evaluation.rejectionReason = "sampler anisotropy is unavailable";
+        }
+
+        if (evaluation.suitable)
+        {
+            evaluation.score += scoreDeviceType(evaluation.properties.deviceType);
+            evaluation.score += static_cast<uint64_t>(bytesToGiB(evaluation.deviceLocalMemoryBytes) * 100'000.0);
+            evaluation.score += static_cast<uint64_t>(evaluation.properties.limits.maxImageDimension2D) * 10;
+            evaluation.score += static_cast<uint64_t>(evaluation.properties.limits.maxPerStageDescriptorSampledImages) * 2;
+            evaluation.score += static_cast<uint64_t>(VK_VERSION_MAJOR(evaluation.properties.apiVersion)) * 10'000;
+            evaluation.score += static_cast<uint64_t>(VK_VERSION_MINOR(evaluation.properties.apiVersion)) * 1'000;
+            evaluation.priorityLabel = classifyPriority(evaluation.score, evaluation.properties.deviceType);
+        }
+
+        return evaluation;
+    };
+
+    std::vector<PhysicalDeviceEvaluation> evaluations;
+    evaluations.reserve(devices.size());
+
     for (const auto &device : devices)
     {
-        if (isDeviceSuitable(device))
+        evaluations.push_back(evaluatePhysicalDevice(device));
+    }
+
+    std::sort(evaluations.begin(), evaluations.end(), [](const PhysicalDeviceEvaluation &lhs, const PhysicalDeviceEvaluation &rhs)
+              {
+                  if (lhs.suitable != rhs.suitable)
+                  {
+                      return lhs.suitable > rhs.suitable;
+                  }
+
+                  return lhs.score > rhs.score;
+              });
+
+    for (const auto &evaluation : evaluations)
+    {
+        if (evaluation.suitable)
         {
-            physicalDevice = device;
-            // msaaSamples = getMaxUsableSampleCount();
-            break;
+            LOG_INFO(
+                Logger::getInstance(),
+                "GPU candidate: {} | type={} | suitable=yes | priority={} | score={} | device_local_memory={:.2f} GiB | max2D={} | swapchain_formats={} | present_modes={}",
+                evaluation.properties.deviceName,
+                physicalDeviceTypeToString(evaluation.properties.deviceType),
+                evaluation.priorityLabel,
+                evaluation.score,
+                bytesToGiB(evaluation.deviceLocalMemoryBytes),
+                evaluation.properties.limits.maxImageDimension2D,
+                evaluation.swapChainSupport.formats.size(),
+                evaluation.swapChainSupport.presentModes.size());
         }
+        else
+        {
+            LOG_WARNING(
+                Logger::getInstance(),
+                "GPU candidate: {} | type={} | suitable=no | reason={}",
+                evaluation.properties.deviceName,
+                physicalDeviceTypeToString(evaluation.properties.deviceType),
+                evaluation.rejectionReason);
+        }
+    }
+
+    auto selected = std::find_if(evaluations.begin(), evaluations.end(), [](const PhysicalDeviceEvaluation &evaluation)
+                                 { return evaluation.suitable; });
+
+    if (selected != evaluations.end())
+    {
+        physicalDevice = selected->device;
+        properties = selected->properties;
     }
 
     if (physicalDevice == VK_NULL_HANDLE)
@@ -413,9 +605,13 @@ void VulkanDevice::createPhysicalDevice()
         throw std::runtime_error("Failed to find a suitable GPU");
     }
 
-    VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-    LOG_INFO(Logger::getInstance(), "Physical Device: {}", deviceProperties.deviceName);
+    LOG_INFO(
+        Logger::getInstance(),
+        "Selected physical device: {} | type={} | priority={} | score={}",
+        properties.deviceName,
+        physicalDeviceTypeToString(properties.deviceType),
+        selected->priorityLabel,
+        selected->score);
 
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
