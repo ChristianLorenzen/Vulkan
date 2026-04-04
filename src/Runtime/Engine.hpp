@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "Assets/ModelRegistry.hpp"
+#include "Core/HotReload/HotReloadManager.hpp"
 #include "Core/Logging/Logger.hpp"
 #include "Core/Time/FrameTimer.hpp"
 #include "Editor/ImGui/EditorPanels.hpp"
@@ -18,6 +19,7 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/View/RenderView.hpp"
 #include "Renderer/Vulkan/Vulkan.hpp"
+#include "Renderer/Vulkan/vk_shader_manager.hpp"
 #include "Scene/SceneManager.hpp"
 #include "Scene/SceneQueries.hpp"
 
@@ -45,14 +47,35 @@ public:
 
         vkData = std::make_unique<Vulkan>(*glfwWindow);
         modelRegistry = std::make_unique<ModelRegistry>();
+        materialRegistry = std::make_unique<MaterialRegistry>();
         renderExtractionManager = std::make_unique<RenderExtractionManager>();
         sceneManager = std::make_unique<SceneManager>();
         initializeScene();
+        configureHotReload();
         editorPanels.setPrimitiveCreateCallback([this](PrimitiveType primitiveType)
                                                 { return createPrimitiveEntity(primitiveType); });
 
+        hotReloadShaderSubscriptionToken = hotReloadManager.subscribe([this](const HotReloadEvent &event)
+                                                                      { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
+        hotReloadShaderSubscriptionTokenTwo = hotReloadManager.subscribe([this](const HotReloadEvent &event)
+                                                                         { LOG_INFO(Logger::getInstance(), "Received hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string()); });
+        hotReloadManager.start();
+
         LOG_INFO(Logger::getInstance(), "Starting main loop...");
         mainLoop();
+
+        if (hotReloadShaderSubscriptionToken != 0)
+        {
+            hotReloadManager.unsubscribe(hotReloadShaderSubscriptionToken);
+            hotReloadShaderSubscriptionToken = 0;
+        }
+        if (hotReloadShaderSubscriptionTokenTwo != 0)
+        {
+            hotReloadManager.unsubscribe(hotReloadShaderSubscriptionTokenTwo);
+            hotReloadShaderSubscriptionTokenTwo = 0;
+        }
+
+        hotReloadManager.stop();
     }
 
 private:
@@ -69,13 +92,59 @@ private:
     EditorPanels editorPanels;
 
     std::unique_ptr<ModelRegistry> modelRegistry;
+    std::unique_ptr<MaterialRegistry> materialRegistry;
     std::unique_ptr<RenderExtractionManager> renderExtractionManager;
     std::unique_ptr<SceneManager> sceneManager;
+    HotReloadManager hotReloadManager;
+    HotReloadManager::CallbackToken hotReloadShaderSubscriptionToken = 0;
+    HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
+    VulkanShaderManager shaderManager;
     FrameTimer timer;
     std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
     Entity activeCameraEntity;
+    Entity postProcessSettingsEntity;
     bool editorViewportHovered = true;
     bool editorViewportFocused = true;
+    RenderDebugMode editorViewportDebugMode = RenderDebugMode::Lit;
+
+    void configureHotReload()
+    {
+        hotReloadManager.clearWatches();
+        hotReloadManager.addWatch({
+            .id = "post-process-effects",
+            .rootPath = "./src/Assets/PostProcessEffects",
+            .fileExtensions = {".ppfx"},
+            .recursive = true,
+        });
+        hotReloadManager.addWatch({
+            .id = "shader-sources",
+            .rootPath = "./src/shaders",
+            .fileExtensions = {".vert", ".frag", ".comp"},
+            .recursive = true,
+        });
+    }
+
+    void HotReloadShaderCompilation(const HotReloadEvent &event)
+    {
+        LOG_INFO(Logger::getInstance(), "Hot reload change detected: {}", event.path.filename().string());
+
+        if (event.watchId != "shader-sources" || event.type != HotReloadEventType::Modified)
+        {
+            LOG_INFO(Logger::getInstance(), "Ignoring hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string());
+            return;
+        }
+
+        const std::filesystem::path &path = event.path;
+        if (path.extension() == ".vert" || path.extension() == ".frag" || path.extension() == ".comp")
+        {
+            LOG_INFO(Logger::getInstance(), "Recompiling shader: {}", path.filename().string());
+            std::string compileResult = shaderManager.shaderFileChange(path);
+            if (!compileResult.empty())
+            {
+                vkData->notifyShaderRecompliation(compileResult);
+            }
+        }
+    }
 
     ModelHandle ensurePrimitiveHandle(PrimitiveType primitiveType)
     {
@@ -100,7 +169,8 @@ private:
         entity.addTransform();
 
         auto &mesh = entity.addMesh(ensurePrimitiveHandle(primitiveType));
-        mesh.color = {1.0f, 1.0f, 1.0f};
+        mesh.materialHandle = materialRegistry->registerMaterial(std::make_unique<Material>("Default Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 1.0f, 1.0f)));
+
         return entity;
     }
 
@@ -108,10 +178,18 @@ private:
     {
         Scene &scene = sceneManager->createScene("Main Scene");
 
+        postProcessSettingsEntity = scene.createEntity("Post Processing");
+        postProcessSettingsEntity.addPostProcessStack() = makeDefaultPostProcessStack();
+
         Entity editorCamera = scene.createEntity("Editor Camera");
         activeCameraEntity = editorCamera;
         editorCamera.addTransform();
         editorCamera.addCamera(true);
+
+        MaterialHandle defaultMat = materialRegistry->registerMaterial(std::make_unique<Material>("Default Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 1.0f, 1.0f)));
+        MaterialHandle redMat = materialRegistry->registerMaterial(std::make_unique<Material>("Red Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 0.0f, 0.0f)));
+        MaterialHandle greenMat = materialRegistry->registerMaterial(std::make_unique<Material>("Green Material", "shader.vert", "shader.frag", glm::vec3(0.0f, 1.0f, 0.0f)));
+        MaterialHandle blueMat = materialRegistry->registerMaterial(std::make_unique<Material>("Blue Material", "shader.vert", "shader.frag", glm::vec3(0.0f, 0.0f, 1.0f)));
 
         Entity meshEntity = scene.createEntity("Cube A");
         auto &meshTransform = meshEntity.addTransform();
@@ -120,7 +198,7 @@ private:
         meshTransform.translation = {-1.f, 0.f, -1.f};
         meshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
         meshTransform.scale = {.5f, .5f, .5f};
-        meshComponent.color = {1.f, 1.f, 1.f};
+        meshComponent.materialHandle = redMat;
 
         Entity secondMeshEntity = scene.createEntity("Cube B");
         auto &secondMeshTransform = secondMeshEntity.addTransform();
@@ -129,7 +207,16 @@ private:
         secondMeshTransform.translation = {2.f, 0.f, -1.f};
         secondMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
         secondMeshTransform.scale = {.5f, .5f, .5f};
-        secondMeshComponent.color = {1.f, 1.f, 1.f};
+        secondMeshComponent.materialHandle = greenMat;
+
+        Entity thirdMeshEntity = scene.createEntity("Cube C");
+        auto &thirdMeshTransform = thirdMeshEntity.addTransform();
+        auto thirdMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
+        auto &thirdMeshComponent = thirdMeshEntity.addMesh(thirdMeshHandle);
+        thirdMeshTransform.translation = {2.f, 0.f, 1.f};
+        thirdMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
+        thirdMeshTransform.scale = {.5f, .5f, .5f};
+        thirdMeshComponent.materialHandle = blueMat;
 
         Entity floorEntity = scene.createEntity("Floor");
         auto &floorTransform = floorEntity.addTransform();
@@ -137,7 +224,7 @@ private:
         auto &floorMeshComponent = floorEntity.addMesh(floorHandle);
         floorTransform.translation = {0.f, -0.5f, 0.f};
         floorTransform.scale = {3.f, 1.f, 3.f};
-        floorMeshComponent.color = {0.65f, 0.65f, 0.65f};
+        floorMeshComponent.materialHandle = defaultMat;
 
         Entity pointLightEntity = scene.createEntity("Point Light");
         auto &pointLightTransform = pointLightEntity.addTransform();
@@ -175,6 +262,7 @@ private:
         while (!glfwWindow->shouldClose())
         {
             glfwPollEvents();
+            hotReloadManager.dispatchPendingEvents();
 
             timer.frameEnd();
 
@@ -196,8 +284,9 @@ private:
                 &cameraComponent->camera,
                 {sceneExtent.width, sceneExtent.height},
                 RenderOutputTarget::OffscreenSceneColor,
-                RenderDebugMode::Lit};
+                editorViewportDebugMode};
 
+            cameraComponent->camera.saveViewProjectionMatix();
             input.updateEditorCamera(
                 glfwWindow->getWindow(),
                 *cameraTransform,
@@ -211,11 +300,12 @@ private:
                 glfwSetWindowShouldClose(glfwWindow->getWindow(), true);
             }
 
-            RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry);
+            RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry, *materialRegistry);
 
             VulkanFrameInput frameInput{
                 renderView,
                 renderScene,
+                postProcessSettingsEntity.tryGetPostProcessStack(),
                 static_cast<int>(timer.getFrameTime(1)),
                 static_cast<int>(timer.getAverageFPS())};
 
@@ -223,18 +313,19 @@ private:
                                 {
                                     editorPanels.draw(frameData);
 
-                                    if (frameData.sceneViewportClicked)
+                                    if (frameData.viewportClicked)
                                     {
                                         const auto hit = raycastScene(
                                             scene,
                                             *modelRegistry,
                                             cameraComponent->camera,
-                                            {frameData.sceneViewportClickUv.x, frameData.sceneViewportClickUv.y});
+                                            {frameData.viewportClickUv.x, frameData.viewportClickUv.y});
                                         editorPanels.setSelectedEntity(hit.has_value() ? scene.getEntity(hit->entity) : Entity{});
                                     }
 
-                                    editorViewportHovered = frameData.sceneViewportHovered;
-                                    editorViewportFocused = frameData.sceneViewportFocused; });
+                                    editorViewportHovered = frameData.viewportHovered;
+                                    editorViewportFocused = frameData.viewportFocused;
+                                    editorViewportDebugMode = frameData.viewportDebugMode; });
         }
     }
 };
