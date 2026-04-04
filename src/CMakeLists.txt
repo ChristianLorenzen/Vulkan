@@ -1,20 +1,25 @@
 set(FAYE_ENGINE_SOURCES
     Assets/ModelRegistry.cpp
+    Core/HotReload/HotReloadManager.cpp
     Core/IO/FileSystem.cpp
     Editor/ImGui/EditorPanels.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
+    Renderer/Material/MaterialRegistry.cpp
+    Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
     Renderer/Scene/Extractors/CameraRenderExtractor.cpp
     Renderer/Scene/Extractors/MeshRenderExtractor.cpp
     Renderer/Scene/Extractors/PointLightRenderExtractor.cpp
     Renderer/Scene/RenderExtractionManager.cpp
+    Renderer/Vulkan/vk_shader_manager.cpp
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
     Renderer/Vulkan/vk_render_pass.cpp
     Renderer/Vulkan/vk_render_system.cpp
     Renderer/Vulkan/point_light_render_system.cpp
+    Renderer/Vulkan/vk_post_process.cpp
     Renderer/Vulkan/vk_renderer.cpp
     Renderer/Vulkan/vk_swapchain.cpp
     Renderer/Vulkan/Vulkan.cpp
@@ -26,7 +31,8 @@ set(FAYE_ENGINE_SOURCES
     Scene/Entities/EntityManager.cpp
     Scene/Scene.cpp
     Scene/SceneQueries.cpp
-    Scene/SceneManager.cpp)
+    Scene/SceneManager.cpp
+)
 
 set(FAYE_IMGUI_SOURCES
     imgui/imgui.cpp
@@ -45,6 +51,15 @@ set(FAYE_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/point_light.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/point_light.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_tint.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_exposure.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_contrast.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_vignette.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_fog.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_edge_detect.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_debug.frag
 )
 
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})
@@ -103,7 +118,10 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(faye_app PRIVATE dl pthread)
 endif()
 
-faye_add_shader_target(faye_shaders SHADERS ${FAYE_SHADER_SOURCES})
+faye_add_shader_target(
+    faye_shaders
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/shaders/compiled
+    SHADERS ${FAYE_SHADER_SOURCES})
 add_dependencies(faye_app faye_shaders)
 
 if(FAYE_COPY_BIN_TO_REPO_BIN)

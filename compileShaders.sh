@@ -11,5 +11,9 @@ else
 	exit 1
 fi
 
-"${GLSLC}" src/shaders/shader.vert -o src/shaders/vert.spv
-"${GLSLC}" src/shaders/shader.frag -o src/shaders/frag.spv
+find src/shaders -type f \( -name '*.vert' -o -name '*.frag' -o -name '*.comp' \) | while IFS= read -r shader; do
+	relative_path="${shader#src/shaders/}"
+	output_path="src/shaders/compiled/${relative_path}.spv"
+	mkdir -p "$(dirname "$output_path")"
+	"${GLSLC}" "$shader" -o "$output_path"
+done

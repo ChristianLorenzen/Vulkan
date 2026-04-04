@@ -20,7 +20,7 @@ endfunction()
 
 function(faye_add_shader_target target_name)
     set(options)
-    set(oneValueArgs)
+    set(oneValueArgs OUTPUT_DIRECTORY)
     set(multiValueArgs SHADERS)
     cmake_parse_arguments(FAYE_SHADER "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -31,20 +31,34 @@ function(faye_add_shader_target target_name)
     faye_find_glslc(_faye_glslc)
 
     set(_outputs)
+    set(_shader_source_root "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
 
     foreach(_shader IN LISTS FAYE_SHADER_SHADERS)
         get_filename_component(_shader_name "${_shader}" NAME)
-        get_filename_component(_shader_dir "${_shader}" DIRECTORY)
 
         if(NOT _shader_name MATCHES "\\.[^.]+$")
             message(FATAL_ERROR "Shader '${_shader}' must have a stage extension such as .vert or .frag.")
         endif()
 
-        set(_output "${_shader}.spv")
+        if(FAYE_SHADER_OUTPUT_DIRECTORY)
+            file(RELATIVE_PATH _shader_relative "${_shader_source_root}" "${_shader}")
+
+            if(_shader_relative MATCHES "^\\.\\.")
+                get_filename_component(_shader_relative "${_shader}" NAME)
+            endif()
+
+            set(_output "${FAYE_SHADER_OUTPUT_DIRECTORY}/${_shader_relative}.spv")
+            get_filename_component(_output_dir "${_output}" DIRECTORY)
+        else()
+            set(_output "${_shader}.spv")
+            get_filename_component(_output_dir "${_output}" DIRECTORY)
+        endif()
+
         list(APPEND _outputs "${_output}")
 
         add_custom_command(
             OUTPUT "${_output}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_output_dir}"
             COMMAND "${_faye_glslc}" "${_shader}" -o "${_output}"
             DEPENDS "${_shader}"
             COMMENT "Compiling shader ${_shader_name}"
