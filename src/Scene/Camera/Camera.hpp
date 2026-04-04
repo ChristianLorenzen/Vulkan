@@ -61,11 +61,14 @@ namespace Faye
         const glm::mat4 &getInverseProjection() const { return inverseProjectionMatrix; }
         const glm::mat4 &getInverseView() const { return inverseViewMatrix; }
         glm::mat4 getViewProjection() const { return projectionMatrix * viewMatrix; }
+        void saveViewProjectionMatix() { priorViewProjectionMatrix = projectionMatrix * viewMatrix; }
+        glm::mat4 getPriorViewProjection() const { return priorViewProjectionMatrix; }
 
     private:
         glm::mat4 projectionMatrix{1.0f};
         glm::mat4 inverseProjectionMatrix{1.0f};
         glm::mat4 viewMatrix{1.f};
         glm::mat4 inverseViewMatrix{1.f};
+        glm::mat4 priorViewProjectionMatrix{1.f};
     };
 }
