@@ -38,21 +38,46 @@ namespace Faye
             Builder builder{};
 
             const glm::vec3 positions[] = {
-                {-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f},
-                {0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f},
-                {-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, -0.5f},
-                {0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f},
-                {-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f},
-                {-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f},
+                {-0.5f, -0.5f, 0.5f},
+                {0.5f, -0.5f, 0.5f},
+                {0.5f, 0.5f, 0.5f},
+                {-0.5f, 0.5f, 0.5f},
+                {0.5f, -0.5f, -0.5f},
+                {-0.5f, -0.5f, -0.5f},
+                {-0.5f, 0.5f, -0.5f},
+                {0.5f, 0.5f, -0.5f},
+                {-0.5f, -0.5f, -0.5f},
+                {-0.5f, -0.5f, 0.5f},
+                {-0.5f, 0.5f, 0.5f},
+                {-0.5f, 0.5f, -0.5f},
+                {0.5f, -0.5f, 0.5f},
+                {0.5f, -0.5f, -0.5f},
+                {0.5f, 0.5f, -0.5f},
+                {0.5f, 0.5f, 0.5f},
+                {-0.5f, 0.5f, 0.5f},
+                {0.5f, 0.5f, 0.5f},
+                {0.5f, 0.5f, -0.5f},
+                {-0.5f, 0.5f, -0.5f},
+                {-0.5f, -0.5f, -0.5f},
+                {0.5f, -0.5f, -0.5f},
+                {0.5f, -0.5f, 0.5f},
+                {-0.5f, -0.5f, 0.5f},
             };
 
             const glm::vec3 normals[] = {
-                {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f},
-                {0.0f, 1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {-1.0f, 0.0f, 0.0f},
+                {1.0f, 0.0f, 0.0f},
+                {0.0f, 1.0f, 0.0f},
+                {0.0f, -1.0f, 0.0f},
             };
 
             const glm::vec2 uv[] = {
-                {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f},
+                {0.0f, 0.0f},
+                {1.0f, 0.0f},
+                {1.0f, 1.0f},
+                {0.0f, 1.0f},
             };
 
             builder.vertices.reserve(24);
@@ -65,12 +90,42 @@ namespace Faye
             }
 
             builder.indices = {
-                0, 1, 2, 0, 2, 3,
-                4, 5, 6, 4, 6, 7,
-                8, 9, 10, 8, 10, 11,
-                12, 13, 14, 12, 14, 15,
-                16, 17, 18, 16, 18, 19,
-                20, 21, 22, 20, 22, 23,
+                0,
+                1,
+                2,
+                0,
+                2,
+                3,
+                4,
+                5,
+                6,
+                4,
+                6,
+                7,
+                8,
+                9,
+                10,
+                8,
+                10,
+                11,
+                12,
+                13,
+                14,
+                12,
+                14,
+                15,
+                16,
+                17,
+                18,
+                16,
+                18,
+                19,
+                20,
+                21,
+                22,
+                20,
+                22,
+                23,
             };
 
             return builder;
@@ -373,63 +428,58 @@ namespace Faye
 
     void Builder::loadModel(const std::string &modelPath)
     {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
+        // Creating importer class instance
+        Assimp::Importer importer;
 
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str()))
+        const aiScene *scene = importer.ReadFile(modelPath, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
+
+        if (scene == nullptr)
         {
-            throw std::runtime_error(warn + err);
+            LOG_INFO(Logger::getInstance(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
+            throw std::runtime_error("Failed to load model at path " + modelPath);
         }
 
-        std::unordered_map<Vertex, uint32_t> uniqueVertices = {};
-
-        for (const auto &shape : shapes)
+        for (unsigned int meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
         {
-            for (const auto &index : shape.mesh.indices)
+            const aiMesh *mesh = scene->mMeshes[meshIndex];
+
+            for (unsigned int vertexIndex = 0; vertexIndex < mesh->mNumVertices; ++vertexIndex)
             {
-                Vertex vertex = {};
+                Vertex vertex{};
 
                 vertex.pos = {
-                    attrib.vertices[3 * index.vertex_index + 0],
-                    attrib.vertices[3 * index.vertex_index + 1],
-                    attrib.vertices[3 * index.vertex_index + 2]};
+                    mesh->mVertices[vertexIndex].x,
+                    mesh->mVertices[vertexIndex].y,
+                    mesh->mVertices[vertexIndex].z};
 
-                if (attrib.colors.size() >= static_cast<size_t>(3 * index.vertex_index + 3))
-                {
-                    vertex.color = {
-                        attrib.colors[3 * index.vertex_index + 0],
-                        attrib.colors[3 * index.vertex_index + 1],
-                        attrib.colors[3 * index.vertex_index + 2]};
-                }
-                else
-                {
-                    vertex.color = {1.f, 1.f, 1.f};
-                }
-
-                if (index.normal_index >= 0)
+                if (mesh->HasNormals())
                 {
                     vertex.normal = {
-                        attrib.normals[3 * index.normal_index + 0],
-                        attrib.normals[3 * index.normal_index + 1],
-                        attrib.normals[3 * index.normal_index + 2]};
+                        mesh->mNormals[vertexIndex].x,
+                        mesh->mNormals[vertexIndex].y,
+                        mesh->mNormals[vertexIndex].z};
                 }
 
-                if (index.texcoord_index >= 0)
+                if (mesh->HasTextureCoords(0))
                 {
                     vertex.uv = {
-                        attrib.texcoords[2 * index.texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * index.texcoord_index + 1]};
+                        mesh->mTextureCoords[0][vertexIndex].x,
+                        1.0f - mesh->mTextureCoords[0][vertexIndex].y};
                 }
 
-                if (uniqueVertices.count(vertex) == 0)
-                {
-                    uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
-                }
+                vertex.color = {1.0f, 1.0f, 1.0f};
 
-                indices.push_back(uniqueVertices[vertex]);
+                vertices.push_back(vertex);
+            }
+
+            for (unsigned int faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex)
+            {
+                const aiFace &face = mesh->mFaces[faceIndex];
+                assert(face.mNumIndices == 3 && "Non-triangulated face found in model");
+
+                indices.push_back(face.mIndices[0]);
+                indices.push_back(face.mIndices[1]);
+                indices.push_back(face.mIndices[2]);
             }
         }
     }

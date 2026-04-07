@@ -249,6 +249,14 @@ private:
         pointLightComponent3.color = {1.0f, 0.0f, 0.0f};
         pointLightComponent3.intensity = 1.5f;
         pointLightComponent3.radius = 0.1f;
+
+        Entity model = scene.createEntity("Viking Room");
+        auto &modelTransform = model.addTransform();
+        auto &modelMesh = model.addMesh(modelRegistry->registerModel(Model::createModelFromFile(*vkData->getVkDevice(), "src/include/viking_room.obj")));
+        modelTransform.translation = {0.f, -0.5f, 0.f};
+        modelTransform.rotation = {0.f, 180.f, 0.f};
+        modelTransform.scale = {0.01f, 0.01f, 0.01f};
+        modelMesh.materialHandle = defaultMat;
     }
 
     void mainLoop()
