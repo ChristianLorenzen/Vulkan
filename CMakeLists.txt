@@ -22,11 +22,15 @@ set(QUILL_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(QUILL_BUILD_FUZZING OFF CACHE BOOL "" FORCE)
 set(QUILL_DOCS_GEN OFF CACHE BOOL "" FORCE)
 set(QUILL_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 
 include(FayeDependencies)
 include(FayeShaderCompilation)
 
 faye_configure_dependencies()
 
-add_subdirectory(quill EXCLUDE_FROM_ALL)
+add_subdirectory(src/include/quill EXCLUDE_FROM_ALL)
+add_subdirectory(src/include/assimp EXCLUDE_FROM_ALL)
 add_subdirectory(src)

@@ -35,15 +35,15 @@ set(FAYE_ENGINE_SOURCES
 )
 
 set(FAYE_IMGUI_SOURCES
-    imgui/imgui.cpp
-    imgui/imgui_draw.cpp
-    imgui/imgui_impl_glfw.cpp
-    imgui/imgui_impl_vulkan.cpp
-    imgui/imgui_tables.cpp
-    imgui/imgui_widgets.cpp)
+    include/imgui/imgui.cpp
+    include/imgui/imgui_draw.cpp
+    include/imgui/imgui_impl_glfw.cpp
+    include/imgui/imgui_impl_vulkan.cpp
+    include/imgui/imgui_tables.cpp
+    include/imgui/imgui_widgets.cpp)
 
 if(FAYE_BUILD_IMGUI_DEMO)
-    list(APPEND FAYE_IMGUI_SOURCES imgui/imgui_demo.cpp)
+    list(APPEND FAYE_IMGUI_SOURCES include/imgui/imgui_demo.cpp)
 endif()
 
 set(FAYE_SHADER_SOURCES
@@ -68,7 +68,8 @@ add_library(Faye::ImGui ALIAS faye_imgui)
 target_include_directories(faye_imgui
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/imgui)
 
 target_link_libraries(faye_imgui
     PUBLIC
@@ -91,6 +92,7 @@ target_link_libraries(faye_app
     Faye::ImGui
     Faye::GLFW
     Faye::Vulkan
+    assimp::assimp
     quill::quill)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
