@@ -4,6 +4,7 @@
 #include "vk_device.hpp"
 #include "vk_render_pass.hpp"
 #include "vk_swapchain.hpp"
+#include "VkImageResource.hpp"
 
 #include <memory>
 #include <array>
@@ -43,11 +44,11 @@ namespace Faye
         VkDescriptorSet getSceneDepthViewportDescriptorSet() const { return sceneDepthViewportDescriptorSets[currentFrameIndex]; }
         VkDescriptorSet getPostProcessViewportDescriptorSet(uint32_t targetIndex) const { return postProcessTargets.at(targetIndex).viewportDescriptorSets[currentFrameIndex]; }
         VkExtent2D getSceneRenderExtent() const { return sceneRenderExtent; }
-        std::vector<VkImageView> getSceneImageViews() const { return sceneColorImageViews; }
-        std::vector<VkImageView> getSceneMotionImageViews() const { return sceneMotionImageViews; }
-        std::vector<VkImageView> getSceneDepthImageViews() const { return sceneDepthImageViews; }
+        std::vector<VkImageView> getSceneImageViews() const;
+        std::vector<VkImageView> getSceneMotionImageViews() const;
+        std::vector<VkImageView> getSceneDepthImageViews() const;
         std::vector<VkImageView> getPostProcessTargetImageViews(uint32_t targetIndex) const { return postProcessTargets.at(targetIndex).imageViews; }
-        VkImageView getSceneColorImageView(uint32_t index) const { return sceneColorImageViews[index]; }
+        VkImageView getSceneColorImageView(uint32_t index) const;
         uint64_t getSwapchainGeneration() const { return swapchainGeneration; }
         bool isFrameInProgress() const { return isFrameStarted; }
 
@@ -109,20 +110,13 @@ namespace Faye
         VkFormat sceneDepthFormat = VK_FORMAT_UNDEFINED;
         VkSampler sceneViewportSampler = VK_NULL_HANDLE;
 
-        std::vector<VkImage> sceneColorImages;
-        std::vector<VkDeviceMemory> sceneColorImageMemorys;
-        std::vector<VkImageView> sceneColorImageViews;
+        std::vector<VkImageResource> sceneColorResources;
+        std::vector<VkImageResource> sceneMotionResources;
+        std::vector<VkImageResource> sceneDepthResources;
+
         std::vector<VkDescriptorSet> sceneViewportDescriptorSets;
         std::vector<VkDescriptorSet> sceneMotionViewportDescriptorSets;
         std::vector<VkDescriptorSet> sceneDepthViewportDescriptorSets;
-
-        std::vector<VkImage> sceneMotionImages;
-        std::vector<VkDeviceMemory> sceneMotionImageMemorys;
-        std::vector<VkImageView> sceneMotionImageViews;
-
-        std::vector<VkImage> sceneDepthImages;
-        std::vector<VkDeviceMemory> sceneDepthImageMemorys;
-        std::vector<VkImageView> sceneDepthImageViews;
 
         std::vector<VulkanRenderPassInstance> sceneRenderPassInstances;
         std::array<PostProcessTargetResources, kPostProcessTargetCount> postProcessTargets;
