@@ -4,6 +4,7 @@
 #include "Renderer/Resources/Vertex.hpp"
 #include "Renderer/Vulkan/VulkanBuffer.hpp"
 #include "Renderer/Vulkan/vk_device.hpp"
+#include "Renderer/Material/Material.hpp"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -18,12 +19,24 @@
 
 namespace Faye
 {
+    struct Mesh
+    {
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+    };
+
     struct Builder
     {
-        std::vector<Vertex> vertices{};
-        std::vector<uint32_t> indices{};
+        std::vector<Mesh> meshes;
+        std::vector<Material> materials;
+        std::string directory;
 
         void loadModel(const std::string &modelPath);
+        void processNode(aiNode *node, const aiScene *scene);
+        Mesh processMesh(aiMesh *mesh, const aiScene *scene);
+        Material processMaterial(aiMaterial *material, const aiScene *scene);
+        Texture loadTexture(const std::string &texturePath, const aiScene *scene);
+        Texture processTexture(aiTextureType type, const aiScene *scene);
         static Builder makePrimitive(PrimitiveType primitiveType);
     };
 
