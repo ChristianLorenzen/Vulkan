@@ -24,6 +24,10 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_swapchain.cpp
     Renderer/Vulkan/Vulkan.cpp
     Renderer/Vulkan/VulkanBuffer.cpp
+    Renderer/Vulkan/VkImageResource.cpp
+    Renderer/Vulkan/MaterialCache.cpp
+    Renderer/Vulkan/VkSamplerResource.cpp
+    Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
