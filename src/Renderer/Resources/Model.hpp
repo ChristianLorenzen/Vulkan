@@ -28,13 +28,13 @@ namespace Faye
     struct Builder
     {
         std::vector<Mesh> meshes;
-        std::vector<Material> materials;
+        std::vector<MaterialData> materials;
         std::string directory;
 
         void loadModel(const std::string &modelPath);
         void processNode(aiNode *node, const aiScene *scene);
         Mesh processMesh(aiMesh *mesh, const aiScene *scene);
-        Material processMaterial(aiMaterial *material, const aiScene *scene);
+        MaterialData processMaterial(aiMaterial *material, const aiScene *scene);
         Texture loadTexture(const std::string &texturePath, const aiScene *scene);
         Texture processTexture(aiTextureType type, const aiScene *scene);
         static Builder makePrimitive(PrimitiveType primitiveType);
@@ -65,6 +65,7 @@ namespace Faye
         void bind(VkCommandBuffer commandBuffer);
         void draw(VkCommandBuffer commandBuffer);
         const Bounds &getLocalBounds() const { return localBounds; }
+        const std::vector<MaterialData> &getImportedMaterials() const { return importedMaterials; }
 
     private:
         void calculateLocalBounds(const std::vector<Vertex> &vertices);
@@ -84,5 +85,6 @@ namespace Faye
 
         bool hasIndexBuffer = false;
         Bounds localBounds{};
+        std::vector<MaterialData> importedMaterials;
     };
 }

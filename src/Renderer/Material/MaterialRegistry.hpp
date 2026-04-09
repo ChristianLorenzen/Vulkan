@@ -22,6 +22,7 @@ namespace Faye
     public:
         static constexpr MaterialHandle invalidHandle{};
 
+        MaterialHandle registerMaterial(MaterialData materialData, MaterialPipelineConfig pipelineConfig = {});
         MaterialHandle registerMaterial(std::unique_ptr<Material> material);
 
         Material *getMaterial(MaterialHandle handle);

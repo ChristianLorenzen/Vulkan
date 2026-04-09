@@ -294,6 +294,8 @@ namespace Faye
 
     Model::Model(VulkanDevice &device, const Builder &builder) : vk_device{device}
     {
+        importedMaterials = builder.materials;
+
         std::vector<Vertex> meshVertices = std::vector<Vertex>{};
         for (const auto &mesh : builder.meshes)
         {
@@ -463,6 +465,13 @@ namespace Faye
             throw std::runtime_error("Failed to load model at path " + modelPath);
         }
 
+        materials.clear();
+        materials.reserve(scene->mNumMaterials);
+        for (unsigned int materialIndex = 0; materialIndex < scene->mNumMaterials; materialIndex++)
+        {
+            materials.push_back(processMaterial(scene->mMaterials[materialIndex], scene));
+        }
+
         processNode(scene->mRootNode, scene);
     }
 
@@ -481,7 +490,7 @@ namespace Faye
         }
     }
 
-    Mesh Builder::processMesh(aiMesh *mesh, const aiScene *scene)
+    Mesh Builder::processMesh(aiMesh *mesh, const aiScene * /*scene*/)
     {
         Mesh meshData{};
         // Process the mesh and add it to the builder
@@ -524,38 +533,34 @@ namespace Faye
             meshData.indices.push_back(face.mIndices[2]);
         }
 
-        aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-        // Process the material and add it to the builder
-        materials.push_back(processMaterial(material, scene));
-
         return meshData;
     }
 
-    Material Builder::processMaterial(aiMaterial *material, const aiScene *scene)
+    MaterialData Builder::processMaterial(aiMaterial *material, const aiScene *scene)
     {
-        Material result{};
+        MaterialData result{};
 
         aiString name;
         material->Get(AI_MATKEY_NAME, name);
-        result.setName(name.C_Str());
+        result.name = name.C_Str();
 
         aiColor3D color(1.0f, 1.0f, 1.0f);
         float shininess = 0.0f;
         if (material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS)
         {
-            result.setColor({color.r, color.g, color.b});
+            result.color = {color.r, color.g, color.b};
         }
         if (material->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS)
         {
-            result.setAmbient({color.r, color.g, color.b});
+            result.ambient = {color.r, color.g, color.b};
         }
         if (material->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS)
         {
-            result.setSpecular({color.r, color.g, color.b});
+            result.specular = {color.r, color.g, color.b};
         }
         if (material->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
         {
-            result.setShininess(shininess);
+            result.shininess = shininess;
         }
 
         for (int textureType = aiTextureType_NONE; textureType <= aiTextureType_UNKNOWN; textureType++)
@@ -567,10 +572,10 @@ namespace Faye
                 material->GetTexture(static_cast<aiTextureType>(textureType), textureIndex, &texturePath);
 
                 // Load the texture and add it to the material
-                LOG_INFO(Logger::getInstance(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.getName());
+                LOG_INFO(Logger::getInstance(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.name);
                 std::filesystem::path fullTexturePath = std::filesystem::path(directory) / texturePath.C_Str();
                 LOG_INFO(Logger::getInstance(), "Full texture path resolved to {}.", fullTexturePath.string());
-                result.addTexture(loadTexture(fullTexturePath.string(), scene));
+                result.textures.push_back(loadTexture(fullTexturePath.string(), scene));
             }
         }
 
