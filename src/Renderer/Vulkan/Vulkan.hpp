@@ -24,6 +24,7 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
+#include "MaterialCache.hpp"
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
 #include "point_light_render_system.hpp"
@@ -75,11 +76,14 @@ namespace Faye
 		std::unique_ptr<VulkanDevice> vk_device;
 		std::unique_ptr<VulkanRenderer> vk_renderer;
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
+		std::unique_ptr<VulkanDescriptorSetLayout> materialSetLayout{};
+		std::unique_ptr<MaterialCache> materialCache{};
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
 		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
 		std::unique_ptr<PostProcessChain> postProcessChain{};
 
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
+		std::unique_ptr<VulkanDescriptorPool> materialPool{};
 		// Descriptor pool passed to the ImGui initialization function.
 		std::unique_ptr<VulkanDescriptorPool> imGUIPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;

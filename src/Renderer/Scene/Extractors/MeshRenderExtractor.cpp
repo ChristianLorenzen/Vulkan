@@ -41,6 +41,7 @@ namespace Faye
                 modelMatrix,
                 priorModelMatrix,
                 model,
+                renderable.mesh->materialHandle,
                 material});
         }
     }

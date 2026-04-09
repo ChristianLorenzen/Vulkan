@@ -35,6 +35,13 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                      .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT * 8)
                      .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                      .build();
+
+    materialPool = VulkanDescriptorPool::Builder(*vk_device)
+                       .setMaxSets(1000)
+                       .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000)
+                       .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
+                       .build();
+
     imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
                     .setMaxSets(kImGuiDescriptorBudget)
                     .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, kImGuiDescriptorBudget)
@@ -73,6 +80,15 @@ void Faye::Vulkan::initializeFrameResources()
                           .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
                           .build();
 
+    materialSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
+                            .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .build();
+
+    materialCache = std::make_unique<MaterialCache>(
+        *vk_device,
+        *materialSetLayout,
+        *materialPool);
+
     globalDescriptorSets.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < globalDescriptorSets.size(); i++)
     {
@@ -85,7 +101,9 @@ void Faye::Vulkan::initializeFrameResources()
     simpleRenderSystem = std::make_unique<SimpleRenderSystem>(
         *vk_device,
         vk_renderer->getSceneRenderPass(),
-        globalSetLayout->getDescriptorSetLayout());
+        *materialCache,
+        globalSetLayout->getDescriptorSetLayout(),
+        materialSetLayout->getDescriptorSetLayout());
 
     pointLightRenderSystem = std::make_unique<PointLightRenderSystem>(
         *vk_device,
@@ -108,11 +126,14 @@ Faye::Vulkan::~Vulkan()
     simpleRenderSystem.reset();
     pointLightRenderSystem.reset();
     postProcessChain.reset();
+    materialCache.reset();
     vk_renderer.reset();
     globalSetLayout.reset();
+    materialSetLayout.reset();
     uboBuffers.clear();
     globalDescriptorSets.clear();
     imGUIPool.reset();
+    materialPool.reset();
     globalPool.reset();
     vk_device.reset();
 }

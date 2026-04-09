@@ -48,6 +48,7 @@ public:
         vkData = std::make_unique<Vulkan>(*glfwWindow);
         modelRegistry = std::make_unique<ModelRegistry>();
         materialRegistry = std::make_unique<MaterialRegistry>();
+        // textureRegistry = std::make_unique<TextureRegistry>();
         renderExtractionManager = std::make_unique<RenderExtractionManager>();
         sceneManager = std::make_unique<SceneManager>();
         initializeScene();
@@ -93,6 +94,7 @@ private:
 
     std::unique_ptr<ModelRegistry> modelRegistry;
     std::unique_ptr<MaterialRegistry> materialRegistry;
+    // std::unique_ptr<TextureRegistry> textureRegistry;
     std::unique_ptr<RenderExtractionManager> renderExtractionManager;
     std::unique_ptr<SceneManager> sceneManager;
     HotReloadManager hotReloadManager;
@@ -169,7 +171,7 @@ private:
         entity.addTransform();
 
         auto &mesh = entity.addMesh(ensurePrimitiveHandle(primitiveType));
-        mesh.materialHandle = materialRegistry->registerMaterial(std::make_unique<Material>("Default Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 1.0f, 1.0f)));
+        mesh.materialHandle = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
 
         return entity;
     }
@@ -186,10 +188,10 @@ private:
         editorCamera.addTransform();
         editorCamera.addCamera(true);
 
-        MaterialHandle defaultMat = materialRegistry->registerMaterial(std::make_unique<Material>("Default Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 1.0f, 1.0f)));
-        MaterialHandle redMat = materialRegistry->registerMaterial(std::make_unique<Material>("Red Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 0.0f, 0.0f)));
-        MaterialHandle greenMat = materialRegistry->registerMaterial(std::make_unique<Material>("Green Material", "shader.vert", "shader.frag", glm::vec3(0.0f, 1.0f, 0.0f)));
-        MaterialHandle blueMat = materialRegistry->registerMaterial(std::make_unique<Material>("Blue Material", "shader.vert", "shader.frag", glm::vec3(0.0f, 0.0f, 1.0f)));
+        MaterialHandle defaultMat = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
+        MaterialHandle redMat = materialRegistry->registerMaterial(MaterialData{"Red Material", glm::vec3(1.0f, 0.0f, 0.0f)});
+        MaterialHandle greenMat = materialRegistry->registerMaterial(MaterialData{"Green Material", glm::vec3(0.0f, 1.0f, 0.0f)});
+        MaterialHandle blueMat = materialRegistry->registerMaterial(MaterialData{"Blue Material", glm::vec3(0.0f, 0.0f, 1.0f)});
 
         Entity meshEntity = scene.createEntity("Cube A");
         auto &meshTransform = meshEntity.addTransform();
@@ -255,8 +257,16 @@ private:
         auto &modelMesh = model.addMesh(modelRegistry->registerModel(Model::createModelFromFile(*vkData->getVkDevice(), "src/include/viking_room.obj")));
         modelTransform.translation = {0.f, -0.5f, 0.f};
         modelTransform.rotation = {0.f, 180.f, 0.f};
-        modelTransform.scale = {0.01f, 0.01f, 0.01f};
+        modelTransform.scale = {1.0f, 1.0f, 1.0f};
         modelMesh.materialHandle = defaultMat;
+
+        Entity modelgltf = scene.createEntity("Test gltf");
+        auto &modelgltfTransform = modelgltf.addTransform();
+        auto &modelgltfMesh = modelgltf.addMesh(modelRegistry->registerModel(Model::createModelFromFile(*vkData->getVkDevice(), "src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf")));
+        modelgltfTransform.translation = {0.f, -0.5f, 2.f};
+        modelgltfTransform.rotation = {0.f, 180.f, 0.f};
+        modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
+        modelgltfMesh.materialHandle = defaultMat;
     }
 
     void mainLoop()

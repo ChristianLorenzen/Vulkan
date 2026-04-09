@@ -24,6 +24,7 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/Resources/Vertex.hpp"
+#include "MaterialCache.hpp"
 #include "vk_device.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_types.hpp"
@@ -36,7 +37,7 @@ namespace Faye
 	class SimpleRenderSystem
 	{
 	public:
-		SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout);
+		SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
 		~SimpleRenderSystem();
 
 		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -63,14 +64,15 @@ namespace Faye
 
 		VulkanDevice &vk_device;
 		VkRenderPass renderPass;
+		MaterialCache &materialCache;
 		std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
 
 		VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
 
-		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
-		VulkanPipeline &getOrCreatePipeline(const Material *material);
+		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
+		VulkanPipeline &getOrCreatePipeline(const MaterialState &materialState);
 		std::unique_ptr<VulkanPipeline> createPipeline(const MaterialPipelineKey &key) const;
-		static MaterialPipelineKey makePipelineKey(const Material *material);
+		static MaterialPipelineKey makePipelineKey(const MaterialState &materialState);
 		static std::string resolveCompiledShaderPath(const std::string &shaderPath);
 	};
 

@@ -17,6 +17,7 @@ namespace Faye
         glm::mat4 modelMatrix{1.0f};
         glm::mat4 priorModelMatrix{1.0f};
         Model *model = nullptr;
+        MaterialHandle materialHandle{};
         Material *material = nullptr;
     };
 
