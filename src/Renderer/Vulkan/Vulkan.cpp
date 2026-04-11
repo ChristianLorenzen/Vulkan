@@ -8,9 +8,9 @@
 #include "Renderer/Frame/ImGuiFrameData.hpp"
 #include "Renderer/Resources/Vertex.hpp"
 
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_vulkan.h"
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
 
 #include "quill/LogMacros.h"
 
@@ -19,7 +19,12 @@ using namespace Faye;
 const std::string MODEL_PATH = "src/include/viking_room.obj";
 namespace
 {
-    constexpr uint32_t kImGuiDescriptorBudget = 64;
+    constexpr uint32_t kImGuiDescriptorBudget = 256;
+
+    size_t hashCombine(size_t seed, size_t value)
+    {
+        return seed ^ (value + 0x9e3779b9 + (seed << 6) + (seed >> 2));
+    }
 }
 
 Faye::Vulkan::Vulkan(Window &win) : window{win}
@@ -35,6 +40,14 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                      .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT * 8)
                      .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                      .build();
+
+    materialPool = VulkanDescriptorPool::Builder(*vk_device)
+                       .setMaxSets(1000)
+                       .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 * 5)
+                       .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000)
+                       .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
+                       .build();
+
     imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
                     .setMaxSets(kImGuiDescriptorBudget)
                     .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, kImGuiDescriptorBudget)
@@ -73,6 +86,23 @@ void Faye::Vulkan::initializeFrameResources()
                           .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
                           .build();
 
+    materialSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
+                            .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .addBinding(5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .build();
+
+    textureCache = std::make_unique<TextureCache>(*vk_device);
+
+    materialCache = std::make_unique<MaterialCache>(
+        *vk_device,
+        *textureCache,
+        *materialSetLayout,
+        *materialPool);
+
     globalDescriptorSets.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < globalDescriptorSets.size(); i++)
     {
@@ -85,7 +115,9 @@ void Faye::Vulkan::initializeFrameResources()
     simpleRenderSystem = std::make_unique<SimpleRenderSystem>(
         *vk_device,
         vk_renderer->getSceneRenderPass(),
-        globalSetLayout->getDescriptorSetLayout());
+        *materialCache,
+        globalSetLayout->getDescriptorSetLayout(),
+        materialSetLayout->getDescriptorSetLayout());
 
     pointLightRenderSystem = std::make_unique<PointLightRenderSystem>(
         *vk_device,
@@ -105,14 +137,28 @@ Faye::Vulkan::~Vulkan()
         vkDeviceWaitIdle(vk_device->getDevice());
     }
 
+    for (const auto &[key, descriptorSet] : textureThumbnailDescriptors)
+    {
+        (void)key;
+        if (descriptorSet != VK_NULL_HANDLE)
+        {
+            ImGui_ImplVulkan_RemoveTexture(descriptorSet);
+        }
+    }
+    textureThumbnailDescriptors.clear();
+
     simpleRenderSystem.reset();
     pointLightRenderSystem.reset();
     postProcessChain.reset();
+    materialCache.reset();
+    textureCache.reset();
     vk_renderer.reset();
     globalSetLayout.reset();
+    materialSetLayout.reset();
     uboBuffers.clear();
     globalDescriptorSets.clear();
     imGUIPool.reset();
+    materialPool.reset();
     globalPool.reset();
     vk_device.reset();
 }
@@ -125,6 +171,45 @@ float Faye::Vulkan::getAspectRatio() const
 VkExtent2D Faye::Vulkan::getSceneRenderExtent() const
 {
     return vk_renderer->getSceneRenderExtent();
+}
+
+size_t Faye::Vulkan::TextureThumbnailCacheKeyHasher::operator()(const TextureThumbnailCacheKey &key) const
+{
+    size_t hash = std::hash<VkImageView>{}(key.imageView);
+    hash = hashCombine(hash, std::hash<VkSampler>{}(key.sampler));
+    return hash;
+}
+
+VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle, const Material &material, TextureType type)
+{
+    if (!handle.isValid() || materialCache == nullptr)
+    {
+        return VK_NULL_HANDLE;
+    }
+
+    const MaterialState &materialState = materialCache->getOrCreateState(handle, material);
+    const VkTextureResource *texture = materialState.findTexture(type);
+    if (texture == nullptr || !texture->isValid())
+    {
+        return VK_NULL_HANDLE;
+    }
+
+    const TextureThumbnailCacheKey cacheKey{
+        texture->imageResource.imageView,
+        texture->samplerResource.sampler};
+
+    if (const auto iterator = textureThumbnailDescriptors.find(cacheKey);
+        iterator != textureThumbnailDescriptors.end())
+    {
+        return iterator->second;
+    }
+
+    const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
+        texture->samplerResource.sampler,
+        texture->imageResource.imageView,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    textureThumbnailDescriptors.emplace(cacheKey, descriptorSet);
+    return descriptorSet;
 }
 
 void Faye::Vulkan::notifyShaderRecompilation(const std::string &compiledShader)

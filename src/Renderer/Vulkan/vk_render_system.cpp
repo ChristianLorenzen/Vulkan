@@ -34,11 +34,11 @@ size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const Mat
     return vertexHash ^ (fragmentHash + 0x9e3779b9 + (vertexHash << 6) + (vertexHash >> 2));
 }
 
-Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout)
-    : vk_device(device), renderPass(renderPass)
+Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
+    : vk_device(device), renderPass(renderPass), materialCache(materialCache)
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
-    createPipelineLayout(globalSetLayout);
+    createPipelineLayout(globalSetLayout, materialSetLayout);
 }
 
 Faye::SimpleRenderSystem::~SimpleRenderSystem()
@@ -47,14 +47,14 @@ Faye::SimpleRenderSystem::~SimpleRenderSystem()
 }
 
 // ------------------------------------- Conversion Functions ------------------------------------- //
-void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout)
+void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
 {
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(SimplePushConstantData);
 
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts{globalSetLayout};
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts{globalSetLayout, materialSetLayout};
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -98,13 +98,13 @@ std::string Faye::SimpleRenderSystem::resolveCompiledShaderPath(const std::strin
     return resolvedPath.generic_string();
 }
 
-Faye::SimpleRenderSystem::MaterialPipelineKey Faye::SimpleRenderSystem::makePipelineKey(const Material *material)
+Faye::SimpleRenderSystem::MaterialPipelineKey Faye::SimpleRenderSystem::makePipelineKey(const MaterialState &materialState)
 {
-    const std::string_view vertexShader = material != nullptr && !material->getVertexShaderPath().empty()
-                                              ? std::string_view(material->getVertexShaderPath())
+    const std::string_view vertexShader = !materialState.pipelineConfig.vertexShaderPath.empty()
+                                              ? std::string_view(materialState.pipelineConfig.vertexShaderPath)
                                               : kDefaultVertexShader;
-    const std::string_view fragmentShader = material != nullptr && !material->getFragmentShaderPath().empty()
-                                                ? std::string_view(material->getFragmentShaderPath())
+    const std::string_view fragmentShader = !materialState.pipelineConfig.fragmentShaderPath.empty()
+                                                ? std::string_view(materialState.pipelineConfig.fragmentShaderPath)
                                                 : kDefaultFragmentShader;
 
     return MaterialPipelineKey{
@@ -130,9 +130,9 @@ std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const M
         pipelineConfig);
 }
 
-VulkanPipeline &Faye::SimpleRenderSystem::getOrCreatePipeline(const Material *material)
+VulkanPipeline &Faye::SimpleRenderSystem::getOrCreatePipeline(const MaterialState &materialState)
 {
-    MaterialPipelineKey key = makePipelineKey(material);
+    MaterialPipelineKey key = makePipelineKey(materialState);
     auto iterator = pipelineCache.find(key);
 
     if (iterator == pipelineCache.end())
@@ -201,27 +201,94 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
         {
             continue;
         }
+        renderable.model->bind(frameContext.commandBuffer);
 
-        VulkanPipeline &pipeline = getOrCreatePipeline(renderable.material);
-        pipeline.bind(frameContext.commandBuffer);
-
-        SimplePushConstantData push{};
-        push.modelMatrix = renderable.modelMatrix;
-        push.priorModelMatrix = renderable.priorModelMatrix;
-        if (renderable.material != nullptr)
+        const auto &submeshes = renderable.model->getSubmeshes();
+        if (submeshes.empty())
         {
+            if (renderable.material == nullptr || !renderable.materialHandle.isValid())
+            {
+                continue;
+            }
+
+            const MaterialState &materialState = materialCache.getOrCreateState(renderable.materialHandle, *renderable.material);
+            VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
+            pipeline.bind(frameContext.commandBuffer);
+
+            vkCmdBindDescriptorSets(
+                frameContext.commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                1,
+                1,
+                &materialState.descriptorSet,
+                0,
+                nullptr);
+
+            SimplePushConstantData push{};
+            push.modelMatrix = renderable.modelMatrix;
+            push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(renderable.material->getColor(), 1.0f);
+
+            vkCmdPushConstants(
+                frameContext.commandBuffer,
+                pipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(SimplePushConstantData),
+                &push);
+
+            renderable.model->draw(frameContext.commandBuffer);
+            continue;
         }
 
-        vkCmdPushConstants(
-            frameContext.commandBuffer,
-            pipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,
-            sizeof(SimplePushConstantData),
-            &push);
+        for (const auto &submesh : submeshes)
+        {
+            MaterialHandle resolvedHandle = renderable.materialHandle;
+            const Material *resolvedMaterial = renderable.material;
 
-        renderable.model->bind(frameContext.commandBuffer);
-        renderable.model->draw(frameContext.commandBuffer);
+            if (submesh.materialHandle.isValid() && renderable.materialRegistry != nullptr)
+            {
+                if (const Material *importedMaterial = renderable.materialRegistry->getMaterial(submesh.materialHandle))
+                {
+                    resolvedHandle = submesh.materialHandle;
+                    resolvedMaterial = importedMaterial;
+                }
+            }
+
+            if (resolvedMaterial == nullptr || !resolvedHandle.isValid())
+            {
+                continue;
+            }
+
+            const MaterialState &materialState = materialCache.getOrCreateState(resolvedHandle, *resolvedMaterial);
+            VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
+            pipeline.bind(frameContext.commandBuffer);
+
+            vkCmdBindDescriptorSets(
+                frameContext.commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                1,
+                1,
+                &materialState.descriptorSet,
+                0,
+                nullptr);
+
+            SimplePushConstantData push{};
+            push.modelMatrix = renderable.modelMatrix;
+            push.priorModelMatrix = renderable.priorModelMatrix;
+            push.baseColor = glm::vec4(resolvedMaterial->getColor(), 1.0f);
+
+            vkCmdPushConstants(
+                frameContext.commandBuffer,
+                pipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(SimplePushConstantData),
+                &push);
+
+            renderable.model->drawSubmesh(frameContext.commandBuffer, submesh);
+        }
     }
 }

@@ -3,15 +3,8 @@
 #include <vulkan/vulkan.h>
 #include <optional>
 
-namespace Faye {
-    struct AllocatedImage {
-        VkImage image;
-        VkImageView imageView;
-        // VmaAllocation allocation;
-        VkExtent3D imageExtent;
-        VkFormat imageFormat;
-    };
-
+namespace Faye
+{
     struct QueueFamilyIndices
     {
         std::optional<uint32_t> graphicsFamily;

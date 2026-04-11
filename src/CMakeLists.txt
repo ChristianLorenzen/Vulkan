@@ -3,9 +3,11 @@ set(FAYE_ENGINE_SOURCES
     Core/HotReload/HotReloadManager.cpp
     Core/IO/FileSystem.cpp
     Editor/ImGui/EditorPanels.cpp
+    Editor/ImGui/ImGuiCustomStyle.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
+    Renderer/Material/TextureLoader.cpp
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
     Renderer/Scene/Extractors/CameraRenderExtractor.cpp
@@ -24,6 +26,11 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_swapchain.cpp
     Renderer/Vulkan/Vulkan.cpp
     Renderer/Vulkan/VulkanBuffer.cpp
+    Renderer/Vulkan/VkImageResource.cpp
+    Renderer/Vulkan/MaterialCache.cpp
+    Renderer/Vulkan/TextureCache.cpp
+    Renderer/Vulkan/VkSamplerResource.cpp
+    Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
@@ -34,16 +41,19 @@ set(FAYE_ENGINE_SOURCES
     Scene/SceneManager.cpp
 )
 
+include(FetchContent)
+FetchContent_GetProperties(imgui SOURCE_DIR _imgui_src)
+
 set(FAYE_IMGUI_SOURCES
-    imgui/imgui.cpp
-    imgui/imgui_draw.cpp
-    imgui/imgui_impl_glfw.cpp
-    imgui/imgui_impl_vulkan.cpp
-    imgui/imgui_tables.cpp
-    imgui/imgui_widgets.cpp)
+    ${_imgui_src}/imgui.cpp
+    ${_imgui_src}/imgui_draw.cpp
+    ${_imgui_src}/backends/imgui_impl_glfw.cpp
+    ${_imgui_src}/backends/imgui_impl_vulkan.cpp
+    ${_imgui_src}/imgui_tables.cpp
+    ${_imgui_src}/imgui_widgets.cpp)
 
 if(FAYE_BUILD_IMGUI_DEMO)
-    list(APPEND FAYE_IMGUI_SOURCES imgui/imgui_demo.cpp)
+    list(APPEND FAYE_IMGUI_SOURCES ${_imgui_src}/imgui_demo.cpp)
 endif()
 
 set(FAYE_SHADER_SOURCES
@@ -68,7 +78,9 @@ add_library(Faye::ImGui ALIAS faye_imgui)
 target_include_directories(faye_imgui
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${_imgui_src}
+    ${_imgui_src}/backends)
 
 target_link_libraries(faye_imgui
     PUBLIC
@@ -91,6 +103,7 @@ target_link_libraries(faye_app
     Faye::ImGui
     Faye::GLFW
     Faye::Vulkan
+    assimp::assimp
     quill::quill)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)

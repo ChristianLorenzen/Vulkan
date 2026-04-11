@@ -6,6 +6,7 @@
 #include <exception>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #include <memory>
 
 #include "Assets/ModelRegistry.hpp"
@@ -22,7 +23,7 @@
 #include "Renderer/Vulkan/vk_shader_manager.hpp"
 #include "Scene/SceneManager.hpp"
 #include "Scene/SceneQueries.hpp"
-
+#include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
 
 #define GLM_FORCE_RADIANS
@@ -37,6 +38,12 @@ const uint32_t HEIGHT = 1080;
 class Engine
 {
 public:
+    struct ImportedModelRegistration
+    {
+        ModelHandle handle{};
+        Model::Bounds bounds{};
+    };
+
     Engine() = default;
 
     void run()
@@ -48,12 +55,31 @@ public:
         vkData = std::make_unique<Vulkan>(*glfwWindow);
         modelRegistry = std::make_unique<ModelRegistry>();
         materialRegistry = std::make_unique<MaterialRegistry>();
+        // textureRegistry = std::make_unique<TextureRegistry>();
         renderExtractionManager = std::make_unique<RenderExtractionManager>();
         sceneManager = std::make_unique<SceneManager>();
         initializeScene();
         configureHotReload();
         editorPanels.setPrimitiveCreateCallback([this](PrimitiveType primitiveType)
                                                 { return createPrimitiveEntity(primitiveType); });
+        editorPanels.setMaterialRegistry(materialRegistry.get());
+        editorPanels.setModelRegistry(modelRegistry.get());
+        editorPanels.setTextureThumbnailCallback([this](MaterialHandle handle, TextureType textureType) -> ImTextureID
+                                                {
+                                                    if (vkData == nullptr || materialRegistry == nullptr)
+                                                    {
+                                                        return 0;
+                                                    }
+
+                                                    const Material *material = materialRegistry->getMaterial(handle);
+                                                    if (material == nullptr)
+                                                    {
+                                                        return 0;
+                                                    }
+
+                                                    return reinterpret_cast<ImTextureID>(
+                                                        vkData->getMaterialTextureThumbnail(handle, *material, textureType));
+                                                });
 
         hotReloadShaderSubscriptionToken = hotReloadManager.subscribe([this](const HotReloadEvent &event)
                                                                       { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
@@ -93,6 +119,7 @@ private:
 
     std::unique_ptr<ModelRegistry> modelRegistry;
     std::unique_ptr<MaterialRegistry> materialRegistry;
+    // std::unique_ptr<TextureRegistry> textureRegistry;
     std::unique_ptr<RenderExtractionManager> renderExtractionManager;
     std::unique_ptr<SceneManager> sceneManager;
     HotReloadManager hotReloadManager;
@@ -157,6 +184,35 @@ private:
         return handle;
     }
 
+    ModelHandle registerImportedModel(const std::string &modelPath, MaterialPipelineConfig pipelineConfig = {})
+    {
+        return registerImportedModelWithBounds(modelPath, std::move(pipelineConfig)).handle;
+    }
+
+    ImportedModelRegistration registerImportedModelWithBounds(const std::string &modelPath, MaterialPipelineConfig pipelineConfig = {})
+    {
+        std::unique_ptr<Model> model = Model::createModelFromFile(*vkData->getVkDevice(), modelPath);
+        const Model::Bounds bounds = model->getLocalBounds();
+
+        const auto &importedMaterials = model->getImportedMaterials();
+        if (!importedMaterials.empty())
+        {
+            std::vector<MaterialHandle> importedMaterialHandles;
+            importedMaterialHandles.reserve(importedMaterials.size());
+
+            for (const MaterialData &materialData : importedMaterials)
+            {
+                importedMaterialHandles.push_back(materialRegistry->registerMaterial(materialData, pipelineConfig));
+            }
+
+            model->assignImportedMaterialHandles(importedMaterialHandles);
+        }
+
+        return ImportedModelRegistration{
+            modelRegistry->registerModel(std::move(model)),
+            bounds};
+    }
+
     Entity createPrimitiveEntity(PrimitiveType primitiveType)
     {
         if (sceneManager == nullptr || !sceneManager->hasActiveScene())
@@ -169,7 +225,7 @@ private:
         entity.addTransform();
 
         auto &mesh = entity.addMesh(ensurePrimitiveHandle(primitiveType));
-        mesh.materialHandle = materialRegistry->registerMaterial(std::make_unique<Material>("Default Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 1.0f, 1.0f)));
+        mesh.materialHandle = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
 
         return entity;
     }
@@ -186,10 +242,19 @@ private:
         editorCamera.addTransform();
         editorCamera.addCamera(true);
 
-        MaterialHandle defaultMat = materialRegistry->registerMaterial(std::make_unique<Material>("Default Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 1.0f, 1.0f)));
-        MaterialHandle redMat = materialRegistry->registerMaterial(std::make_unique<Material>("Red Material", "shader.vert", "shader.frag", glm::vec3(1.0f, 0.0f, 0.0f)));
-        MaterialHandle greenMat = materialRegistry->registerMaterial(std::make_unique<Material>("Green Material", "shader.vert", "shader.frag", glm::vec3(0.0f, 1.0f, 0.0f)));
-        MaterialHandle blueMat = materialRegistry->registerMaterial(std::make_unique<Material>("Blue Material", "shader.vert", "shader.frag", glm::vec3(0.0f, 0.0f, 1.0f)));
+        MaterialHandle defaultMat = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
+        MaterialHandle redMat = materialRegistry->registerMaterial(MaterialData{"Red Material", glm::vec3(1.0f, 0.0f, 0.0f)});
+        MaterialHandle greenMat = materialRegistry->registerMaterial(MaterialData{"Green Material", glm::vec3(0.0f, 1.0f, 0.0f)});
+        MaterialHandle blueMat = materialRegistry->registerMaterial(MaterialData{"Blue Material", glm::vec3(0.0f, 0.0f, 1.0f)});
+        MaterialHandle shinyMat = materialRegistry->registerMaterial(MaterialData{"Shiny Material", glm::vec3(1.0f, 1.0f, 1.0f), {}, glm::vec4(1.0f), glm::vec4(0.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 32.0f)});
+
+        MaterialData spyBoxMaterial{"Spy Box Material", glm::vec3(1.0f, 1.0f, 1.0f)};
+        spyBoxMaterial.textures.push_back(loadTextureFromFile("src/textures/spy.jpg", TextureType::Albedo));
+        spyBoxMaterial.baseColorFactor = glm::vec4(1.0f);
+        spyBoxMaterial.metallicFactor = 0.0f;
+        spyBoxMaterial.roughnessFactor = 0.85f;
+
+        MaterialHandle spyBoxMat = materialRegistry->registerMaterial(std::move(spyBoxMaterial));
 
         Entity meshEntity = scene.createEntity("Cube A");
         auto &meshTransform = meshEntity.addTransform();
@@ -209,14 +274,14 @@ private:
         secondMeshTransform.scale = {.5f, .5f, .5f};
         secondMeshComponent.materialHandle = greenMat;
 
-        Entity thirdMeshEntity = scene.createEntity("Cube C");
-        auto &thirdMeshTransform = thirdMeshEntity.addTransform();
-        auto thirdMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
-        auto &thirdMeshComponent = thirdMeshEntity.addMesh(thirdMeshHandle);
-        thirdMeshTransform.translation = {2.f, 0.f, 1.f};
-        thirdMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
-        thirdMeshTransform.scale = {.5f, .5f, .5f};
-        thirdMeshComponent.materialHandle = blueMat;
+        // Entity thirdMeshEntity = scene.createEntity("Cube C");
+        // auto &thirdMeshTransform = thirdMeshEntity.addTransform();
+        // auto thirdMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
+        // auto &thirdMeshComponent = thirdMeshEntity.addMesh(thirdMeshHandle);
+        // thirdMeshTransform.translation = {2.f, 0.f, 1.f};
+        // thirdMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
+        // thirdMeshTransform.scale = {.5f, .5f, .5f};
+        // thirdMeshComponent.materialHandle = spyBoxMat;
 
         Entity floorEntity = scene.createEntity("Floor");
         auto &floorTransform = floorEntity.addTransform();
@@ -249,6 +314,30 @@ private:
         pointLightComponent3.color = {1.0f, 0.0f, 0.0f};
         pointLightComponent3.intensity = 1.5f;
         pointLightComponent3.radius = 0.1f;
+
+        // Entity model = scene.createEntity("Viking Room");
+        // auto &modelTransform = model.addTransform();
+        // auto &modelMesh = model.addMesh(registerImportedModel("src/include/viking_room.obj"));
+        // modelTransform.translation = {0.f, -0.5f, 0.f};
+        // modelTransform.rotation = {0.f, 180.f, 0.f};
+        // modelTransform.scale = {1.0f, 1.0f, 1.0f};
+        // modelMesh.materialHandle = defaultMat;
+
+        Entity modelgltf = scene.createEntity("Test gltf");
+        auto &modelgltfTransform = modelgltf.addTransform();
+        auto &modelgltfMesh = modelgltf.addMesh(registerImportedModel("src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf"));
+        modelgltfTransform.translation = {0.f, -0.5f, 2.f};
+        modelgltfTransform.rotation = {0.f, 180.f, 0.f};
+        modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
+        modelgltfMesh.materialHandle = defaultMat;
+
+        Entity modelAdam = scene.createEntity("Adam Model");
+        auto &modelAdamTransform = modelAdam.addTransform();
+        const ImportedModelRegistration adamRegistration = registerImportedModelWithBounds("src/include/models/adamHead/adamHead.gltf");
+        modelAdam.addMesh(adamRegistration.handle);
+        modelAdamTransform.translation = {0.f, 0.f, 0.f};
+        modelAdamTransform.rotation = {0.f, 0.f, 0.f};
+        modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
     }
 
     void mainLoop()

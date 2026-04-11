@@ -3,15 +3,10 @@
 #include <stdio.h>
 #include <unordered_map>
 
-// #define STB_IMAGE_IMPLEMENTATION
-// #include "include/stb_image.h"
-
-// #define TINYOBJLOADER_IMPLEMENTATION
-// #include "include/tiny_obj_loader.h"
-
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_vulkan.h"
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+#include "Editor/ImGui/ImGuiCustomStyle.hpp"
 
 #include "Vulkan.hpp"
 
@@ -29,9 +24,6 @@ const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
-
-const std::string MODEL_PATH = "src/include/viking_room.obj";
-const std::string TEXTURE_PATH = "src/include/viking_room.png";
 
 Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window{win}, vk_device{device}
 {
@@ -51,6 +43,44 @@ Faye::VulkanRenderer::~VulkanRenderer()
     destroySceneRenderPass();
     destroyPostProcessRenderPass();
     freeCommandBuffers();
+}
+
+std::vector<VkImageView> Faye::VulkanRenderer::getSceneImageViews() const
+{
+    std::vector<VkImageView> views;
+    views.reserve(sceneColorResources.size());
+    for (const auto &resource : sceneColorResources)
+    {
+        views.push_back(resource.imageView);
+    }
+    return views;
+}
+
+VkImageView Faye::VulkanRenderer::getSceneColorImageView(uint32_t index) const
+{
+    return sceneColorResources.at(index).imageView;
+}
+
+std::vector<VkImageView> Faye::VulkanRenderer::getSceneMotionImageViews() const
+{
+    std::vector<VkImageView> views;
+    views.reserve(sceneMotionResources.size());
+    for (const auto &resource : sceneMotionResources)
+    {
+        views.push_back(resource.imageView);
+    }
+    return views;
+}
+
+std::vector<VkImageView> Faye::VulkanRenderer::getSceneDepthImageViews() const
+{
+    std::vector<VkImageView> views;
+    views.reserve(sceneDepthResources.size());
+    for (const auto &resource : sceneDepthResources)
+    {
+        views.push_back(resource.imageView);
+    }
+    return views;
 }
 
 VkCommandBuffer Faye::VulkanRenderer::beginFrame()
@@ -287,85 +317,47 @@ bool Faye::VulkanRenderer::resizeSceneIfNeeded(uint32_t w, uint32_t h)
 
 void Faye::VulkanRenderer::createSceneImages()
 {
-    sceneColorImages.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    sceneColorImageMemorys.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    sceneColorImageViews.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-
-    sceneMotionImages.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    sceneMotionImageMemorys.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    sceneMotionImageViews.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-
-    sceneDepthImages.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    sceneDepthImageMemorys.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    sceneDepthImageViews.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneColorResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneMotionResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    sceneDepthResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
 
     for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
     {
-        VkImageCreateInfo colorImageInfo{};
-        colorImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        colorImageInfo.imageType = VK_IMAGE_TYPE_2D;
-        colorImageInfo.extent.width = sceneRenderExtent.width;
-        colorImageInfo.extent.height = sceneRenderExtent.height;
-        colorImageInfo.extent.depth = 1;
-        colorImageInfo.mipLevels = 1;
-        colorImageInfo.arrayLayers = 1;
-        colorImageInfo.format = sceneColorFormat;
-        colorImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        colorImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorImageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        colorImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkImageResourceCreateInfo colorCreateInfo{};
+        colorCreateInfo.extent = {sceneRenderExtent.width, sceneRenderExtent.height, 1};
+        colorCreateInfo.format = sceneColorFormat;
+        colorCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        colorCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        colorCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        colorCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 
-        vk_device.createImageWithInfo(
-            colorImageInfo,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            sceneColorImages[i],
-            sceneColorImageMemorys[i]);
-        sceneColorImageViews[i] = createImageView(sceneColorImages[i], sceneColorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+        sceneColorResources[i].createOwned(vk_device, colorCreateInfo, true);
 
-        VkImageCreateInfo depthImageInfo{};
-        depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
-        depthImageInfo.extent.width = sceneRenderExtent.width;
-        depthImageInfo.extent.height = sceneRenderExtent.height;
-        depthImageInfo.extent.depth = 1;
-        depthImageInfo.mipLevels = 1;
-        depthImageInfo.arrayLayers = 1;
-        depthImageInfo.format = sceneDepthFormat;
-        depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkImageResourceCreateInfo depthCreateInfo{};
+        depthCreateInfo.extent = {sceneRenderExtent.width, sceneRenderExtent.height, 1};
+        depthCreateInfo.format = sceneDepthFormat;
+        depthCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        depthCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        depthCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        depthCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 
-        vk_device.createImageWithInfo(
-            depthImageInfo,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            sceneDepthImages[i],
-            sceneDepthImageMemorys[i]);
-        sceneDepthImageViews[i] = createImageView(sceneDepthImages[i], sceneDepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+        sceneDepthResources[i].createOwned(vk_device, depthCreateInfo, true);
 
-        VkImageCreateInfo motionImageInfo{};
-        motionImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        motionImageInfo.imageType = VK_IMAGE_TYPE_2D;
-        motionImageInfo.extent.width = sceneRenderExtent.width;
-        motionImageInfo.extent.height = sceneRenderExtent.height;
-        motionImageInfo.extent.depth = 1;
-        motionImageInfo.mipLevels = 1;
-        motionImageInfo.arrayLayers = 1;
-        motionImageInfo.format = sceneMotionFormat;
-        motionImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        motionImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        motionImageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        motionImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        motionImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkImageResourceCreateInfo motionCreateInfo{};
+        motionCreateInfo.extent = {sceneRenderExtent.width, sceneRenderExtent.height, 1};
+        motionCreateInfo.format = sceneMotionFormat;
+        motionCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        motionCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        motionCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        motionCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        motionCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        motionCreateInfo.imageType = VK_IMAGE_TYPE_2D;
 
-        vk_device.createImageWithInfo(
-            motionImageInfo,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            sceneMotionImages[i],
-            sceneMotionImageMemorys[i]);
-        sceneMotionImageViews[i] = createImageView(sceneMotionImages[i], sceneMotionFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+        sceneMotionResources[i].createOwned(vk_device, motionCreateInfo, true);
     }
 }
 
@@ -415,7 +407,7 @@ void Faye::VulkanRenderer::createSceneFramebuffers()
             vk_device,
             *sceneRenderPass,
             sceneRenderExtent,
-            std::vector<VkImageView>{sceneColorImageViews[i], sceneMotionImageViews[i], sceneDepthImageViews[i]});
+            std::vector<VkImageView>{sceneColorResources[i].imageView, sceneMotionResources[i].imageView, sceneDepthResources[i].imageView});
     }
 }
 
@@ -446,36 +438,24 @@ void Faye::VulkanRenderer::cleanupSceneRenderTargets()
 
     sceneRenderPassInstances.clear();
 
-    for (size_t i = 0; i < sceneColorImageViews.size(); i++)
+    for (size_t i = 0; i < sceneColorResources.size(); i++)
     {
-        vkDestroyImageView(vk_device.getDevice(), sceneColorImageViews[i], nullptr);
-        vkDestroyImage(vk_device.getDevice(), sceneColorImages[i], nullptr);
-        vkFreeMemory(vk_device.getDevice(), sceneColorImageMemorys[i], nullptr);
+        sceneColorResources[i].destroy(vk_device.getDevice());
     }
 
-    for (size_t i = 0; i < sceneMotionImageViews.size(); i++)
+    for (size_t i = 0; i < sceneMotionResources.size(); i++)
     {
-        vkDestroyImageView(vk_device.getDevice(), sceneMotionImageViews[i], nullptr);
-        vkDestroyImage(vk_device.getDevice(), sceneMotionImages[i], nullptr);
-        vkFreeMemory(vk_device.getDevice(), sceneMotionImageMemorys[i], nullptr);
+        sceneMotionResources[i].destroy(vk_device.getDevice());
     }
 
-    for (size_t i = 0; i < sceneDepthImageViews.size(); i++)
+    for (size_t i = 0; i < sceneDepthResources.size(); i++)
     {
-        vkDestroyImageView(vk_device.getDevice(), sceneDepthImageViews[i], nullptr);
-        vkDestroyImage(vk_device.getDevice(), sceneDepthImages[i], nullptr);
-        vkFreeMemory(vk_device.getDevice(), sceneDepthImageMemorys[i], nullptr);
+        sceneDepthResources[i].destroy(vk_device.getDevice());
     }
 
-    sceneColorImages.clear();
-    sceneColorImageMemorys.clear();
-    sceneColorImageViews.clear();
-    sceneMotionImages.clear();
-    sceneMotionImageMemorys.clear();
-    sceneMotionImageViews.clear();
-    sceneDepthImages.clear();
-    sceneDepthImageMemorys.clear();
-    sceneDepthImageViews.clear();
+    sceneColorResources.clear();
+    sceneMotionResources.clear();
+    sceneDepthResources.clear();
 }
 
 void Faye::VulkanRenderer::cleanupPostProcessRenderTargets()
@@ -540,7 +520,7 @@ void Faye::VulkanRenderer::destroySceneViewportSampler()
 
 void Faye::VulkanRenderer::registerSceneViewportTextures()
 {
-    if (!imguiInitialized || sceneViewportSampler == VK_NULL_HANDLE || sceneColorImageViews.empty())
+    if (!imguiInitialized || sceneViewportSampler == VK_NULL_HANDLE || sceneColorResources.empty())
     {
         return;
     }
@@ -554,31 +534,31 @@ void Faye::VulkanRenderer::registerSceneViewportTextures()
     }
 
     unregisterSceneViewportTextures();
-    sceneViewportDescriptorSets.reserve(sceneColorImageViews.size());
-    sceneMotionViewportDescriptorSets.reserve(sceneMotionImageViews.size());
-    sceneDepthViewportDescriptorSets.reserve(sceneDepthImageViews.size());
+    sceneViewportDescriptorSets.reserve(sceneColorResources.size());
+    sceneMotionViewportDescriptorSets.reserve(sceneMotionResources.size());
+    sceneDepthViewportDescriptorSets.reserve(sceneDepthResources.size());
 
-    for (const auto &imageView : sceneColorImageViews)
+    for (const auto &resource : sceneColorResources)
     {
         sceneViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
             sceneViewportSampler,
-            imageView,
+            resource.imageView,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 
-    for (const auto &imageView : sceneMotionImageViews)
+    for (const auto &resource : sceneMotionResources)
     {
         sceneMotionViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
             sceneViewportSampler,
-            imageView,
+            resource.imageView,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 
-    for (const auto &imageView : sceneDepthImageViews)
+    for (const auto &resource : sceneDepthResources)
     {
         sceneDepthViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
             sceneViewportSampler,
-            imageView,
+            resource.imageView,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 
@@ -668,7 +648,7 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    const char *defaultFontPath = "src/include/fonts/Poppins,Roboto/Roboto/Roboto-Regular.ttf";
+    const char *defaultFontPath = "src/include/fonts/Roboto-Regular.ttf";
 
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -678,7 +658,7 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     std::ifstream fontFile(defaultFontPath);
     if (fontFile.good())
     {
-        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 16.0f);
+        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 18.0f);
     }
     else
     {
@@ -705,18 +685,12 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     info.QueueFamily = vk_device.getGraphicsQueueFamilyIndex();
     info.Queue = vk_device.getGraphicsQueue();
     info.DescriptorPool = descriptorPool;
-    info.RenderPass = vk_swapchain->getRenderPass();
+    info.PipelineInfoMain.RenderPass = vk_swapchain->getRenderPass();
 
     info.MinImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
     info.ImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
 
     ImGui_ImplVulkan_Init(&info);
-
-    VkCommandBuffer commandBuffer = vk_device.beginSingleTimeCommands();
-
-    ImGui_ImplVulkan_CreateFontsTexture();
-
-    vk_device.endSingleTimeCommands(commandBuffer);
 
     vkDeviceWaitIdle(vk_device.getDevice());
     imguiInitialized = true;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Renderer/View/RenderView.hpp"
-#include "imgui/imgui.h"
+#include "imgui.h"
 
 namespace Faye
 {

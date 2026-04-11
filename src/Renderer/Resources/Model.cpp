@@ -9,7 +9,9 @@
 #include "Core/Logging/Logger.hpp"
 #include "quill/LogMacros.h"
 
+#include <assimp/GltfMaterial.h>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 #include <cmath>
 #include <stdexcept>
@@ -23,13 +25,39 @@ namespace Faye
 {
     namespace
     {
-        Vertex makeVertex(const glm::vec3 &position, const glm::vec3 &color, const glm::vec3 &normal, const glm::vec2 &uv)
+        glm::mat4 aiMatrixToGlm(const aiMatrix4x4 &matrix)
+        {
+            glm::mat4 result{1.0f};
+            result[0][0] = matrix.a1;
+            result[1][0] = matrix.a2;
+            result[2][0] = matrix.a3;
+            result[3][0] = matrix.a4;
+
+            result[0][1] = matrix.b1;
+            result[1][1] = matrix.b2;
+            result[2][1] = matrix.b3;
+            result[3][1] = matrix.b4;
+
+            result[0][2] = matrix.c1;
+            result[1][2] = matrix.c2;
+            result[2][2] = matrix.c3;
+            result[3][2] = matrix.c4;
+
+            result[0][3] = matrix.d1;
+            result[1][3] = matrix.d2;
+            result[2][3] = matrix.d3;
+            result[3][3] = matrix.d4;
+            return result;
+        }
+
+        Vertex makeVertex(const glm::vec3 &position, const glm::vec3 &color, const glm::vec3 &normal, const glm::vec2 &uv, const glm::vec4 &tangent = {1.0f, 0.0f, 0.0f, 1.0f})
         {
             Vertex vertex{};
             vertex.pos = position;
             vertex.color = color;
             vertex.normal = normal;
             vertex.uv = uv;
+            vertex.tangent = tangent;
             return vertex;
         }
 
@@ -38,54 +66,112 @@ namespace Faye
             Builder builder{};
 
             const glm::vec3 positions[] = {
-                {-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f},
-                {0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f},
-                {-0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, -0.5f},
-                {0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f},
-                {-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f},
-                {-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f},
+                {-0.5f, -0.5f, 0.5f},
+                {0.5f, -0.5f, 0.5f},
+                {0.5f, 0.5f, 0.5f},
+                {-0.5f, 0.5f, 0.5f},
+                {0.5f, -0.5f, -0.5f},
+                {-0.5f, -0.5f, -0.5f},
+                {-0.5f, 0.5f, -0.5f},
+                {0.5f, 0.5f, -0.5f},
+                {-0.5f, -0.5f, -0.5f},
+                {-0.5f, -0.5f, 0.5f},
+                {-0.5f, 0.5f, 0.5f},
+                {-0.5f, 0.5f, -0.5f},
+                {0.5f, -0.5f, 0.5f},
+                {0.5f, -0.5f, -0.5f},
+                {0.5f, 0.5f, -0.5f},
+                {0.5f, 0.5f, 0.5f},
+                {-0.5f, 0.5f, 0.5f},
+                {0.5f, 0.5f, 0.5f},
+                {0.5f, 0.5f, -0.5f},
+                {-0.5f, 0.5f, -0.5f},
+                {-0.5f, -0.5f, -0.5f},
+                {0.5f, -0.5f, -0.5f},
+                {0.5f, -0.5f, 0.5f},
+                {-0.5f, -0.5f, 0.5f},
             };
 
             const glm::vec3 normals[] = {
-                {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f},
-                {0.0f, 1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, -1.0f},
+                {-1.0f, 0.0f, 0.0f},
+                {1.0f, 0.0f, 0.0f},
+                {0.0f, 1.0f, 0.0f},
+                {0.0f, -1.0f, 0.0f},
             };
 
             const glm::vec2 uv[] = {
-                {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f},
+                {0.0f, 0.0f},
+                {1.0f, 0.0f},
+                {1.0f, 1.0f},
+                {0.0f, 1.0f},
             };
+            Mesh mesh{};
+            mesh.vertices.reserve(24);
 
-            builder.vertices.reserve(24);
             for (int face = 0; face < 6; ++face)
             {
                 for (int corner = 0; corner < 4; ++corner)
                 {
-                    builder.vertices.push_back(makeVertex(positions[face * 4 + corner], {1.0f, 1.0f, 1.0f}, normals[face], uv[corner]));
+                    mesh.vertices.push_back(makeVertex(positions[face * 4 + corner], {1.0f, 1.0f, 1.0f}, normals[face], uv[corner]));
                 }
             }
 
-            builder.indices = {
-                0, 1, 2, 0, 2, 3,
-                4, 5, 6, 4, 6, 7,
-                8, 9, 10, 8, 10, 11,
-                12, 13, 14, 12, 14, 15,
-                16, 17, 18, 16, 18, 19,
-                20, 21, 22, 20, 22, 23,
+            mesh.indices = {
+                0,
+                1,
+                2,
+                0,
+                2,
+                3,
+                4,
+                5,
+                6,
+                4,
+                6,
+                7,
+                8,
+                9,
+                10,
+                8,
+                10,
+                11,
+                12,
+                13,
+                14,
+                12,
+                14,
+                15,
+                16,
+                17,
+                18,
+                16,
+                18,
+                19,
+                20,
+                21,
+                22,
+                20,
+                22,
+                23,
             };
-
+            builder.meshes.push_back(mesh);
             return builder;
         }
 
         Builder makePlaneBuilder()
         {
             Builder builder{};
-            builder.vertices = {
+            Mesh mesh{};
+            mesh.vertices = {
                 makeVertex({-0.5f, 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}),
                 makeVertex({0.5f, 0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}),
                 makeVertex({0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}),
                 makeVertex({-0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}),
             };
-            builder.indices = {0, 1, 2, 0, 2, 3};
+            mesh.indices = {0, 1, 2, 0, 2, 3};
+            builder.meshes.push_back(mesh);
             return builder;
         }
 
@@ -93,7 +179,7 @@ namespace Faye
         {
             Builder builder{};
             const float radius = 0.5f;
-
+            Mesh mesh{};
             for (uint32_t stack = 0; stack <= stacks; ++stack)
             {
                 const float stackAngle = glm::pi<float>() * static_cast<float>(stack) / static_cast<float>(stacks);
@@ -107,7 +193,7 @@ namespace Faye
                     const float z = ringRadius * std::sin(sectorAngle);
                     const glm::vec3 normal{x, y, z};
 
-                    builder.vertices.push_back(makeVertex(
+                    mesh.vertices.push_back(makeVertex(
                         radius * normal,
                         {1.0f, 1.0f, 1.0f},
                         glm::normalize(normal),
@@ -123,16 +209,17 @@ namespace Faye
                     const uint32_t current = stack * ringVertexCount + sector;
                     const uint32_t next = current + ringVertexCount;
 
-                    builder.indices.push_back(current);
-                    builder.indices.push_back(next);
-                    builder.indices.push_back(current + 1);
+                    mesh.indices.push_back(current);
+                    mesh.indices.push_back(next);
+                    mesh.indices.push_back(current + 1);
 
-                    builder.indices.push_back(current + 1);
-                    builder.indices.push_back(next);
-                    builder.indices.push_back(next + 1);
+                    mesh.indices.push_back(current + 1);
+                    mesh.indices.push_back(next);
+                    mesh.indices.push_back(next + 1);
                 }
             }
 
+            builder.meshes.push_back(mesh);
             return builder;
         }
 
@@ -181,7 +268,7 @@ namespace Faye
                     std::cos(angle),
                     -std::sin(angle)});
             }
-
+            Mesh mesh{};
             for (size_t ringIndex = 0; ringIndex < rings.size(); ++ringIndex)
             {
                 const float v = rings.size() > 1 ? static_cast<float>(ringIndex) / static_cast<float>(rings.size() - 1) : 0.0f;
@@ -202,7 +289,7 @@ namespace Faye
                         ring.normalY,
                         ring.normalRadial * sinTheta});
 
-                    builder.vertices.push_back(makeVertex(
+                    mesh.vertices.push_back(makeVertex(
                         position,
                         {1.0f, 1.0f, 1.0f},
                         normal,
@@ -218,27 +305,58 @@ namespace Faye
                     const uint32_t current = ring * ringVertexCount + sector;
                     const uint32_t next = current + ringVertexCount;
 
-                    builder.indices.push_back(current);
-                    builder.indices.push_back(next);
-                    builder.indices.push_back(current + 1);
+                    mesh.indices.push_back(current);
+                    mesh.indices.push_back(next);
+                    mesh.indices.push_back(current + 1);
 
-                    builder.indices.push_back(current + 1);
-                    builder.indices.push_back(next);
-                    builder.indices.push_back(next + 1);
+                    mesh.indices.push_back(current + 1);
+                    mesh.indices.push_back(next);
+                    mesh.indices.push_back(next + 1);
                 }
             }
 
+            builder.meshes.push_back(mesh);
             return builder;
         }
     }
 
     Model::Model(VulkanDevice &device, const Builder &builder) : vk_device{device}
     {
-        vertices = builder.vertices;
-        indices = builder.indices;
-        calculateLocalBounds(builder.vertices);
-        createVertexBuffers(builder.vertices);
-        createIndexBuffers(builder.indices);
+        importedMaterials = builder.materials;
+        submeshes.clear();
+        submeshes.reserve(builder.meshes.size());
+
+        std::vector<Vertex> meshVertices = std::vector<Vertex>{};
+        uint32_t currentVertexOffset = 0;
+        uint32_t currentIndexOffset = 0;
+        for (const auto &mesh : builder.meshes)
+        {
+            submeshes.push_back(Submesh{
+                currentVertexOffset,
+                static_cast<uint32_t>(mesh.vertices.size()),
+                currentIndexOffset,
+                static_cast<uint32_t>(mesh.indices.size()),
+                mesh.materialIndex});
+
+            meshVertices.insert(meshVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
+            currentVertexOffset += static_cast<uint32_t>(mesh.vertices.size());
+            currentIndexOffset += static_cast<uint32_t>(mesh.indices.size());
+        }
+        std::vector<uint32_t> meshIndices = std::vector<uint32_t>{};
+        uint32_t vertexOffset = 0;
+        for (const auto &mesh : builder.meshes)
+        {
+            for (const auto index : mesh.indices)
+            {
+                meshIndices.push_back(vertexOffset + index);
+            }
+            vertexOffset += static_cast<uint32_t>(mesh.vertices.size());
+        }
+        vertices = meshVertices;
+        indices = meshIndices;
+        calculateLocalBounds(meshVertices);
+        createVertexBuffers(meshVertices);
+        createIndexBuffers(meshIndices);
         LOG_INFO(Logger::getInstance(), "Model created successfully {} {}.", vertexCount, indexCount);
     }
 
@@ -256,7 +374,10 @@ namespace Faye
 
     std::unique_ptr<Model> Model::createModelFromFile(VulkanDevice &device, const std::string &modelPath)
     {
+        std::string directory = modelPath.substr(0, modelPath.find_last_of('/'));
+        LOG_INFO(Logger::getInstance(), "Loading model from file at directory {}.", directory);
         Builder builder{};
+        builder.directory = directory;
         builder.loadModel(modelPath);
         return std::make_unique<Model>(device, builder);
     }
@@ -351,6 +472,15 @@ namespace Faye
 
     void Model::draw(VkCommandBuffer commandBuffer)
     {
+        if (!submeshes.empty())
+        {
+            for (const Submesh &submesh : submeshes)
+            {
+                drawSubmesh(commandBuffer, submesh);
+            }
+            return;
+        }
+
         if (hasIndexBuffer)
         {
             vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
@@ -360,6 +490,29 @@ namespace Faye
             vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
         }
     }
+
+    void Model::drawSubmesh(VkCommandBuffer commandBuffer, const Submesh &submesh) const
+    {
+        if (submesh.hasIndices())
+        {
+            vkCmdDrawIndexed(commandBuffer, submesh.indexCount, 1, submesh.firstIndex, 0, 0);
+            return;
+        }
+
+        vkCmdDraw(commandBuffer, submesh.vertexCount, 1, submesh.firstVertex, 0);
+    }
+
+    void Model::assignImportedMaterialHandles(const std::vector<MaterialHandle> &materialHandles)
+    {
+        for (Submesh &submesh : submeshes)
+        {
+            if (submesh.importedMaterialIndex < materialHandles.size())
+            {
+                submesh.materialHandle = materialHandles[submesh.importedMaterialIndex];
+            }
+        }
+    }
+
     void Model::bind(VkCommandBuffer commandBuffer)
     {
         VkBuffer buffers[] = {vertexBuffer->getBuffer()};
@@ -373,65 +526,282 @@ namespace Faye
 
     void Builder::loadModel(const std::string &modelPath)
     {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
+        // Creating importer class instance
+        Assimp::Importer importer;
 
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str()))
+        const aiScene *scene = importer.ReadFile(modelPath, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_CalcTangentSpace);
+
+        if (scene == nullptr)
         {
-            throw std::runtime_error(warn + err);
+            LOG_INFO(Logger::getInstance(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
+            throw std::runtime_error("Failed to load model at path " + modelPath);
         }
 
-        std::unordered_map<Vertex, uint32_t> uniqueVertices = {};
-
-        for (const auto &shape : shapes)
+        materials.clear();
+        loadedTextures.clear();
+        materials.reserve(scene->mNumMaterials);
+        for (unsigned int materialIndex = 0; materialIndex < scene->mNumMaterials; materialIndex++)
         {
-            for (const auto &index : shape.mesh.indices)
+            materials.push_back(processMaterial(scene->mMaterials[materialIndex], scene));
+        }
+
+        processNode(scene->mRootNode, scene);
+    }
+
+    void Builder::processNode(aiNode *node, const aiScene *scene, const glm::mat4 &parentTransform)
+    {
+        const glm::mat4 nodeTransform = parentTransform * aiMatrixToGlm(node->mTransformation);
+
+        for (unsigned int meshIndex = 0; meshIndex < node->mNumMeshes; meshIndex++)
+        {
+            aiMesh *mesh = scene->mMeshes[node->mMeshes[meshIndex]];
+            // Process the mesh and add it to the builder
+            meshes.push_back(processMesh(mesh, scene, nodeTransform));
+        }
+
+        for (unsigned int childIndex = 0; childIndex < node->mNumChildren; childIndex++)
+        {
+            processNode(node->mChildren[childIndex], scene, nodeTransform);
+        }
+    }
+
+    Mesh Builder::processMesh(aiMesh *mesh, const aiScene * /*scene*/, const glm::mat4 &nodeTransform)
+    {
+        Mesh meshData{};
+        meshData.materialIndex = mesh->mMaterialIndex;
+        const glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(nodeTransform)));
+        // Process the mesh and add it to the builder
+        for (unsigned int vertexIndex = 0; vertexIndex < mesh->mNumVertices; vertexIndex++)
+        {
+            Vertex vertex{};
+
+            const glm::vec3 localPosition = {
+                mesh->mVertices[vertexIndex].x,
+                mesh->mVertices[vertexIndex].y,
+                mesh->mVertices[vertexIndex].z};
+            vertex.pos = glm::vec3(nodeTransform * glm::vec4(localPosition, 1.0f));
+
+            if (mesh->HasNormals())
             {
-                Vertex vertex = {};
+                const glm::vec3 localNormal = {
+                    mesh->mNormals[vertexIndex].x,
+                    mesh->mNormals[vertexIndex].y,
+                    mesh->mNormals[vertexIndex].z};
+                vertex.normal = glm::normalize(normalMatrix * localNormal);
+            }
 
-                vertex.pos = {
-                    attrib.vertices[3 * index.vertex_index + 0],
-                    attrib.vertices[3 * index.vertex_index + 1],
-                    attrib.vertices[3 * index.vertex_index + 2]};
+            if (mesh->HasTextureCoords(0))
+            {
+                vertex.uv = {
+                    mesh->mTextureCoords[0][vertexIndex].x,
+                    1.0f - mesh->mTextureCoords[0][vertexIndex].y};
+            }
 
-                if (attrib.colors.size() >= static_cast<size_t>(3 * index.vertex_index + 3))
-                {
-                    vertex.color = {
-                        attrib.colors[3 * index.vertex_index + 0],
-                        attrib.colors[3 * index.vertex_index + 1],
-                        attrib.colors[3 * index.vertex_index + 2]};
-                }
-                else
-                {
-                    vertex.color = {1.f, 1.f, 1.f};
-                }
+            if (mesh->HasTangentsAndBitangents())
+            {
+                const glm::vec3 tangent = glm::normalize(normalMatrix * glm::vec3{
+                    mesh->mTangents[vertexIndex].x,
+                    mesh->mTangents[vertexIndex].y,
+                    mesh->mTangents[vertexIndex].z});
+                const glm::vec3 bitangent = glm::normalize(normalMatrix * glm::vec3{
+                    mesh->mBitangents[vertexIndex].x,
+                    mesh->mBitangents[vertexIndex].y,
+                    mesh->mBitangents[vertexIndex].z});
+                const float handedness = glm::dot(glm::cross(vertex.normal, tangent), bitangent) < 0.0f ? -1.0f : 1.0f;
+                vertex.tangent = glm::vec4(glm::normalize(tangent), handedness);
+            }
 
-                if (index.normal_index >= 0)
-                {
-                    vertex.normal = {
-                        attrib.normals[3 * index.normal_index + 0],
-                        attrib.normals[3 * index.normal_index + 1],
-                        attrib.normals[3 * index.normal_index + 2]};
-                }
+            vertex.color = {1.0f, 1.0f, 1.0f};
 
-                if (index.texcoord_index >= 0)
-                {
-                    vertex.uv = {
-                        attrib.texcoords[2 * index.texcoord_index + 0],
-                        1.0f - attrib.texcoords[2 * index.texcoord_index + 1]};
-                }
+            meshData.vertices.push_back(vertex);
+        }
 
-                if (uniqueVertices.count(vertex) == 0)
-                {
-                    uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
-                }
+        for (unsigned int faceIndex = 0; faceIndex < mesh->mNumFaces; faceIndex++)
+        {
+            const aiFace &face = mesh->mFaces[faceIndex];
+            assert(face.mNumIndices == 3 && "Non-triangulated face found in model");
 
-                indices.push_back(uniqueVertices[vertex]);
+            meshData.indices.push_back(face.mIndices[0]);
+            meshData.indices.push_back(face.mIndices[1]);
+            meshData.indices.push_back(face.mIndices[2]);
+        }
+
+        return meshData;
+    }
+
+    MaterialData Builder::processMaterial(aiMaterial *material, const aiScene *scene)
+    {
+        MaterialData result{};
+
+        aiString name;
+        material->Get(AI_MATKEY_NAME, name);
+        result.name = name.C_Str();
+
+        aiColor3D color(1.0f, 1.0f, 1.0f);
+        aiColor4D baseColor(1.0f, 1.0f, 1.0f, 1.0f);
+        bool hasBaseColor = false;
+        float shininess = 0.0f;
+        float opacity = 1.0f;
+        float metallicFactor = result.metallicFactor;
+        float roughnessFactor = result.roughnessFactor;
+        float normalScale = result.normalScale;
+        float specularStrength = result.specularStrength;
+        float reflectivity = result.reflectivity;
+        float emissiveIntensity = result.emissiveIntensity;
+        float alphaCutoff = result.alphaCutoff;
+        aiString alphaMode;
+
+        if (material->Get(AI_MATKEY_BASE_COLOR, baseColor) == AI_SUCCESS)
+        {
+            hasBaseColor = true;
+            result.baseColorFactor = {baseColor.r, baseColor.g, baseColor.b, baseColor.a};
+            result.color = {baseColor.r, baseColor.g, baseColor.b};
+            result.diffuse = result.color;
+        }
+        if (material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS)
+        {
+            if (!hasBaseColor)
+            {
+                result.baseColorFactor = {color.r, color.g, color.b, result.baseColorFactor.a};
+            }
+            result.color = {color.r, color.g, color.b};
+            result.diffuse = result.color;
+        }
+        if (material->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS)
+        {
+            result.ambient = {color.r, color.g, color.b};
+        }
+        if (material->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS)
+        {
+            result.specular = {color.r, color.g, color.b};
+        }
+        if (material->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS)
+        {
+            result.emissive = {color.r, color.g, color.b};
+        }
+        if (material->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
+        {
+            result.shininess = shininess;
+        }
+        if (material->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS)
+        {
+            result.opacity = opacity;
+            result.baseColorFactor.a = opacity;
+        }
+        if (material->Get(AI_MATKEY_METALLIC_FACTOR, metallicFactor) == AI_SUCCESS)
+        {
+            result.metallicFactor = metallicFactor;
+        }
+        if (material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS)
+        {
+            result.roughnessFactor = roughnessFactor;
+        }
+        if (material->Get(AI_MATKEY_BUMPSCALING, normalScale) == AI_SUCCESS)
+        {
+            result.normalScale = normalScale;
+        }
+        if (material->Get(AI_MATKEY_SHININESS_STRENGTH, specularStrength) == AI_SUCCESS)
+        {
+            result.specularStrength = specularStrength;
+        }
+        if (material->Get(AI_MATKEY_REFLECTIVITY, reflectivity) == AI_SUCCESS)
+        {
+            result.reflectivity = reflectivity;
+        }
+        if (material->Get(AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensity) == AI_SUCCESS)
+        {
+            result.emissiveIntensity = emissiveIntensity;
+        }
+        if (material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff) == AI_SUCCESS)
+        {
+            result.alphaCutoff = alphaCutoff;
+        }
+        if (material->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaMode) == AI_SUCCESS)
+        {
+            const std::string importedAlphaMode = alphaMode.C_Str();
+            if (importedAlphaMode == "MASK")
+            {
+                result.alphaMode = MaterialAlphaMode::Mask;
+            }
+            else if (importedAlphaMode == "BLEND")
+            {
+                LOG_WARNING(
+                    Logger::getInstance(),
+                    "Material '{}' requests alpha mode BLEND, which is not supported in the current v1 pipeline. Falling back to opaque rendering.",
+                    result.name);
             }
         }
+
+        for (int textureType = aiTextureType_NONE; textureType <= aiTextureType_UNKNOWN; textureType++)
+        {
+            for (unsigned int textureIndex = 0; textureIndex < material->GetTextureCount(static_cast<aiTextureType>(textureType)); textureIndex++)
+            {
+                aiString texturePath;
+                const std::optional<TextureType> resolvedTextureType = Texture::textureTypeFromAssimp(static_cast<aiTextureType>(textureType));
+
+                if (!resolvedTextureType.has_value())
+                {
+                    LOG_INFO(
+                        Logger::getInstance(),
+                        "Skipping unsupported Assimp texture type {} for material {}.",
+                        textureType,
+                        result.name);
+                    continue;
+                }
+
+                material->GetTexture(static_cast<aiTextureType>(textureType), textureIndex, &texturePath);
+
+                // Load the texture and add it to the material
+                LOG_INFO(Logger::getInstance(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.name);
+                std::filesystem::path fullTexturePath = std::filesystem::path(directory) / texturePath.C_Str();
+                LOG_INFO(Logger::getInstance(), "Full texture path resolved to {}.", fullTexturePath.string());
+                result.textures.push_back(loadTexture(
+                    fullTexturePath.string(),
+                    scene,
+                    *resolvedTextureType));
+            }
+        }
+
+        return result;
+    }
+
+    Texture Builder::loadTexture(const std::string &texturePath, const aiScene *scene, TextureType textureType)
+    {
+        const std::string cacheKey = texturePath + "#" + std::to_string(static_cast<uint32_t>(textureType));
+        if (const auto iterator = loadedTextures.find(cacheKey); iterator != loadedTextures.end())
+        {
+            LOG_INFO(Logger::getInstance(), "Reusing cached texture at path {}.", texturePath);
+            return iterator->second;
+        }
+
+        const aiTexture *aiTex = scene->GetEmbeddedTexture(texturePath.c_str());
+        if (aiTex != nullptr)
+        {
+            // Handle embedded texture
+            LOG_INFO(Logger::getInstance(), "Loading embedded texture at path {}.", texturePath);
+        }
+        else
+        {
+            // Handle external texture file
+            LOG_INFO(Logger::getInstance(), "Loading external texture at path {}.", texturePath);
+            // Use stb_image or another library to load the texture from the file system
+            int width, height, channels;
+            unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+            if (data)
+            {
+                LOG_INFO(Logger::getInstance(), "Successfully loaded texture at path {} with dimensions {}x{} and {} channels.", texturePath, width, height, channels);
+                std::vector<unsigned char> textureData(data, data + (width * height * 4)); // forcing 4 channels.
+                stbi_image_free(data);
+                Texture texture = Texture::create(std::move(textureData), width, height, channels, texturePath, textureType);
+                loadedTextures.emplace(cacheKey, texture);
+                return texture;
+            }
+            else
+            {
+                LOG_ERROR(Logger::getInstance(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
+            }
+        }
+        return Texture{};
     }
 
     Builder Builder::makePrimitive(PrimitiveType primitiveType)

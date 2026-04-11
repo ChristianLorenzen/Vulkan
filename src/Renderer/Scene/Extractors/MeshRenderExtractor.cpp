@@ -20,10 +20,10 @@ namespace Faye
                 continue;
             }
 
-            Material *material = context.materialRegistry.getMaterial(renderable.mesh->materialHandle);
-            if (material == nullptr)
+            Material *material = nullptr;
+            if (renderable.mesh->materialHandle.isValid())
             {
-                continue;
+                material = context.materialRegistry.getMaterial(renderable.mesh->materialHandle);
             }
 
             const glm::mat4 modelMatrix = renderable.transform->mat4();
@@ -41,6 +41,8 @@ namespace Faye
                 modelMatrix,
                 priorModelMatrix,
                 model,
+                &context.materialRegistry,
+                renderable.mesh->materialHandle,
                 material});
         }
     }

@@ -1,4 +1,5 @@
 include_guard(GLOBAL)
+include(FetchContent)
 
 function(faye_configure_dependencies)
     find_package(Vulkan REQUIRED)
@@ -43,4 +44,27 @@ function(faye_configure_dependencies)
         message(FATAL_ERROR
             "GLFW was not found. Install glfw3 and make it discoverable via CMAKE_PREFIX_PATH, a package manager integration, or pkg-config.")
     endif()
+
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG        docking
+        GIT_SHALLOW    TRUE
+    )
+
+    FetchContent_Declare(
+        quill
+        GIT_REPOSITORY https://github.com/odygrd/quill.git
+        GIT_TAG        master
+        GIT_SHALLOW    TRUE
+    )
+
+    FetchContent_Declare(
+        assimp
+        GIT_REPOSITORY https://github.com/assimp/assimp.git
+        GIT_TAG        master
+        GIT_SHALLOW    TRUE
+    )
+
+    FetchContent_MakeAvailable(imgui quill assimp)
 endfunction()

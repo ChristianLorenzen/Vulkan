@@ -19,13 +19,14 @@ namespace Faye
         glm::vec3 color;
         glm::vec3 normal;
         glm::vec2 uv;
+        glm::vec4 tangent{1.0f, 0.0f, 0.0f, 1.0f};
 
         Vertex() = default;
         Vertex(glm::vec3 pos) : pos{pos} {}
         Vertex(glm::vec3 pos, glm::vec3 color) : pos{pos}, color{color} {}
         bool operator==(const Vertex &other) const
         {
-            return pos == other.pos && color == other.color && normal == other.normal && uv == other.uv;
+            return pos == other.pos && color == other.color && normal == other.normal && uv == other.uv && tangent == other.tangent;
         }
 
         static std::vector<VkVertexInputBindingDescription> getBindingDescription()
@@ -40,7 +41,7 @@ namespace Faye
 
         static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions()
         {
-            std::vector<VkVertexInputAttributeDescription> attributeDescriptions(4);
+            std::vector<VkVertexInputAttributeDescription> attributeDescriptions(5);
 
             attributeDescriptions[0].binding = 0;
             attributeDescriptions[0].location = 0;
@@ -62,6 +63,11 @@ namespace Faye
             attributeDescriptions[3].format = VK_FORMAT_R32G32_SFLOAT;
             attributeDescriptions[3].offset = offsetof(Vertex, uv);
 
+            attributeDescriptions[4].binding = 0;
+            attributeDescriptions[4].location = 4;
+            attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+            attributeDescriptions[4].offset = offsetof(Vertex, tangent);
+
             return attributeDescriptions;
         }
     };
@@ -78,6 +84,7 @@ namespace std
             seed ^= hash<glm::vec3>()(vertex.color) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             seed ^= hash<glm::vec3>()(vertex.normal) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             seed ^= hash<glm::vec2>()(vertex.uv) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            seed ^= hash<glm::vec4>()(vertex.tangent) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             return seed;
         }
     };

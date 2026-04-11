@@ -4,6 +4,11 @@
 
 using namespace Faye;
 
+Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(MaterialData materialData, MaterialPipelineConfig pipelineConfig)
+{
+    return registerMaterial(std::make_unique<Material>(std::move(materialData), std::move(pipelineConfig)));
+}
+
 Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(std::unique_ptr<Faye::Material> material)
 {
     if (material == nullptr)
