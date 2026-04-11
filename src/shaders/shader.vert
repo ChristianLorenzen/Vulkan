@@ -19,15 +19,16 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec3 normal;
 layout(location = 3) in vec2 uv;
-// layout(location = 2) in vec2 inTexCoord;
-
-// layout(location = 1) out vec2 fragTexCoord;
+layout(location = 4) in vec4 inTangent;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec3 fragPosWorld;
 layout(location = 2) out vec3 fragNormalWorld;
 layout(location = 3) out vec4 fragCurrentClip;
 layout(location = 4) out vec4 fragPriorClip;
+layout(location = 5) out vec2 fragTexCoord;
+layout(location = 6) out vec3 fragTangentWorld;
+layout(location = 7) out vec3 fragBitangentWorld;
 
 layout(push_constant) uniform Push {
     mat4 modelMatrix;
@@ -44,6 +45,10 @@ void main() {
 
     mat3 normalMatrix = transpose(inverse(mat3(push.modelMatrix)));
     fragNormalWorld = normalize(normalMatrix * normal);
+    vec3 tangentWorld = normalize(mat3(push.modelMatrix) * inTangent.xyz);
+    fragTangentWorld = tangentWorld;
+    fragBitangentWorld = normalize(cross(fragNormalWorld, tangentWorld) * inTangent.w);
     fragPosWorld = positionWorld.xyz;
+    fragTexCoord = uv;
     fragColor = push.baseColor.xyz; // Start with ambient term
 }

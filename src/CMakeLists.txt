@@ -6,6 +6,7 @@ set(FAYE_ENGINE_SOURCES
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
+    Renderer/Material/TextureLoader.cpp
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
     Renderer/Scene/Extractors/CameraRenderExtractor.cpp
@@ -26,6 +27,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/VulkanBuffer.cpp
     Renderer/Vulkan/VkImageResource.cpp
     Renderer/Vulkan/MaterialCache.cpp
+    Renderer/Vulkan/TextureCache.cpp
     Renderer/Vulkan/VkSamplerResource.cpp
     Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp

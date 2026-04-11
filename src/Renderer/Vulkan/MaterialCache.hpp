@@ -2,30 +2,38 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
+
+#include <glm/glm.hpp>
 
 #include "Renderer/Material/Material.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
+#include "TextureCache.hpp"
 #include "VkTextureResource.hpp"
 #include "VulkanBuffer.hpp"
 #include "vk_descriptors.hpp"
 
 namespace Faye
 {
+    struct MaterialUniformData
+    {
+        alignas(16) glm::vec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
+        alignas(16) glm::vec4 surfaceFactors{0.0f, 1.0f, 1.0f, 1.0f};
+        alignas(16) glm::vec4 specularShininess{1.0f, 1.0f, 1.0f, 32.0f};
+        alignas(16) glm::vec4 emissiveFactors{0.0f, 0.0f, 0.0f, 1.0f};
+        alignas(16) glm::vec4 alphaModeCutoff{0.0f, 0.5f, 0.0f, 0.0f};
+    };
+
     struct MaterialState
     {
-        struct TextureTypeHasher
-        {
-            size_t operator()(TextureType type) const
-            {
-                return std::hash<uint32_t>{}(static_cast<uint32_t>(type));
-            }
-        };
-
         MaterialHandle handle{};
+        uint64_t materialRevision = 0;
         MaterialPipelineConfig pipelineConfig{};
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-        std::unordered_map<TextureType, VkTextureResource, TextureTypeHasher> textures;
+        std::unordered_map<TextureType, std::shared_ptr<VkTextureResource>, TextureTypeHasher> textures;
+        std::unique_ptr<VulkanBuffer> parameterBuffer{};
+        MaterialUniformData uniformData{};
 
         void reset();
         const VkTextureResource *findTexture(TextureType type) const;
@@ -35,6 +43,7 @@ namespace Faye
     {
     public:
         MaterialCache(VulkanDevice &device,
+                      TextureCache &textureCache,
                       VulkanDescriptorSetLayout &materialSetLayout,
                       VulkanDescriptorPool &materialPool);
         ~MaterialCache();
@@ -52,23 +61,14 @@ namespace Faye
 
     private:
         VulkanDevice &vk_device;
+        TextureCache &textureCache;
         VulkanDescriptorSetLayout &materialSetLayout;
         VulkanDescriptorPool &materialPool;
         std::unordered_map<uint32_t, MaterialState> materialStates;
-        VkTextureResource fallbackAlbedoTexture;
 
-        void ensureFallbackResources();
-        void buildState(MaterialState &state, MaterialHandle handle, const Material &material);
+        void refreshState(MaterialState &state, MaterialHandle handle, const Material &material);
         void writeDescriptorSet(MaterialState &state);
         void destroyState(MaterialState &state);
-
-        VkTextureResource createTextureResource(const Texture &texture) const;
-        VkTextureResource createTextureResource(const std::vector<unsigned char> &pixelData,
-                                               uint32_t width,
-                                               uint32_t height,
-                                               TextureType type) const;
-        const VkTextureResource &resolveBoundTexture(const MaterialState &state) const;
-        static const Texture *selectTexture(const MaterialData &materialData, TextureType type);
-        static VkFormat resolveTextureFormat(TextureType type);
+        const VkTextureResource &resolveBoundTexture(const MaterialState &state, TextureType type) const;
     };
 }

@@ -3,4 +3,6 @@
 /images/*
 .DS_Store
 /src/include/fonts/
+src/shaders/compiled/*
+src/include/*
 /build/

@@ -197,42 +197,98 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
 
     for (const auto &renderable : renderScene.renderables)
     {
-        if (renderable.model == nullptr || renderable.material == nullptr || !renderable.materialHandle.isValid())
+        if (renderable.model == nullptr)
         {
             continue;
         }
+        renderable.model->bind(frameContext.commandBuffer);
 
-        const MaterialState &materialState = materialCache.getOrCreateState(renderable.materialHandle, *renderable.material);
-        VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
-        pipeline.bind(frameContext.commandBuffer);
-
-        vkCmdBindDescriptorSets(
-            frameContext.commandBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            pipelineLayout,
-            1,
-            1,
-            &materialState.descriptorSet,
-            0,
-            nullptr);
-
-        SimplePushConstantData push{};
-        push.modelMatrix = renderable.modelMatrix;
-        push.priorModelMatrix = renderable.priorModelMatrix;
-        if (renderable.material != nullptr)
+        const auto &submeshes = renderable.model->getSubmeshes();
+        if (submeshes.empty())
         {
+            if (renderable.material == nullptr || !renderable.materialHandle.isValid())
+            {
+                continue;
+            }
+
+            const MaterialState &materialState = materialCache.getOrCreateState(renderable.materialHandle, *renderable.material);
+            VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
+            pipeline.bind(frameContext.commandBuffer);
+
+            vkCmdBindDescriptorSets(
+                frameContext.commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                1,
+                1,
+                &materialState.descriptorSet,
+                0,
+                nullptr);
+
+            SimplePushConstantData push{};
+            push.modelMatrix = renderable.modelMatrix;
+            push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(renderable.material->getColor(), 1.0f);
+
+            vkCmdPushConstants(
+                frameContext.commandBuffer,
+                pipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(SimplePushConstantData),
+                &push);
+
+            renderable.model->draw(frameContext.commandBuffer);
+            continue;
         }
 
-        vkCmdPushConstants(
-            frameContext.commandBuffer,
-            pipelineLayout,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,
-            sizeof(SimplePushConstantData),
-            &push);
+        for (const auto &submesh : submeshes)
+        {
+            MaterialHandle resolvedHandle = renderable.materialHandle;
+            const Material *resolvedMaterial = renderable.material;
 
-        renderable.model->bind(frameContext.commandBuffer);
-        renderable.model->draw(frameContext.commandBuffer);
+            if (submesh.materialHandle.isValid() && renderable.materialRegistry != nullptr)
+            {
+                if (const Material *importedMaterial = renderable.materialRegistry->getMaterial(submesh.materialHandle))
+                {
+                    resolvedHandle = submesh.materialHandle;
+                    resolvedMaterial = importedMaterial;
+                }
+            }
+
+            if (resolvedMaterial == nullptr || !resolvedHandle.isValid())
+            {
+                continue;
+            }
+
+            const MaterialState &materialState = materialCache.getOrCreateState(resolvedHandle, *resolvedMaterial);
+            VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
+            pipeline.bind(frameContext.commandBuffer);
+
+            vkCmdBindDescriptorSets(
+                frameContext.commandBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,
+                1,
+                1,
+                &materialState.descriptorSet,
+                0,
+                nullptr);
+
+            SimplePushConstantData push{};
+            push.modelMatrix = renderable.modelMatrix;
+            push.priorModelMatrix = renderable.priorModelMatrix;
+            push.baseColor = glm::vec4(resolvedMaterial->getColor(), 1.0f);
+
+            vkCmdPushConstants(
+                frameContext.commandBuffer,
+                pipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                sizeof(SimplePushConstantData),
+                &push);
+
+            renderable.model->drawSubmesh(frameContext.commandBuffer, submesh);
+        }
     }
 }

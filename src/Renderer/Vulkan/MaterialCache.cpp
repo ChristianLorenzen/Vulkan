@@ -1,6 +1,5 @@
 #include "MaterialCache.hpp"
 
-#include <array>
 #include <stdexcept>
 #include <utility>
 
@@ -12,29 +11,31 @@ namespace Faye
     void MaterialState::reset()
     {
         handle = {};
+        materialRevision = 0;
         pipelineConfig = {};
         descriptorSet = VK_NULL_HANDLE;
         textures.clear();
+        parameterBuffer.reset();
+        uniformData = {};
     }
 
     const VkTextureResource *MaterialState::findTexture(TextureType type) const
     {
         const auto iterator = textures.find(type);
-        return iterator != textures.end() ? &iterator->second : nullptr;
+        return iterator != textures.end() ? iterator->second.get() : nullptr;
     }
 
     MaterialCache::MaterialCache(VulkanDevice &device,
+                                 TextureCache &textureCache,
                                  VulkanDescriptorSetLayout &materialSetLayout,
                                  VulkanDescriptorPool &materialPool)
-        : vk_device(device), materialSetLayout(materialSetLayout), materialPool(materialPool)
+        : vk_device(device), textureCache(textureCache), materialSetLayout(materialSetLayout), materialPool(materialPool)
     {
-        ensureFallbackResources();
     }
 
     MaterialCache::~MaterialCache()
     {
         clear();
-        fallbackAlbedoTexture.destroy(vk_device.getDevice());
     }
 
     const MaterialState &MaterialCache::getOrCreateState(MaterialHandle handle, const Material &material)
@@ -45,9 +46,9 @@ namespace Faye
         }
 
         auto [iterator, inserted] = materialStates.try_emplace(handle.value);
-        if (inserted)
+        if (inserted || iterator->second.materialRevision != material.getRevision())
         {
-            buildState(iterator->second, handle, material);
+            refreshState(iterator->second, handle, material);
         }
 
         return iterator->second;
@@ -81,45 +82,59 @@ namespace Faye
         materialStates.clear();
     }
 
-    void MaterialCache::ensureFallbackResources()
+    void MaterialCache::refreshState(MaterialState &state, MaterialHandle handle, const Material &material)
     {
-        if (fallbackAlbedoTexture.isValid())
-        {
-            return;
-        }
-
-        static const std::array<unsigned char, 4> kWhitePixel{255, 255, 255, 255};
-        fallbackAlbedoTexture = createTextureResource(
-            std::vector<unsigned char>(kWhitePixel.begin(), kWhitePixel.end()),
-            1,
-            1,
-            TextureType::Albedo);
-    }
-
-    void MaterialCache::buildState(MaterialState &state, MaterialHandle handle, const Material &material)
-    {
-        ensureFallbackResources();
-
-        state.reset();
         state.handle = handle;
+        state.materialRevision = material.getRevision();
         state.pipelineConfig = material.getPipelineConfig();
 
         const MaterialData &materialData = material.getMaterialData();
+        state.uniformData.baseColorFactor = materialData.baseColorFactor;
+        state.uniformData.baseColorFactor.a = materialData.opacity;
+        state.uniformData.surfaceFactors = {
+            materialData.metallicFactor,
+            materialData.roughnessFactor,
+            materialData.normalScale,
+            materialData.occlusionStrength};
+        state.uniformData.specularShininess = {
+            materialData.specular.r * materialData.specularStrength,
+            materialData.specular.g * materialData.specularStrength,
+            materialData.specular.b * materialData.specularStrength,
+            materialData.shininess};
+        state.uniformData.emissiveFactors = {
+            materialData.emissive.r,
+            materialData.emissive.g,
+            materialData.emissive.b,
+            materialData.emissiveIntensity};
+        state.uniformData.alphaModeCutoff = {
+            static_cast<float>(materialData.alphaMode == MaterialAlphaMode::Mask ? 1.0f : 0.0f),
+            materialData.alphaCutoff,
+            0.0f,
+            0.0f};
+
+        if (state.parameterBuffer == nullptr)
+        {
+            state.parameterBuffer = std::make_unique<VulkanBuffer>(
+                vk_device,
+                sizeof(MaterialUniformData),
+                1,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            state.parameterBuffer->map();
+        }
+        state.parameterBuffer->writeToBuffer(&state.uniformData);
+
+        state.textures.clear();
         for (const Texture &texture : materialData.textures)
         {
-            if (texture.data.empty() || texture.width <= 0 || texture.height <= 0)
-            {
-                continue;
-            }
-
-            if (state.textures.contains(texture.type))
+            if (!texture.hasPixelData() || texture.width <= 0 || texture.height <= 0)
             {
                 continue;
             }
 
             try
             {
-                state.textures.emplace(texture.type, createTextureResource(texture));
+                state.textures.insert_or_assign(texture.type, textureCache.getOrCreateTexture(texture));
             }
             catch (const std::exception &exception)
             {
@@ -137,16 +152,31 @@ namespace Faye
 
     void MaterialCache::writeDescriptorSet(MaterialState &state)
     {
-        const VkTextureResource &boundTexture = resolveBoundTexture(state);
-        VkDescriptorImageInfo imageInfo = boundTexture.descriptorInfo();
+        VkDescriptorImageInfo albedoInfo = resolveBoundTexture(state, TextureType::Albedo).descriptorInfo();
+        VkDescriptorImageInfo normalInfo = resolveBoundTexture(state, TextureType::Normal).descriptorInfo();
+        VkDescriptorImageInfo metallicInfo = resolveBoundTexture(state, TextureType::Metallic).descriptorInfo();
+        VkDescriptorImageInfo roughnessInfo = resolveBoundTexture(state, TextureType::Roughness).descriptorInfo();
+        VkDescriptorImageInfo aoInfo = resolveBoundTexture(state, TextureType::AmbientOcclusion).descriptorInfo();
+        VkDescriptorBufferInfo parameterInfo = state.parameterBuffer->descriptorInfo();
 
         VulkanDescriptorWriter writer(materialSetLayout, materialPool);
-        writer.writeImage(0, &imageInfo);
+        writer.writeImage(0, &albedoInfo)
+            .writeImage(1, &normalInfo)
+            .writeImage(2, &metallicInfo)
+            .writeImage(3, &roughnessInfo)
+            .writeImage(4, &aoInfo)
+            .writeBuffer(5, &parameterInfo);
 
-        if (!writer.build(state.descriptorSet))
+        if (state.descriptorSet == VK_NULL_HANDLE)
         {
-            throw std::runtime_error("Failed to allocate descriptor set for material state");
+            if (!writer.build(state.descriptorSet))
+            {
+                throw std::runtime_error("Failed to allocate descriptor set for material state");
+            }
+            return;
         }
+
+        writer.overwrite(state.descriptorSet);
     }
 
     void MaterialCache::destroyState(MaterialState &state)
@@ -158,125 +188,16 @@ namespace Faye
             state.descriptorSet = VK_NULL_HANDLE;
         }
 
-        for (auto &[textureType, texture] : state.textures)
-        {
-            (void)textureType;
-            texture.destroy(vk_device.getDevice());
-        }
-
         state.reset();
     }
 
-    VkTextureResource MaterialCache::createTextureResource(const Texture &texture) const
+    const VkTextureResource &MaterialCache::resolveBoundTexture(const MaterialState &state, TextureType type) const
     {
-        return createTextureResource(
-            texture.data,
-            static_cast<uint32_t>(texture.width),
-            static_cast<uint32_t>(texture.height),
-            texture.type);
-    }
-
-    VkTextureResource MaterialCache::createTextureResource(const std::vector<unsigned char> &pixelData,
-                                                           uint32_t width,
-                                                           uint32_t height,
-                                                           TextureType type) const
-    {
-        if (pixelData.empty() || width == 0 || height == 0)
+        if (const VkTextureResource *texture = state.findTexture(type))
         {
-            throw std::runtime_error("MaterialCache cannot upload an empty texture");
+            return *texture;
         }
 
-        VulkanBuffer stagingBuffer(
-            vk_device,
-            pixelData.size(),
-            1,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        stagingBuffer.map();
-        stagingBuffer.writeToBuffer(const_cast<unsigned char *>(pixelData.data()));
-
-        VkTextureResource textureResource{};
-        textureResource.imageResource.createOwned(
-            vk_device,
-            VkImageResourceCreateInfo{
-                {width, height, 1},
-                resolveTextureFormat(type),
-                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                VK_IMAGE_ASPECT_COLOR_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                VK_IMAGE_TILING_OPTIMAL,
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_TYPE_2D,
-                VK_IMAGE_VIEW_TYPE_2D,
-                VK_SAMPLE_COUNT_1_BIT,
-                1,
-                1,
-                0},
-            true);
-
-        textureResource.imageResource.transitionLayout(
-            vk_device,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0,
-            VK_ACCESS_TRANSFER_WRITE_BIT);
-
-        vk_device.copyBufferToImage(
-            stagingBuffer.getBuffer(),
-            textureResource.imageResource.image,
-            width,
-            height);
-
-        textureResource.imageResource.transitionLayout(
-            vk_device,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            VK_ACCESS_TRANSFER_WRITE_BIT,
-            VK_ACCESS_SHADER_READ_BIT);
-
-        textureResource.samplerResource.create(vk_device);
-        return textureResource;
-    }
-
-    const VkTextureResource &MaterialCache::resolveBoundTexture(const MaterialState &state) const
-    {
-        if (const VkTextureResource *albedoTexture = state.findTexture(TextureType::Albedo))
-        {
-            return *albedoTexture;
-        }
-
-        return fallbackAlbedoTexture;
-    }
-
-    const Texture *MaterialCache::selectTexture(const MaterialData &materialData, TextureType type)
-    {
-        for (const Texture &texture : materialData.textures)
-        {
-            if (texture.type == type)
-            {
-                return &texture;
-            }
-        }
-
-        return nullptr;
-    }
-
-    VkFormat MaterialCache::resolveTextureFormat(TextureType type)
-    {
-        switch (type)
-        {
-        case TextureType::Albedo:
-            return VK_FORMAT_R8G8B8A8_SRGB;
-        case TextureType::Normal:
-        case TextureType::Metallic:
-        case TextureType::Roughness:
-        case TextureType::AmbientOcclusion:
-        case TextureType::Height:
-            return VK_FORMAT_R8G8B8A8_UNORM;
-        }
-
-        return VK_FORMAT_R8G8B8A8_UNORM;
+        return textureCache.getFallbackTexture(type);
     }
 }

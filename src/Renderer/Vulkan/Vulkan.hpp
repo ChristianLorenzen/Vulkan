@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Platform/Window/Window.hpp"
@@ -25,6 +26,7 @@
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
 #include "MaterialCache.hpp"
+#include "TextureCache.hpp"
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
 #include "point_light_render_system.hpp"
@@ -66,6 +68,7 @@ namespace Faye
 		void renderFrame(const VulkanFrameInput &frameInput, const ImGuiFrameCallback &drawImGui);
 		float getAspectRatio() const;
 		VkExtent2D getSceneRenderExtent() const;
+		VkDescriptorSet getMaterialTextureThumbnail(MaterialHandle handle, const Material &material, TextureType type);
 
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
@@ -77,6 +80,7 @@ namespace Faye
 		std::unique_ptr<VulkanRenderer> vk_renderer;
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> materialSetLayout{};
+		std::unique_ptr<TextureCache> textureCache{};
 		std::unique_ptr<MaterialCache> materialCache{};
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
 		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
@@ -88,6 +92,21 @@ namespace Faye
 		std::unique_ptr<VulkanDescriptorPool> imGUIPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;
 		std::vector<VkDescriptorSet> globalDescriptorSets;
+
+		struct TextureThumbnailCacheKey
+		{
+			VkImageView imageView = VK_NULL_HANDLE;
+			VkSampler sampler = VK_NULL_HANDLE;
+
+			friend bool operator==(const TextureThumbnailCacheKey &left, const TextureThumbnailCacheKey &right) = default;
+		};
+
+		struct TextureThumbnailCacheKeyHasher
+		{
+			size_t operator()(const TextureThumbnailCacheKey &key) const;
+		};
+
+		std::unordered_map<TextureThumbnailCacheKey, VkDescriptorSet, TextureThumbnailCacheKeyHasher> textureThumbnailDescriptors;
 		uint32_t pendingViewportWidth = 0;
 		uint32_t pendingViewportHeight = 0;
 

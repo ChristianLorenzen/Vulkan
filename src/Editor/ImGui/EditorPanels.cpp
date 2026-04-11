@@ -1,5 +1,7 @@
 #include "Editor/ImGui/EditorPanels.hpp"
 
+#include "Assets/ModelRegistry.hpp"
+#include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 
 #include "imgui/imgui.h"
@@ -7,7 +9,9 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 
 namespace Faye
 {
@@ -31,6 +35,57 @@ namespace Faye
             }
 
             return "Unknown";
+        }
+
+        const char *textureTypeLabel(TextureType type)
+        {
+            switch (type)
+            {
+            case TextureType::Albedo:
+                return "Albedo";
+            case TextureType::Normal:
+                return "Normal";
+            case TextureType::Metallic:
+                return "Metallic";
+            case TextureType::Roughness:
+                return "Roughness";
+            case TextureType::AmbientOcclusion:
+                return "Ambient Occlusion";
+            case TextureType::Height:
+                return "Height";
+            }
+
+            return "Unknown";
+        }
+
+        const char *materialAlphaModeLabel(MaterialAlphaMode mode)
+        {
+            switch (mode)
+            {
+            case MaterialAlphaMode::Opaque:
+                return "Opaque";
+            case MaterialAlphaMode::Mask:
+                return "Mask";
+            }
+
+            return "Unknown";
+        }
+
+        std::string formatSubmeshList(const std::vector<size_t> &submeshIndices)
+        {
+            std::ostringstream builder;
+
+            for (size_t i = 0; i < submeshIndices.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    builder << ", ";
+                }
+
+                builder << submeshIndices[i];
+            }
+
+            return builder.str();
         }
 
         void drawViewportDebugModeMenu(ImGuiFrameData &frameData)
@@ -82,10 +137,18 @@ namespace Faye
             void setOpen(bool open) override { alwaysOpen = open; }
             bool showInViewMenu() const override { return false; }
 
-            void draw(ImGuiFrameData &frameData, Scene *scene, Entity &selectedEntity) override
+            void draw(ImGuiFrameData &frameData,
+                      Scene *scene,
+                      Entity &selectedEntity,
+                      MaterialRegistry *materialRegistry,
+                      ModelRegistry *modelRegistry,
+                      const TextureThumbnailCallback *textureThumbnailCallback) override
             {
                 (void)scene;
                 (void)selectedEntity;
+                (void)materialRegistry;
+                (void)modelRegistry;
+                (void)textureThumbnailCallback;
 
                 if (!alwaysOpen)
                     return;
@@ -129,10 +192,18 @@ namespace Faye
             bool isOpen() const override { return open; }
             void setOpen(bool isOpen) override { open = isOpen; }
 
-            void draw(ImGuiFrameData &frameData, Scene *scene, Entity &selectedEntity) override
+            void draw(ImGuiFrameData &frameData,
+                      Scene *scene,
+                      Entity &selectedEntity,
+                      MaterialRegistry *materialRegistry,
+                      ModelRegistry *modelRegistry,
+                      const TextureThumbnailCallback *textureThumbnailCallback) override
             {
                 (void)scene;
                 (void)selectedEntity;
+                (void)materialRegistry;
+                (void)modelRegistry;
+                (void)textureThumbnailCallback;
 
                 if (!open)
                     return;
@@ -198,10 +269,18 @@ namespace Faye
             bool isOpen() const override { return open; }
             void setOpen(bool isOpen) override { open = isOpen; }
 
-            void draw(ImGuiFrameData &frameData, Scene *scene, Entity &selectedEntity) override
+            void draw(ImGuiFrameData &frameData,
+                      Scene *scene,
+                      Entity &selectedEntity,
+                      MaterialRegistry *materialRegistry,
+                      ModelRegistry *modelRegistry,
+                      const TextureThumbnailCallback *textureThumbnailCallback) override
             {
                 (void)scene;
                 (void)selectedEntity;
+                (void)materialRegistry;
+                (void)modelRegistry;
+                (void)textureThumbnailCallback;
 
                 if (!open)
                     return;
@@ -252,9 +331,17 @@ namespace Faye
             bool isOpen() const override { return open; }
             void setOpen(bool isOpen) override { open = isOpen; }
 
-            void draw(ImGuiFrameData &frameData, Scene *scene, Entity &selectedEntity) override
+            void draw(ImGuiFrameData &frameData,
+                      Scene *scene,
+                      Entity &selectedEntity,
+                      MaterialRegistry *materialRegistry,
+                      ModelRegistry *modelRegistry,
+                      const TextureThumbnailCallback *textureThumbnailCallback) override
             {
                 (void)frameData;
+                (void)materialRegistry;
+                (void)modelRegistry;
+                (void)textureThumbnailCallback;
 
                 if (!open)
                     return;
@@ -293,7 +380,12 @@ namespace Faye
             bool isOpen() const override { return open; }
             void setOpen(bool isOpen) override { open = isOpen; }
 
-            void draw(ImGuiFrameData &frameData, Scene *scene, Entity &selectedEntity) override
+            void draw(ImGuiFrameData &frameData,
+                      Scene *scene,
+                      Entity &selectedEntity,
+                      MaterialRegistry *materialRegistry,
+                      ModelRegistry *modelRegistry,
+                      const TextureThumbnailCallback *textureThumbnailCallback) override
             {
                 (void)frameData;
 
@@ -312,6 +404,7 @@ namespace Faye
                         drawAttachedComponents(selectedEntity);
                         drawTransform(selectedEntity);
                         drawMesh(selectedEntity);
+                        drawMaterial(selectedEntity, materialRegistry, modelRegistry, textureThumbnailCallback);
                         drawCamera(selectedEntity);
                         drawPointLight(selectedEntity);
                         drawPostProcessStack(selectedEntity);
@@ -373,6 +466,265 @@ namespace Faye
                         ImGui::Text("Model Handle: %u", mesh->modelHandle.value);
                         ImGui::Text("Material Handle: %u", mesh->materialHandle.value);
                     }
+                }
+            }
+
+            struct ModelMaterialUsage
+            {
+                MaterialHandle handle{};
+                std::vector<size_t> submeshIndices;
+            };
+
+            void drawTexturePreview(MaterialHandle handle, const Texture &texture, const TextureThumbnailCallback *textureThumbnailCallback)
+            {
+                constexpr ImVec2 previewSize{72.0f, 72.0f};
+
+                ImTextureID previewTexture = 0;
+                if (textureThumbnailCallback != nullptr && *textureThumbnailCallback)
+                {
+                    previewTexture = (*textureThumbnailCallback)(handle, texture.type);
+                }
+
+                if (previewTexture != 0)
+                {
+                    ImGui::Image(previewTexture, previewSize);
+                    return;
+                }
+
+                ImGui::BeginChild("##TexturePreviewPlaceholder", previewSize, true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                ImGui::TextUnformatted("No");
+                ImGui::TextUnformatted("Preview");
+                ImGui::EndChild();
+            }
+
+            void drawTextureList(MaterialHandle handle,
+                                 const MaterialData &materialData,
+                                 const TextureThumbnailCallback *textureThumbnailCallback)
+            {
+                if (materialData.textures.empty())
+                {
+                    ImGui::TextUnformatted("Textures: none");
+                    return;
+                }
+
+                ImGui::SeparatorText("Textures");
+                for (size_t i = 0; i < materialData.textures.size(); ++i)
+                {
+                    const Texture &texture = materialData.textures[i];
+                    ImGui::PushID(static_cast<int>(i));
+
+                    drawTexturePreview(handle, texture, textureThumbnailCallback);
+                    ImGui::SameLine();
+
+                    ImGui::BeginGroup();
+                    ImGui::Text("%s", textureTypeLabel(texture.type));
+                    ImGui::TextWrapped("%s", texture.path.empty() ? "<embedded texture>" : texture.path.c_str());
+                    ImGui::Text("Asset ID: %u", texture.id);
+                    if (texture.hasPixelData())
+                    {
+                        ImGui::Text("Size: %dx%d (%d channels)", texture.width, texture.height, texture.channels);
+                    }
+                    else
+                    {
+                        ImGui::TextUnformatted("Pixel data unavailable.");
+                    }
+                    ImGui::EndGroup();
+
+                    ImGui::Separator();
+                    ImGui::PopID();
+                }
+            }
+
+            void drawMaterialProperties(MaterialHandle handle,
+                                        Material &material,
+                                        std::string_view usageSummary,
+                                        const TextureThumbnailCallback *textureThumbnailCallback)
+            {
+                MaterialData &materialData = material.getMaterialData();
+                bool materialChanged = false;
+                std::array<char, 128> nameBuffer{};
+                copyNameToBuffer(materialData.name, nameBuffer);
+
+                ImGui::Text("Material Handle: %u", handle.value);
+                if (!usageSummary.empty())
+                {
+                    ImGui::TextWrapped("Used by submeshes: %s", std::string(usageSummary).c_str());
+                }
+
+                if (ImGui::InputText("Material Name", nameBuffer.data(), nameBuffer.size()))
+                {
+                    materialData.name = nameBuffer.data();
+                    materialChanged = true;
+                }
+
+                materialChanged |= ImGui::ColorEdit3("Color", &materialData.color.x);
+
+                if (ImGui::ColorEdit4("Base Color", &materialData.baseColorFactor.x))
+                {
+                    materialData.opacity = materialData.baseColorFactor.a;
+                    materialChanged = true;
+                }
+
+                materialChanged |= ImGui::DragFloat("Metallic", &materialData.metallicFactor, 0.01f, 0.0f, 1.0f);
+                materialChanged |= ImGui::DragFloat("Roughness", &materialData.roughnessFactor, 0.01f, 0.0f, 1.0f);
+                materialChanged |= ImGui::DragFloat("Normal Scale", &materialData.normalScale, 0.01f, 0.0f, 8.0f);
+                materialChanged |= ImGui::DragFloat("Occlusion Strength", &materialData.occlusionStrength, 0.01f, 0.0f, 1.0f);
+
+                if (ImGui::DragFloat("Opacity", &materialData.opacity, 0.01f, 0.0f, 1.0f))
+                {
+                    materialData.baseColorFactor.a = materialData.opacity;
+                    materialChanged = true;
+                }
+
+                int alphaModeIndex = static_cast<int>(materialData.alphaMode);
+                const char *alphaModeLabels[] = {
+                    materialAlphaModeLabel(MaterialAlphaMode::Opaque),
+                    materialAlphaModeLabel(MaterialAlphaMode::Mask)};
+                if (ImGui::Combo("Alpha Mode", &alphaModeIndex, alphaModeLabels, IM_ARRAYSIZE(alphaModeLabels)))
+                {
+                    materialData.alphaMode = static_cast<MaterialAlphaMode>(alphaModeIndex);
+                    materialChanged = true;
+                }
+
+                if (materialData.alphaMode == MaterialAlphaMode::Mask)
+                {
+                    materialChanged |= ImGui::DragFloat("Alpha Cutoff", &materialData.alphaCutoff, 0.01f, 0.0f, 1.0f);
+                }
+
+                materialChanged |= ImGui::DragFloat("Shininess", &materialData.shininess, 0.1f, 0.0f, 256.0f);
+
+                if (materialChanged)
+                {
+                    material.markDirty();
+                }
+
+                const MaterialPipelineConfig &pipelineConfig = material.getPipelineConfig();
+                ImGui::Text("Vertex Shader: %s", pipelineConfig.vertexShaderPath.c_str());
+                ImGui::Text("Fragment Shader: %s", pipelineConfig.fragmentShaderPath.c_str());
+
+                drawTextureList(handle, materialData, textureThumbnailCallback);
+            }
+
+            void drawMaterialEntry(const char *label,
+                                   MaterialHandle handle,
+                                   MaterialRegistry *materialRegistry,
+                                   std::string_view usageSummary,
+                                   const TextureThumbnailCallback *textureThumbnailCallback)
+            {
+                ImGui::PushID(static_cast<int>(handle.value));
+
+                Material *material = materialRegistry->getMaterial(handle);
+                const char *materialName = material != nullptr && !material->getName().empty()
+                                               ? material->getName().c_str()
+                                               : "Unnamed Material";
+
+                if (ImGui::TreeNodeEx("##MaterialEntry", ImGuiTreeNodeFlags_DefaultOpen, "%s: %s", label, materialName))
+                {
+                    if (material == nullptr)
+                    {
+                        ImGui::Text("Material Handle: %u", handle.value);
+                        ImGui::TextUnformatted("Material data is missing from the registry.");
+                    }
+                    else
+                    {
+                        drawMaterialProperties(handle, *material, usageSummary, textureThumbnailCallback);
+                    }
+
+                    ImGui::TreePop();
+                }
+
+                ImGui::PopID();
+            }
+
+            std::vector<ModelMaterialUsage> collectModelMaterialUsages(const Model &model) const
+            {
+                std::vector<ModelMaterialUsage> usages;
+                std::unordered_map<uint32_t, size_t> usageIndexByHandle;
+
+                const auto &submeshes = model.getSubmeshes();
+                for (size_t submeshIndex = 0; submeshIndex < submeshes.size(); ++submeshIndex)
+                {
+                    const Model::Submesh &submesh = submeshes[submeshIndex];
+                    if (!submesh.materialHandle.isValid())
+                    {
+                        continue;
+                    }
+
+                    auto [iterator, inserted] = usageIndexByHandle.try_emplace(submesh.materialHandle.value, usages.size());
+                    if (inserted)
+                    {
+                        usages.push_back(ModelMaterialUsage{submesh.materialHandle, {}});
+                    }
+
+                    usages[iterator->second].submeshIndices.push_back(submeshIndex);
+                }
+
+                return usages;
+            }
+
+            void drawMaterial(const Entity &entity,
+                              MaterialRegistry *materialRegistry,
+                              ModelRegistry *modelRegistry,
+                              const TextureThumbnailCallback *textureThumbnailCallback)
+            {
+                if (materialRegistry == nullptr)
+                {
+                    return;
+                }
+
+                auto *mesh = entity.tryGetMesh();
+                if (mesh == nullptr)
+                {
+                    return;
+                }
+
+                if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    return;
+                }
+
+                bool drewAnyMaterial = false;
+
+                if (mesh->materialHandle.isValid())
+                {
+                    drawMaterialEntry(
+                        "Mesh Material Override",
+                        mesh->materialHandle,
+                        materialRegistry,
+                        {},
+                        textureThumbnailCallback);
+                    drewAnyMaterial = true;
+                }
+
+                const Model *model = modelRegistry != nullptr ? modelRegistry->getModel(mesh->modelHandle) : nullptr;
+                if (model != nullptr)
+                {
+                    const std::vector<ModelMaterialUsage> usages = collectModelMaterialUsages(*model);
+                    if (!usages.empty())
+                    {
+                        ImGui::SeparatorText("Model Materials");
+                        ImGui::Text("Unique materials: %zu", usages.size());
+                        ImGui::Text("Submeshes: %zu", model->getSubmeshes().size());
+
+                        for (size_t usageIndex = 0; usageIndex < usages.size(); ++usageIndex)
+                        {
+                            const ModelMaterialUsage &usage = usages[usageIndex];
+                            const std::string usageSummary = formatSubmeshList(usage.submeshIndices);
+                            const std::string label = "Model Material " + std::to_string(usageIndex);
+                            drawMaterialEntry(
+                                label.c_str(),
+                                usage.handle,
+                                materialRegistry,
+                                usageSummary,
+                                textureThumbnailCallback);
+                            drewAnyMaterial = true;
+                        }
+                    }
+                }
+
+                if (!drewAnyMaterial)
+                {
+                    ImGui::TextUnformatted("No materials are attached to this mesh or model.");
                 }
             }
 
@@ -565,7 +917,7 @@ namespace Faye
             if (!panel->isOpen())
                 continue;
 
-            panel->draw(frameData, boundScene, selectedEntity);
+            panel->draw(frameData, boundScene, selectedEntity, materialRegistry, modelRegistry, &textureThumbnailCallback);
         }
     }
 

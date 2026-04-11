@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,6 +14,11 @@
 
 namespace Faye
 {
+    enum class MaterialAlphaMode : uint32_t
+    {
+        Opaque = 0,
+        Mask = 1,
+    };
 
     enum class TextureType
     {
@@ -23,13 +30,21 @@ namespace Faye
         Height,
     };
 
+    struct TextureTypeHasher
+    {
+        size_t operator()(TextureType type) const
+        {
+            return std::hash<uint32_t>{}(static_cast<uint32_t>(type));
+        }
+    };
+
     struct Texture
     {
         using AssetId = uint32_t;
         AssetId id = 0;
         TextureType type;
         std::string path;
-        std::vector<unsigned char> data;
+        std::shared_ptr<std::vector<unsigned char>> data;
         int width = 0;
         int height = 0;
         int channels = 0;
@@ -45,7 +60,7 @@ namespace Faye
         static Texture create(std::vector<unsigned char> data, int width, int height, int channels, std::string path, TextureType type)
         {
             Texture texture{};
-            texture.data = std::move(data);
+            texture.data = std::make_shared<std::vector<unsigned char>>(std::move(data));
             texture.width = width;
             texture.height = height;
             texture.channels = channels;
@@ -54,12 +69,24 @@ namespace Faye
             return texture;
         }
 
-        static TextureType textureTypeFromAssimp(aiTextureType assimpType)
+        bool hasPixelData() const
+        {
+            return data != nullptr && !data->empty();
+        }
+
+        size_t byteSize() const
+        {
+            return data != nullptr ? data->size() : 0;
+        }
+
+        static std::optional<TextureType> textureTypeFromAssimp(aiTextureType assimpType)
         {
             switch (assimpType)
             {
+            case aiTextureType_BASE_COLOR:
             case aiTextureType_DIFFUSE:
                 return TextureType::Albedo;
+            case aiTextureType_NORMAL_CAMERA:
             case aiTextureType_NORMALS:
                 return TextureType::Normal;
             case aiTextureType_METALNESS:
@@ -68,10 +95,8 @@ namespace Faye
                 return TextureType::Roughness;
             case aiTextureType_AMBIENT_OCCLUSION:
                 return TextureType::AmbientOcclusion;
-            case aiTextureType_HEIGHT:
-                return TextureType::Height;
             default:
-                return TextureType::Albedo; // Default to Albedo if type is unrecognized
+                return std::nullopt;
             }
         }
     };
@@ -81,20 +106,53 @@ namespace Faye
         std::string name;
         std::vector<Texture> textures;
         glm::vec3 color{1.0f, 1.0f, 1.0f};
+        glm::vec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
         glm::vec3 diffuse{1.0f, 1.0f, 1.0f};
         glm::vec3 ambient{1.0f, 1.0f, 1.0f};
         glm::vec3 specular{1.0f, 1.0f, 1.0f};
+        glm::vec3 emissive{0.0f, 0.0f, 0.0f};
         float shininess = 0.0f;
+        float opacity = 1.0f;
+        float metallicFactor = 0.0f;
+        float roughnessFactor = 1.0f;
+        float normalScale = 1.0f;
+        float occlusionStrength = 1.0f;
+        float specularStrength = 1.0f;
+        float reflectivity = 0.0f;
+        float emissiveIntensity = 1.0f;
+        MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+        float alphaCutoff = 0.5f;
 
         MaterialData() = default;
 
         MaterialData(std::string name, const glm::vec3 &color)
-            : name(std::move(name)), color(color), diffuse(color)
+            : name(std::move(name)), color(color), baseColorFactor(color, 1.0f), diffuse(color)
         {
         }
 
         MaterialData(std::string name, const glm::vec3 &color, std::vector<Texture> textures)
-            : name(std::move(name)), textures(std::move(textures)), color(color), diffuse(color)
+            : name(std::move(name)), textures(std::move(textures)), color(color), baseColorFactor(color, 1.0f), diffuse(color)
+        {
+        }
+
+        MaterialData(std::string name,
+                     const glm::vec3 &color,
+                     std::vector<Texture> textures,
+                     const glm::vec4 &baseColorFactor,
+                     const glm::vec4 &surfaceFactors,
+                     const glm::vec4 &specularShininess)
+            : name(std::move(name)),
+              textures(std::move(textures)),
+              color(color),
+              baseColorFactor(baseColorFactor),
+              diffuse(color),
+              specular(specularShininess.x, specularShininess.y, specularShininess.z),
+              shininess(specularShininess.w),
+              opacity(baseColorFactor.a),
+              metallicFactor(surfaceFactors.x),
+              roughnessFactor(surfaceFactors.y),
+              normalScale(surfaceFactors.z),
+              occlusionStrength(surfaceFactors.w)
         {
         }
     };
@@ -144,12 +202,28 @@ namespace Faye
         const MaterialData &getMaterialData() const { return materialData; }
         MaterialData &getMaterialData() { return materialData; }
         const MaterialPipelineConfig &getPipelineConfig() const { return pipelineConfig; }
+        uint64_t getRevision() const { return revision; }
 
-        void setMaterialData(MaterialData data) { materialData = std::move(data); }
-        void setPipelineConfig(MaterialPipelineConfig config) { pipelineConfig = std::move(config); }
+        void setMaterialData(MaterialData data)
+        {
+            materialData = std::move(data);
+            markDirty();
+        }
+
+        void setPipelineConfig(MaterialPipelineConfig config)
+        {
+            pipelineConfig = std::move(config);
+            markDirty();
+        }
+
+        void markDirty()
+        {
+            ++revision;
+        }
 
     private:
         MaterialData materialData{};
         MaterialPipelineConfig pipelineConfig{};
+        uint64_t revision = 1;
     };
 }
