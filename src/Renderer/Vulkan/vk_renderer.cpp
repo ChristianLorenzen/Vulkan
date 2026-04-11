@@ -3,9 +3,10 @@
 #include <stdio.h>
 #include <unordered_map>
 
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_vulkan.h"
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+#include "Editor/ImGui/ImGuiCustomStyle.hpp"
 
 #include "Vulkan.hpp"
 
@@ -647,7 +648,7 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    const char *defaultFontPath = "src/include/fonts/Poppins,Roboto/Roboto/Roboto-Regular.ttf";
+    const char *defaultFontPath = "src/include/fonts/Roboto-Regular.ttf";
 
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -657,7 +658,7 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     std::ifstream fontFile(defaultFontPath);
     if (fontFile.good())
     {
-        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 16.0f);
+        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 18.0f);
     }
     else
     {
@@ -684,18 +685,12 @@ void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
     info.QueueFamily = vk_device.getGraphicsQueueFamilyIndex();
     info.Queue = vk_device.getGraphicsQueue();
     info.DescriptorPool = descriptorPool;
-    info.RenderPass = vk_swapchain->getRenderPass();
+    info.PipelineInfoMain.RenderPass = vk_swapchain->getRenderPass();
 
     info.MinImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
     info.ImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
 
     ImGui_ImplVulkan_Init(&info);
-
-    VkCommandBuffer commandBuffer = vk_device.beginSingleTimeCommands();
-
-    ImGui_ImplVulkan_CreateFontsTexture();
-
-    vk_device.endSingleTimeCommands(commandBuffer);
 
     vkDeviceWaitIdle(vk_device.getDevice());
     imguiInitialized = true;

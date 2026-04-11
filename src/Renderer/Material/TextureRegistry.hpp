@@ -1,13 +1,18 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
+#include <memory>
+#include <cstdint>
+
+#include "Texture.hpp"
 
 namespace Faye
 {
 
     struct TextureHandle
     {
-        u_int32_t value = 0;
+        uint32_t value = 0;
 
         bool isValid() const { return value != 0; }
 

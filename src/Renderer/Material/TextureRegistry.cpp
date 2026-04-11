@@ -1,5 +1,7 @@
 #include "TextureRegistry.hpp"
 
+#include <stdexcept>
+
 using namespace Faye;
 
 Faye::TextureHandle Faye::TextureRegistry::registerTexture(std::unique_ptr<Faye::Texture> texture)

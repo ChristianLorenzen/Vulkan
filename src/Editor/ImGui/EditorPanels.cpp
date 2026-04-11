@@ -4,7 +4,7 @@
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 
-#include "imgui/imgui.h"
+#include "imgui.h"
 
 #include <algorithm>
 #include <array>

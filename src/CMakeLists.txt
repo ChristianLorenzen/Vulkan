@@ -3,6 +3,7 @@ set(FAYE_ENGINE_SOURCES
     Core/HotReload/HotReloadManager.cpp
     Core/IO/FileSystem.cpp
     Editor/ImGui/EditorPanels.cpp
+    Editor/ImGui/ImGuiCustomStyle.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
@@ -40,16 +41,19 @@ set(FAYE_ENGINE_SOURCES
     Scene/SceneManager.cpp
 )
 
+include(FetchContent)
+FetchContent_GetProperties(imgui SOURCE_DIR _imgui_src)
+
 set(FAYE_IMGUI_SOURCES
-    include/imgui/imgui.cpp
-    include/imgui/imgui_draw.cpp
-    include/imgui/imgui_impl_glfw.cpp
-    include/imgui/imgui_impl_vulkan.cpp
-    include/imgui/imgui_tables.cpp
-    include/imgui/imgui_widgets.cpp)
+    ${_imgui_src}/imgui.cpp
+    ${_imgui_src}/imgui_draw.cpp
+    ${_imgui_src}/backends/imgui_impl_glfw.cpp
+    ${_imgui_src}/backends/imgui_impl_vulkan.cpp
+    ${_imgui_src}/imgui_tables.cpp
+    ${_imgui_src}/imgui_widgets.cpp)
 
 if(FAYE_BUILD_IMGUI_DEMO)
-    list(APPEND FAYE_IMGUI_SOURCES include/imgui/imgui_demo.cpp)
+    list(APPEND FAYE_IMGUI_SOURCES ${_imgui_src}/imgui_demo.cpp)
 endif()
 
 set(FAYE_SHADER_SOURCES
@@ -75,7 +79,8 @@ target_include_directories(faye_imgui
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/imgui)
+    ${_imgui_src}
+    ${_imgui_src}/backends)
 
 target_link_libraries(faye_imgui
     PUBLIC

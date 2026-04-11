@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(FayeVulkan VERSION 0.1.0 LANGUAGES CXX)
+project(FayeVulkan VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +31,4 @@ include(FayeShaderCompilation)
 
 faye_configure_dependencies()
 
-add_subdirectory(src/include/quill EXCLUDE_FROM_ALL)
-add_subdirectory(src/include/assimp EXCLUDE_FROM_ALL)
 add_subdirectory(src)
