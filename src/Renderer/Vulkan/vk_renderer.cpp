@@ -3,8 +3,6 @@
 #include <stdio.h>
 #include <unordered_map>
 
-#include "Editor/ImGui/ImGuiCustomStyle.hpp"
-
 #include "Vulkan.hpp"
 
 #include "quill/LogMacros.h"

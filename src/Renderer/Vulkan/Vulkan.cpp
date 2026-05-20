@@ -7,10 +7,10 @@
 #include "Vulkan.hpp"
 #include "Renderer/Frame/ImGuiFrameData.hpp"
 #include "Renderer/Resources/Vertex.hpp"
-
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_vulkan.h"
+// ImGuiRenderer lives in the Editor layer; included here (the orchestration
+// implementation) rather than in the Vulkan.hpp header to keep the public
+// header free of Editor dependencies.
+#include "Editor/ImGui/ImGuiRenderer.hpp"
 
 #include "quill/LogMacros.h"
 
@@ -66,7 +66,8 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
 
     initializeFrameResources();
 
-    imGuiRenderer.init(
+    imGuiRenderer = std::make_unique<ImGuiRenderer>();
+    imGuiRenderer->init(
         window.getWindow(),
         vk_device->getInstance(),
         vk_device->getPhysicalDevice(),
@@ -77,7 +78,7 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
         vk_renderer->getSwapChainRenderPass(),
         VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
         VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    imGuiRenderer.registerViewportTextures(*vk_renderer);
+    imGuiRenderer->registerViewportTextures(*vk_renderer);
     lastImGuiSwapchainGeneration = vk_renderer->getSwapchainGeneration();
 }
 
@@ -155,12 +156,12 @@ Faye::Vulkan::~Vulkan()
         (void)key;
         if (descriptorSet != VK_NULL_HANDLE)
         {
-            ImGui_ImplVulkan_RemoveTexture(descriptorSet);
+            imGuiRenderer->unregisterTexture(descriptorSet);
         }
     }
     textureThumbnailDescriptors.clear();
 
-    imGuiRenderer.shutdown();
+    imGuiRenderer->shutdown();
 
     simpleRenderSystem.reset();
     pointLightRenderSystem.reset();
@@ -219,10 +220,9 @@ VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle,
         return iterator->second;
     }
 
-    const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
+    const VkDescriptorSet descriptorSet = imGuiRenderer->registerTexture(
         texture->samplerResource.sampler,
-        texture->imageResource.imageView,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        texture->imageResource.imageView);
     textureThumbnailDescriptors.emplace(cacheKey, descriptorSet);
     return descriptorSet;
 }
@@ -244,21 +244,21 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
         {
             const uint32_t finalTarget = postProcessChain->getFinalTargetIndex(frameInput.postProcessStack);
             if (finalTarget == VulkanRenderer::kPostProcessTargetCount)
-                return imGuiRenderer.getSceneColorDS(fi);
-            return imGuiRenderer.getPostProcessDS(finalTarget, fi);
+                return imGuiRenderer->getSceneColorDS(fi);
+            return imGuiRenderer->getPostProcessDS(finalTarget, fi);
         }
         case RenderDebugMode::SceneColor:
-            return imGuiRenderer.getSceneColorDS(fi);
+            return imGuiRenderer->getSceneColorDS(fi);
         case RenderDebugMode::SceneDepth:
-            return imGuiRenderer.getSceneDepthDS(fi);
+            return imGuiRenderer->getSceneDepthDS(fi);
         case RenderDebugMode::SceneMotion:
-            return imGuiRenderer.getSceneMotionDS(fi);
+            return imGuiRenderer->getSceneMotionDS(fi);
         }
 
         const uint32_t finalTarget = postProcessChain->getFinalTargetIndex(frameInput.postProcessStack);
         if (finalTarget == VulkanRenderer::kPostProcessTargetCount)
-            return imGuiRenderer.getSceneColorDS(fi);
-        return imGuiRenderer.getPostProcessDS(finalTarget, fi);
+            return imGuiRenderer->getSceneColorDS(fi);
+        return imGuiRenderer->getPostProcessDS(finalTarget, fi);
     };
 
     const auto *primaryCamera = frameInput.renderView.camera;
@@ -280,7 +280,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
     {
         if (vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight))
         {
-            imGuiRenderer.registerViewportTextures(*vk_renderer);
+            imGuiRenderer->registerViewportTextures(*vk_renderer);
         }
         pendingViewportWidth = 0;
         pendingViewportHeight = 0;
@@ -298,8 +298,8 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
         const uint64_t currentSwapGen = vk_renderer->getSwapchainGeneration();
         if (currentSwapGen != lastImGuiSwapchainGeneration)
         {
-            imGuiRenderer.shutdown();
-            imGuiRenderer.init(
+            imGuiRenderer->shutdown();
+            imGuiRenderer->init(
                 window.getWindow(),
                 vk_device->getInstance(),
                 vk_device->getPhysicalDevice(),
@@ -310,7 +310,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
                 vk_renderer->getSwapChainRenderPass(),
                 VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
                 VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-            imGuiRenderer.registerViewportTextures(*vk_renderer);
+            imGuiRenderer->registerViewportTextures(*vk_renderer);
             lastImGuiSwapchainGeneration = currentSwapGen;
         }
 
@@ -350,7 +350,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
 
         postProcessChain->renderComposite(frameContext, frameInput.postProcessStack);
 
-        imGuiRenderer.newFrame();
+        imGuiRenderer->newFrame();
 
         ImGuiFrameData frameData{};
         frameData.frameTimeMs = frameInput.frameTimeMs;
@@ -376,7 +376,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
             pendingViewportHeight = static_cast<uint32_t>(frameData.requestedViewportSize.y);
         }
 
-        imGuiRenderer.render(commandBuffer);
+        imGuiRenderer->render(commandBuffer);
 
         vk_renderer->endSwapchainRenderPass(commandBuffer);
         vk_renderer->endFrame();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Renderer/IRenderer.hpp"
 #include "Platform/Window/Window.hpp"
 #include "vk_device.hpp"
 #include "vk_render_pass.hpp"
@@ -14,7 +15,7 @@
 
 namespace Faye
 {
-    class VulkanRenderer
+    class VulkanRenderer : public IRenderer
     {
     public:
         static constexpr uint32_t kPostProcessTargetCount = 2;
@@ -25,13 +26,13 @@ namespace Faye
         VulkanRenderer(const VulkanRenderer &) = delete;
         VulkanRenderer &operator=(const VulkanRenderer &) = delete;
 
-        VkCommandBuffer beginFrame();
-        void endFrame();
+        VkCommandBuffer beginFrame() override;
+        void endFrame() override;
 
-        void beginSceneRenderPass(VkCommandBuffer commandBuffer);
-        void endSceneRenderPass(VkCommandBuffer commandBuffer);
-        void beginSwapchainRenderPass(VkCommandBuffer commandBuffer);
-        void endSwapchainRenderPass(VkCommandBuffer commandBuffer);
+        void beginSceneRenderPass(VkCommandBuffer commandBuffer) override;
+        void endSceneRenderPass(VkCommandBuffer commandBuffer) override;
+        void beginSwapchainRenderPass(VkCommandBuffer commandBuffer) override;
+        void endSwapchainRenderPass(VkCommandBuffer commandBuffer) override;
         void beginPostProcessRenderPass(VkCommandBuffer commandBuffer, uint32_t targetIndex);
         void endPostProcessRenderPass(VkCommandBuffer commandBuffer);
 
@@ -39,17 +40,20 @@ namespace Faye
         VkRenderPass getSwapChainRenderPass() const { return vk_swapchain->getRenderPass(); }
         VkRenderPass getPostProcessRenderPass() const { return postProcessRenderPass->getHandle(); }
         float getAspectRatio() const { return vk_swapchain->extentAspectRatio(); }
-        VkSampler getSceneViewportSampler() const { return sceneViewportSampler; }
+        VkSampler getSceneViewportSampler() const override { return sceneViewportSampler; }
+        VkExtent2D getSceneExtent() const override { return sceneRenderExtent; }
         VkExtent2D getSceneRenderExtent() const { return sceneRenderExtent; }
-        std::vector<VkImageView> getSceneImageViews() const;
-        std::vector<VkImageView> getSceneMotionImageViews() const;
-        std::vector<VkImageView> getSceneDepthImageViews() const;
-        std::vector<VkImageView> getPostProcessTargetImageViews(uint32_t targetIndex) const { return postProcessTargets.at(targetIndex).imageViews; }
-        VkImageView getSceneColorImageView(uint32_t index) const;
+        std::vector<VkImageView> getSceneImageViews() const override;
+        std::vector<VkImageView> getSceneMotionImageViews() const override;
+        std::vector<VkImageView> getSceneDepthImageViews() const override;
+        std::vector<VkImageView> getPostProcessTargetImageViews(uint32_t targetIndex) const override { return postProcessTargets.at(targetIndex).imageViews; }
+        VkImageView getSceneColorImageView(uint32_t index) const override;
         uint64_t getSwapchainGeneration() const { return swapchainGeneration; }
         bool isFrameInProgress() const { return isFrameStarted; }
+        uint32_t getMaxFramesInFlight() const override { return VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; }
+        uint32_t getPostProcessTargetCount() const override { return kPostProcessTargetCount; }
 
-        bool resizeSceneIfNeeded(uint32_t w, uint32_t h);
+        bool resizeSceneIfNeeded(uint32_t w, uint32_t h) override;
 
         VkCommandBuffer getCurrentCommandBuffer() const
         {

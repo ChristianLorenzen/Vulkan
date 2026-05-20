@@ -10,7 +10,6 @@
 
 #include "ImGuiRenderer.hpp"
 #include "ImGuiCustomStyle.hpp"
-#include "Renderer/Vulkan/vk_renderer.hpp"
 
 #include "Core/Logging/Logger.hpp"
 
@@ -110,7 +109,7 @@ void ImGuiRenderer::render(VkCommandBuffer commandBuffer)
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, 0);
 }
 
-void ImGuiRenderer::registerViewportTextures(VulkanRenderer &renderer)
+void ImGuiRenderer::registerViewportTextures(IRenderer &renderer)
 {
     if (!initialized)
         return;
@@ -144,7 +143,7 @@ void ImGuiRenderer::registerViewportTextures(VulkanRenderer &renderer)
             ImGui_ImplVulkan_AddTexture(sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 
-    const uint32_t targetCount = VulkanRenderer::kPostProcessTargetCount;
+    const uint32_t targetCount = renderer.getPostProcessTargetCount();
     postProcessDescriptorSets.resize(targetCount);
     for (uint32_t t = 0; t < targetCount; ++t)
     {
@@ -207,4 +206,17 @@ VkDescriptorSet ImGuiRenderer::getPostProcessDS(uint32_t targetIdx, uint32_t fra
     if (frameIdx >= perTarget.size())
         return VK_NULL_HANDLE;
     return perTarget[frameIdx];
+}
+
+VkDescriptorSet ImGuiRenderer::registerTexture(VkSampler sampler, VkImageView imageView)
+{
+    if (!initialized || sampler == VK_NULL_HANDLE || imageView == VK_NULL_HANDLE)
+        return VK_NULL_HANDLE;
+    return ImGui_ImplVulkan_AddTexture(sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
+void ImGuiRenderer::unregisterTexture(VkDescriptorSet ds)
+{
+    if (ds != VK_NULL_HANDLE)
+        ImGui_ImplVulkan_RemoveTexture(ds);
 }

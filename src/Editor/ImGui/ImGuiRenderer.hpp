@@ -1,7 +1,6 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <vulkan/vulkan.h>
+#include "Renderer/IRenderer.hpp"
 
 #include <vector>
 
@@ -9,8 +8,6 @@ struct GLFWwindow;
 
 namespace Faye
 {
-    class VulkanRenderer;
-
     // Owns the full ImGui lifecycle (init/shutdown/newFrame/render) and all
     // viewport texture descriptor sets that the editor uses to display render
     // targets. VulkanRenderer retains ownership of GPU resources (images,
@@ -42,8 +39,13 @@ namespace Faye
 
         // Register/re-register all scene and post-process viewport textures.
         // Safe to call multiple times; existing registrations are cleaned up first.
-        void registerViewportTextures(VulkanRenderer &renderer);
+        void registerViewportTextures(IRenderer &renderer);
         void unregisterViewportTextures();
+
+        // Register/unregister individual textures (e.g. material thumbnails).
+        // Returns VK_NULL_HANDLE if not initialized.
+        VkDescriptorSet registerTexture(VkSampler sampler, VkImageView imageView);
+        void unregisterTexture(VkDescriptorSet ds);
 
         VkDescriptorSet getSceneColorDS(uint32_t frameIdx) const;
         VkDescriptorSet getSceneMotionDS(uint32_t frameIdx) const;
