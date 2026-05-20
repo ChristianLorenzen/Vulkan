@@ -16,7 +16,7 @@ public:
         (void)entity;
     }
 
-    void onUpdate(Entity entity, Scene * /*scene*/, float dt) override
+    void onUpdate(Entity entity, Scene * /*scene*/, const EngineContext &ctx) override
     {
         if (!entity.isValid())
             return;
@@ -25,9 +25,10 @@ public:
         if (transform == nullptr)
             return;
 
-        // Rotate 90 degrees per second around the Y axis.
-        constexpr float kDegreesPerSecond = 90.0f;
-        transform->rotation.y += kDegreesPerSecond * dt;
+        // Rotate 90 degrees per second around the Y axis, framerate-independent.
+        // rotation.y is in radians — convert speed from degrees first.
+        constexpr float kSpeed = glm::radians(90.0f);  // ~1.57 rad/s
+        transform->rotation.y += kSpeed * ctx.dt;
     }
 
     void onDestroy(Entity entity, Scene * /*scene*/) override

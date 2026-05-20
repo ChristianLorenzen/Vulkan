@@ -5,6 +5,7 @@
 
 #include "Core/HotReload/HotReloadManager.hpp"
 #include "Scene/Entities/EntityManager.hpp"
+#include "Scripting/EngineContext.hpp"
 #include "Scripting/IScript.hpp"
 
 namespace Faye
@@ -37,7 +38,7 @@ namespace Faye
         void reloadScript(Entity entity);
 
         /// Call onUpdate on all active scripts.
-        void update(float dt, Scene *scene);
+        void update(const EngineContext &ctx, Scene *scene);
 
         /// Register a hot-reload watch on bin/ for .so files.
         void registerHotReload(HotReloadManager &hotReloadManager);

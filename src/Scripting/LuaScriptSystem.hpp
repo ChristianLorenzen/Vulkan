@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "Scene/Entities/Entity.hpp"
-#include "Scripting/LuaEngineContext.hpp"
+#include "Scripting/EngineContext.hpp"
 
 namespace Faye
 {
@@ -43,7 +43,7 @@ namespace Faye
         void reloadScript(Entity entity, Scene *scene);
 
         /// Call onUpdate on all active scripts.
-        void update(float dt, Scene *scene);
+        void update(const EngineContext &ctx, Scene *scene);
 
         bool isLoaded(Entity entity) const;
 
@@ -61,6 +61,6 @@ namespace Faye
         std::unordered_map<uint32_t, LuaScriptEntry> scripts; // entityId → entry
 
         /// Holds the engine-level variables that are pushed into lua["Engine"] each frame.
-        LuaEngineContext engineContext;
+        EngineContext engineContext;
     };
 }

@@ -25,6 +25,7 @@
 #include "Scene/SceneQueries.hpp"
 #include "Scripting/ScriptSystem.hpp"
 #include "Scripting/LuaScriptSystem.hpp"
+#include "Scripting/EngineContext.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
 
@@ -131,6 +132,7 @@ private:
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
     ScriptSystem scriptSystem;
     LuaScriptSystem luaScriptSystem;
+    EngineContext scriptEngineContext;  // single source of truth for dt/time passed to all script types
     VulkanShaderManager shaderManager;
     FrameTimer timer;
     std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
@@ -411,8 +413,10 @@ private:
                 glfwSetWindowShouldClose(glfwWindow->getWindow(), true);
             }
 
-            scriptSystem.update(static_cast<float>(timer.getDelta()), &scene);
-            luaScriptSystem.update(static_cast<float>(timer.getDelta()), &scene);
+            scriptEngineContext.dt    = static_cast<float>(timer.getDelta());
+            scriptEngineContext.time += scriptEngineContext.dt;
+            scriptSystem.update(scriptEngineContext, &scene);
+            luaScriptSystem.update(scriptEngineContext, &scene);
 
             RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry, *materialRegistry);
 

@@ -157,7 +157,7 @@ void ScriptSystem::reloadScript(Entity entity)
     loadScript(entity, soPath);
 }
 
-void ScriptSystem::update(float dt, Scene *scene)
+void ScriptSystem::update(const EngineContext &ctx, Scene *scene)
 {
     if (scene == nullptr)
     {
@@ -177,7 +177,7 @@ void ScriptSystem::update(float dt, Scene *scene)
             continue;
         }
 
-        script.instance->onUpdate(entity, scene, dt);
+        script.instance->onUpdate(entity, scene, ctx);
     }
 }
 

@@ -99,10 +99,10 @@ void LuaScriptSystem::bindEngineAPI()
 
     // Engine context — read-only table of engine-level variables updated each frame.
     // Expandable: add fields to LuaEngineContext.hpp and register them here.
-    lua.new_usertype<LuaEngineContext>("EngineContext",
+    lua.new_usertype<EngineContext>("EngineContext",
         sol::no_constructor,
-        "dt",   sol::readonly(&LuaEngineContext::dt),
-        "time", sol::readonly(&LuaEngineContext::time)
+        "dt",   sol::readonly(&EngineContext::dt),
+        "time", sol::readonly(&EngineContext::time)
     );
     lua["Engine"] = &engineContext;
 
@@ -217,14 +217,15 @@ void LuaScriptSystem::reloadScript(Entity entity, Scene *scene)
     loadScript(entity, path, scene);
 }
 
-void LuaScriptSystem::update(float dt, Scene *scene)
+void LuaScriptSystem::update(const EngineContext &ctx, Scene *scene)
 {
     if (!scene)
         return;
 
-    // Update engine context so scripts can read Engine.dt and Engine.time
-    engineContext.dt    = dt;
-    engineContext.time += dt;
+    // Sync from the shared engine context so Lua's Engine.dt/Engine.time
+    // always matches what C++ scripts see via onUpdate ctx.
+    engineContext.dt   = ctx.dt;
+    engineContext.time = ctx.time;
 
     for (auto &[entityId, entry] : scripts)
     {
@@ -235,7 +236,7 @@ void LuaScriptSystem::update(float dt, Scene *scene)
         if (!entity.isValid())
             continue;
 
-        auto r = entry.onUpdate(entity, dt);
+        auto r = entry.onUpdate(entity, ctx.dt);
         if (!r.valid())
         {
             sol::error err = r;
