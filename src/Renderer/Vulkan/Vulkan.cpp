@@ -64,8 +64,21 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                     .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                     .build();
 
-    vk_renderer->initImGui(imGUIPool->getPool());
     initializeFrameResources();
+
+    imGuiRenderer.init(
+        window.getWindow(),
+        vk_device->getInstance(),
+        vk_device->getPhysicalDevice(),
+        vk_device->getDevice(),
+        vk_device->getGraphicsQueueFamilyIndex(),
+        vk_device->getGraphicsQueue(),
+        imGUIPool->getPool(),
+        vk_renderer->getSwapChainRenderPass(),
+        VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
+        VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    imGuiRenderer.registerViewportTextures(*vk_renderer);
+    lastImGuiSwapchainGeneration = vk_renderer->getSwapchainGeneration();
 }
 
 void Faye::Vulkan::initializeFrameResources()
@@ -147,6 +160,8 @@ Faye::Vulkan::~Vulkan()
     }
     textureThumbnailDescriptors.clear();
 
+    imGuiRenderer.shutdown();
+
     simpleRenderSystem.reset();
     pointLightRenderSystem.reset();
     postProcessChain.reset();
@@ -220,21 +235,30 @@ void Faye::Vulkan::notifyShaderRecompilation(const std::string &compiledShader)
 
 void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFrameCallback &drawImGui)
 {
-    auto getViewportDescriptorSet = [&]() -> VkDescriptorSet
+    auto getViewportDescriptorSet = [&](int frameIndex) -> VkDescriptorSet
     {
+        const auto fi = static_cast<uint32_t>(frameIndex);
         switch (frameInput.renderView.debugMode)
         {
         case RenderDebugMode::Lit:
-            return postProcessChain->getViewportDescriptorSet(frameInput.postProcessStack);
+        {
+            const uint32_t finalTarget = postProcessChain->getFinalTargetIndex(frameInput.postProcessStack);
+            if (finalTarget == VulkanRenderer::kPostProcessTargetCount)
+                return imGuiRenderer.getSceneColorDS(fi);
+            return imGuiRenderer.getPostProcessDS(finalTarget, fi);
+        }
         case RenderDebugMode::SceneColor:
-            return vk_renderer->getSceneViewportDescriptorSet();
+            return imGuiRenderer.getSceneColorDS(fi);
         case RenderDebugMode::SceneDepth:
-            return vk_renderer->getSceneDepthViewportDescriptorSet();
+            return imGuiRenderer.getSceneDepthDS(fi);
         case RenderDebugMode::SceneMotion:
-            return vk_renderer->getSceneMotionViewportDescriptorSet();
+            return imGuiRenderer.getSceneMotionDS(fi);
         }
 
-        return postProcessChain->getViewportDescriptorSet(frameInput.postProcessStack);
+        const uint32_t finalTarget = postProcessChain->getFinalTargetIndex(frameInput.postProcessStack);
+        if (finalTarget == VulkanRenderer::kPostProcessTargetCount)
+            return imGuiRenderer.getSceneColorDS(fi);
+        return imGuiRenderer.getPostProcessDS(finalTarget, fi);
     };
 
     const auto *primaryCamera = frameInput.renderView.camera;
@@ -254,8 +278,10 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
     // Resize offscreen scene targets to whatever the viewport panel requested last frame.
     if (pendingViewportWidth > 0 && pendingViewportHeight > 0)
     {
-        vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight);
-
+        if (vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight))
+        {
+            imGuiRenderer.registerViewportTextures(*vk_renderer);
+        }
         pendingViewportWidth = 0;
         pendingViewportHeight = 0;
     }
@@ -265,6 +291,28 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
     if (auto commandBuffer = vk_renderer->beginFrame())
     {
         int frameIndex = vk_renderer->getFrameIndex();
+
+        // Detect swapchain recreation (e.g. window resize) and reinit ImGui with
+        // the new render pass. vkDeviceWaitIdle was already called inside
+        // recreateSwapchain(), so it is safe to destroy/recreate backend state here.
+        const uint64_t currentSwapGen = vk_renderer->getSwapchainGeneration();
+        if (currentSwapGen != lastImGuiSwapchainGeneration)
+        {
+            imGuiRenderer.shutdown();
+            imGuiRenderer.init(
+                window.getWindow(),
+                vk_device->getInstance(),
+                vk_device->getPhysicalDevice(),
+                vk_device->getDevice(),
+                vk_device->getGraphicsQueueFamilyIndex(),
+                vk_device->getGraphicsQueue(),
+                imGUIPool->getPool(),
+                vk_renderer->getSwapChainRenderPass(),
+                VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
+                VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+            imGuiRenderer.registerViewportTextures(*vk_renderer);
+            lastImGuiSwapchainGeneration = currentSwapGen;
+        }
 
         FrameContext frameContext{
             frameIndex,
@@ -302,9 +350,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
 
         postProcessChain->renderComposite(frameContext, frameInput.postProcessStack);
 
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+        imGuiRenderer.newFrame();
 
         ImGuiFrameData frameData{};
         frameData.frameTimeMs = frameInput.frameTimeMs;
@@ -313,7 +359,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
 
         VkExtent2D sceneRenderExtent = vk_renderer->getSceneRenderExtent();
         frameData.viewportTexture = reinterpret_cast<ImTextureID>(
-            getViewportDescriptorSet());
+            getViewportDescriptorSet(frameIndex));
         frameData.viewportSize = ImVec2(
             static_cast<float>(sceneRenderExtent.width),
             static_cast<float>(sceneRenderExtent.height));
@@ -330,8 +376,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
             pendingViewportHeight = static_cast<uint32_t>(frameData.requestedViewportSize.y);
         }
 
-        ImGui::Render();
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer, 0);
+        imGuiRenderer.render(commandBuffer);
 
         vk_renderer->endSwapchainRenderPass(commandBuffer);
         vk_renderer->endFrame();

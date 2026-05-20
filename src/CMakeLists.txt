@@ -4,6 +4,7 @@ set(FAYE_ENGINE_SOURCES
     Core/IO/FileSystem.cpp
     Editor/ImGui/EditorPanels.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp
+    Editor/ImGui/ImGuiRenderer.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp

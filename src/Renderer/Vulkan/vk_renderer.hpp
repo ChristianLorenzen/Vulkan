@@ -39,10 +39,7 @@ namespace Faye
         VkRenderPass getSwapChainRenderPass() const { return vk_swapchain->getRenderPass(); }
         VkRenderPass getPostProcessRenderPass() const { return postProcessRenderPass->getHandle(); }
         float getAspectRatio() const { return vk_swapchain->extentAspectRatio(); }
-        VkDescriptorSet getSceneViewportDescriptorSet() const { return sceneViewportDescriptorSets[currentFrameIndex]; }
-        VkDescriptorSet getSceneMotionViewportDescriptorSet() const { return sceneMotionViewportDescriptorSets[currentFrameIndex]; }
-        VkDescriptorSet getSceneDepthViewportDescriptorSet() const { return sceneDepthViewportDescriptorSets[currentFrameIndex]; }
-        VkDescriptorSet getPostProcessViewportDescriptorSet(uint32_t targetIndex) const { return postProcessTargets.at(targetIndex).viewportDescriptorSets[currentFrameIndex]; }
+        VkSampler getSceneViewportSampler() const { return sceneViewportSampler; }
         VkExtent2D getSceneRenderExtent() const { return sceneRenderExtent; }
         std::vector<VkImageView> getSceneImageViews() const;
         std::vector<VkImageView> getSceneMotionImageViews() const;
@@ -66,15 +63,12 @@ namespace Faye
             return currentFrameIndex;
         }
 
-        void initImGui(VkDescriptorPool descriptorPool);
-
     private:
         struct PostProcessTargetResources
         {
             std::vector<VkImage> images;
             std::vector<VkDeviceMemory> imageMemories;
             std::vector<VkImageView> imageViews;
-            std::vector<VkDescriptorSet> viewportDescriptorSets;
             std::vector<VulkanRenderPassInstance> renderPassInstances;
         };
 
@@ -89,15 +83,12 @@ namespace Faye
         void cleanupPostProcessRenderTargets();
         void createSceneViewportSampler();
         void destroySceneViewportSampler();
-        void registerSceneViewportTextures();
-        void unregisterSceneViewportTextures();
         void destroySceneRenderPass();
         void destroyPostProcessRenderPass();
         VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
         void createCommandBuffers();
         void freeCommandBuffers();
         void recreateSwapchain();
-        void shutdownImGui();
 
         Window &window;
         VulkanDevice &vk_device;
@@ -114,21 +105,17 @@ namespace Faye
         std::vector<VkImageResource> sceneMotionResources;
         std::vector<VkImageResource> sceneDepthResources;
 
-        std::vector<VkDescriptorSet> sceneViewportDescriptorSets;
-        std::vector<VkDescriptorSet> sceneMotionViewportDescriptorSets;
-        std::vector<VkDescriptorSet> sceneDepthViewportDescriptorSets;
+
 
         std::vector<VulkanRenderPassInstance> sceneRenderPassInstances;
         std::array<PostProcessTargetResources, kPostProcessTargetCount> postProcessTargets;
         std::vector<VkCommandBuffer> commandBuffers;
 
-        VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
         uint32_t currentImageIndex;
         uint64_t swapchainGeneration = 0;
         int activePostProcessTargetIndex = -1;
         int currentFrameIndex = 0;
         bool isFrameStarted = false;
-        bool imguiInitialized = false;
     };
 
 }

@@ -25,6 +25,7 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
+#include "Editor/ImGui/ImGuiRenderer.hpp"
 #include "MaterialCache.hpp"
 #include "TextureCache.hpp"
 #include "VulkanBuffer.hpp"
@@ -109,6 +110,9 @@ namespace Faye
 		std::unordered_map<TextureThumbnailCacheKey, VkDescriptorSet, TextureThumbnailCacheKeyHasher> textureThumbnailDescriptors;
 		uint32_t pendingViewportWidth = 0;
 		uint32_t pendingViewportHeight = 0;
+		uint64_t lastImGuiSwapchainGeneration = 0;
+
+		ImGuiRenderer imGuiRenderer;
 
 		void initializeFrameResources();
 	};
