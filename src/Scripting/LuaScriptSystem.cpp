@@ -69,6 +69,43 @@ void LuaScriptSystem::bindEngineAPI()
         return t;
     };
 
+    // Rotation accessors — stored in radians (matches TransformComponent::mat4)
+    lua["Entity"]["setRotation"] = [](const Entity &e, float x, float y, float z)
+    {
+        TransformComponent *t = e.tryGetTransform();
+        if (t != nullptr)
+            t->rotation = glm::vec3(x, y, z);
+    };
+
+    lua["Entity"]["setRotationY"] = [](const Entity &e, float y)
+    {
+        TransformComponent *t = e.tryGetTransform();
+        if (t != nullptr)
+            t->rotation.y = y;
+    };
+
+    lua["Entity"]["getRotation"] = [this](const Entity &e) -> sol::table
+    {
+        sol::table t = lua.create_table();
+        TransformComponent *tc = e.tryGetTransform();
+        if (tc != nullptr)
+        {
+            t["x"] = tc->rotation.x;
+            t["y"] = tc->rotation.y;
+            t["z"] = tc->rotation.z;
+        }
+        return t;
+    };
+
+    // Engine context — read-only table of engine-level variables updated each frame.
+    // Expandable: add fields to LuaEngineContext.hpp and register them here.
+    lua.new_usertype<LuaEngineContext>("EngineContext",
+        sol::no_constructor,
+        "dt",   sol::readonly(&LuaEngineContext::dt),
+        "time", sol::readonly(&LuaEngineContext::time)
+    );
+    lua["Engine"] = &engineContext;
+
     // ----- Scene -----
     lua.new_usertype<Scene>("Scene",
         sol::no_constructor,
@@ -184,6 +221,10 @@ void LuaScriptSystem::update(float dt, Scene *scene)
 {
     if (!scene)
         return;
+
+    // Update engine context so scripts can read Engine.dt and Engine.time
+    engineContext.dt    = dt;
+    engineContext.time += dt;
 
     for (auto &[entityId, entry] : scripts)
     {

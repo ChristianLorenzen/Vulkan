@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "Scene/Entities/Entity.hpp"
+#include "Scripting/LuaEngineContext.hpp"
 
 namespace Faye
 {
@@ -58,5 +59,8 @@ namespace Faye
         };
 
         std::unordered_map<uint32_t, LuaScriptEntry> scripts; // entityId → entry
+
+        /// Holds the engine-level variables that are pushed into lua["Engine"] each frame.
+        LuaEngineContext engineContext;
     };
 }
