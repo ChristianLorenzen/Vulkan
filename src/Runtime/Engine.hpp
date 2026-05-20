@@ -65,7 +65,7 @@ public:
         editorPanels.setMaterialRegistry(materialRegistry.get());
         editorPanels.setModelRegistry(modelRegistry.get());
         editorPanels.setTextureThumbnailCallback([this](MaterialHandle handle, TextureType textureType) -> ImTextureID
-                                                {
+                                                 {
                                                     if (vkData == nullptr || materialRegistry == nullptr)
                                                     {
                                                         return 0;
@@ -78,8 +78,7 @@ public:
                                                     }
 
                                                     return reinterpret_cast<ImTextureID>(
-                                                        vkData->getMaterialTextureThumbnail(handle, *material, textureType));
-                                                });
+                                                        vkData->getMaterialTextureThumbnail(handle, *material, textureType)); });
 
         hotReloadShaderSubscriptionToken = hotReloadManager.subscribe([this](const HotReloadEvent &event)
                                                                       { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
@@ -323,13 +322,13 @@ private:
         // modelTransform.scale = {1.0f, 1.0f, 1.0f};
         // modelMesh.materialHandle = defaultMat;
 
-        Entity modelgltf = scene.createEntity("Test gltf");
-        auto &modelgltfTransform = modelgltf.addTransform();
-        auto &modelgltfMesh = modelgltf.addMesh(registerImportedModel("src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf"));
-        modelgltfTransform.translation = {0.f, -0.5f, 2.f};
-        modelgltfTransform.rotation = {0.f, 180.f, 0.f};
-        modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
-        modelgltfMesh.materialHandle = defaultMat;
+        // Entity modelgltf = scene.createEntity("Test gltf");
+        // auto &modelgltfTransform = modelgltf.addTransform();
+        // auto &modelgltfMesh = modelgltf.addMesh(registerImportedModel("src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf"));
+        // modelgltfTransform.translation = {0.f, -0.5f, 2.f};
+        // modelgltfTransform.rotation = {0.f, 180.f, 0.f};
+        // modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
+        // modelgltfMesh.materialHandle = defaultMat;
 
         Entity modelAdam = scene.createEntity("Adam Model");
         auto &modelAdamTransform = modelAdam.addTransform();

@@ -122,6 +122,7 @@ namespace Faye
         float emissiveIntensity = 1.0f;
         MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
         float alphaCutoff = 0.5f;
+        bool doubleSided = false;
 
         MaterialData() = default;
 

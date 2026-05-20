@@ -1,4 +1,5 @@
 #include "TextureRegistry.hpp"
+#include "TextureLoader.hpp"
 
 #include <stdexcept>
 
@@ -12,8 +13,27 @@ Faye::TextureHandle Faye::TextureRegistry::registerTexture(std::unique_ptr<Faye:
     }
 
     const TextureHandle handle{nextHandleValue++};
+
+    if (!texture->path.empty())
+    {
+        const std::string key = texture->path + "#" + std::to_string(static_cast<uint32_t>(texture->type));
+        pathIndex.emplace(key, handle);
+    }
+
     textures.emplace(handle.value, std::move(texture));
     return handle;
+}
+
+Faye::TextureHandle Faye::TextureRegistry::registerOrGetTexture(const std::string &path, TextureType type)
+{
+    const std::string key = path + "#" + std::to_string(static_cast<uint32_t>(type));
+    if (const auto iterator = pathIndex.find(key); iterator != pathIndex.end())
+    {
+        return iterator->second;
+    }
+
+    Texture loaded = loadTextureFromFile(path, type);
+    return registerTexture(std::make_unique<Texture>(std::move(loaded)));
 }
 
 Faye::Texture *Faye::TextureRegistry::getTexture(TextureHandle handle)

@@ -592,6 +592,9 @@ namespace Faye
                 }
 
                 materialChanged |= ImGui::DragFloat("Shininess", &materialData.shininess, 0.1f, 0.0f, 256.0f);
+                materialChanged |= ImGui::ColorEdit3("Emissive Color", &materialData.emissive.x);
+                materialChanged |= ImGui::DragFloat("Emissive Intensity", &materialData.emissiveIntensity, 0.01f, 0.0f, 10.0f);
+                materialChanged |= ImGui::Checkbox("Double Sided", &materialData.doubleSided);
 
                 if (materialChanged)
                 {

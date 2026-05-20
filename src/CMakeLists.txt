@@ -8,6 +8,7 @@ set(FAYE_ENGINE_SOURCES
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
     Renderer/Material/TextureLoader.cpp
+    Renderer/Material/TextureRegistry.cpp
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
     Renderer/Scene/Extractors/CameraRenderExtractor.cpp

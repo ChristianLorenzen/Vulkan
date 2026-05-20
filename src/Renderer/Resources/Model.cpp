@@ -731,6 +731,13 @@ namespace Faye
                     result.name);
             }
         }
+        {
+            int twoSided = 0;
+            if (material->Get(AI_MATKEY_TWOSIDED, twoSided) == AI_SUCCESS)
+            {
+                result.doubleSided = (twoSided != 0);
+            }
+        }
 
         for (int textureType = aiTextureType_NONE; textureType <= aiTextureType_UNKNOWN; textureType++)
         {
