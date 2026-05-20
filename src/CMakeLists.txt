@@ -37,6 +37,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp
     Scripting/ScriptSystem.cpp
+    Scripting/LuaScriptSystem.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
@@ -112,7 +113,9 @@ target_link_libraries(faye_app
     Faye::Vulkan
     assimp::assimp
     quill::quill
-    spirv-reflect-static)
+    spirv-reflect-static
+    lua_static
+    sol2::sol2)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
 

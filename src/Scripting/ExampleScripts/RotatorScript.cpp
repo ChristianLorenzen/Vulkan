@@ -36,8 +36,4 @@ public:
     }
 };
 
-extern "C"
-{
-    Faye::IScript *createScript() { return new RotatorScript(); }
-    void destroyScript(Faye::IScript *script) { delete script; }
-}
+FAYE_REGISTER_SCRIPT(RotatorScript)

@@ -33,3 +33,16 @@ namespace Faye
 //   extern "C" void destroyScript(Faye::IScript *);
 using CreateScriptFn  = Faye::IScript *(*)();
 using DestroyScriptFn = void (*)(Faye::IScript *);
+
+// FAYE_REGISTER_SCRIPT(ClassName)
+// Place this macro once at file scope in a script .cpp to generate the required
+// extern "C" factory functions automatically — no manual boilerplate needed.
+#define FAYE_REGISTER_SCRIPT(ClassName)                          \
+    extern "C" Faye::IScript *createScript()                     \
+    {                                                            \
+        return new ClassName();                                  \
+    }                                                            \
+    extern "C" void destroyScript(Faye::IScript *script)         \
+    {                                                            \
+        delete script;                                           \
+    }

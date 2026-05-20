@@ -24,6 +24,7 @@
 #include "Scene/SceneManager.hpp"
 #include "Scene/SceneQueries.hpp"
 #include "Scripting/ScriptSystem.hpp"
+#include "Scripting/LuaScriptSystem.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
 
@@ -129,6 +130,7 @@ private:
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionToken = 0;
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
     ScriptSystem scriptSystem;
+    LuaScriptSystem luaScriptSystem;
     VulkanShaderManager shaderManager;
     FrameTimer timer;
     std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
@@ -346,9 +348,18 @@ private:
         // Scripting system wiring.
         scriptSystem.bindScene(&scene);
 
+        // Lua scripting system wiring.
+        luaScriptSystem.bindEngineAPI();
+
         // Demo: attach the RotatorScript to Cube A if the .so is present.
         // The .so is absent on a fresh build until faye_rotator_script is compiled.
         scriptSystem.loadScript(meshEntity, "bin/libfaye_rotator_script.so");
+
+        // Demo: attach the Lua rotator to Cube B if the script file is present.
+        if (std::filesystem::exists("src/Scripting/ExampleScripts/rotator.lua"))
+        {
+            luaScriptSystem.loadScript(secondMeshEntity, "src/Scripting/ExampleScripts/rotator.lua", &scene);
+        }
     }
 
     void mainLoop()
@@ -401,6 +412,7 @@ private:
             }
 
             scriptSystem.update(static_cast<float>(timer.getDelta()), &scene);
+            luaScriptSystem.update(static_cast<float>(timer.getDelta()), &scene);
 
             RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry, *materialRegistry);
 
