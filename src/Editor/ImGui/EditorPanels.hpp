@@ -12,6 +12,8 @@
 
 namespace Faye
 {
+    class ScriptSystem;
+
     class IEditorPanel
     {
     public:
@@ -23,6 +25,7 @@ namespace Faye
         virtual bool isOpen() const = 0;
         virtual void setOpen(bool open) = 0;
         virtual bool showInViewMenu() const { return true; }
+        virtual void bindScriptSystem(ScriptSystem *) {}
         virtual void draw(ImGuiFrameData &frameData,
                           Scene *scene,
                           Entity &selectedEntity,
@@ -47,6 +50,7 @@ namespace Faye
         void setMaterialRegistry(MaterialRegistry *registry) { materialRegistry = registry; }
         void setModelRegistry(ModelRegistry *registry) { modelRegistry = registry; }
         void setTextureThumbnailCallback(TextureThumbnailCallback callback) { textureThumbnailCallback = std::move(callback); }
+        void setScriptSystem(ScriptSystem *sys) { scriptSystem = sys; }
         void draw(ImGuiFrameData &frameData);
 
     private:
@@ -61,5 +65,6 @@ namespace Faye
         MaterialRegistry *materialRegistry = nullptr;
         ModelRegistry *modelRegistry = nullptr;
         TextureThumbnailCallback textureThumbnailCallback;
+        ScriptSystem *scriptSystem = nullptr;
     };
 }

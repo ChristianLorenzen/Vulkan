@@ -23,6 +23,7 @@
 #include "Renderer/Vulkan/vk_shader_manager.hpp"
 #include "Scene/SceneManager.hpp"
 #include "Scene/SceneQueries.hpp"
+#include "Scripting/ScriptSystem.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
 
@@ -64,6 +65,7 @@ public:
                                                 { return createPrimitiveEntity(primitiveType); });
         editorPanels.setMaterialRegistry(materialRegistry.get());
         editorPanels.setModelRegistry(modelRegistry.get());
+        editorPanels.setScriptSystem(&scriptSystem);
         editorPanels.setTextureThumbnailCallback([this](MaterialHandle handle, TextureType textureType) -> ImTextureID
                                                  {
                                                     if (vkData == nullptr || materialRegistry == nullptr)
@@ -84,6 +86,7 @@ public:
                                                                       { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
         hotReloadShaderSubscriptionTokenTwo = hotReloadManager.subscribe([this](const HotReloadEvent &event)
                                                                          { LOG_INFO(Logger::getInstance(), "Received hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string()); });
+        scriptSystem.registerHotReload(hotReloadManager);
         hotReloadManager.start();
 
         LOG_INFO(Logger::getInstance(), "Starting main loop...");
@@ -100,6 +103,7 @@ public:
             hotReloadShaderSubscriptionTokenTwo = 0;
         }
 
+        scriptSystem.unregisterHotReload();
         hotReloadManager.stop();
     }
 
@@ -124,6 +128,7 @@ private:
     HotReloadManager hotReloadManager;
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionToken = 0;
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
+    ScriptSystem scriptSystem;
     VulkanShaderManager shaderManager;
     FrameTimer timer;
     std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
@@ -337,6 +342,13 @@ private:
         modelAdamTransform.translation = {0.f, 0.f, 0.f};
         modelAdamTransform.rotation = {0.f, 0.f, 0.f};
         modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
+
+        // Scripting system wiring.
+        scriptSystem.bindScene(&scene);
+
+        // Demo: attach the RotatorScript to Cube A if the .so is present.
+        // The .so is absent on a fresh build until faye_rotator_script is compiled.
+        scriptSystem.loadScript(meshEntity, "bin/libfaye_rotator_script.so");
     }
 
     void mainLoop()
@@ -387,6 +399,8 @@ private:
             {
                 glfwSetWindowShouldClose(glfwWindow->getWindow(), true);
             }
+
+            scriptSystem.update(static_cast<float>(timer.getDelta()), &scene);
 
             RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry, *materialRegistry);
 

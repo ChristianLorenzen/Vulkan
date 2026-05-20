@@ -3,6 +3,7 @@
 #include "Assets/ModelRegistry.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
+#include "Scripting/ScriptSystem.hpp"
 
 #include "imgui.h"
 
@@ -408,12 +409,16 @@ namespace Faye
                         drawCamera(selectedEntity);
                         drawPointLight(selectedEntity);
                         drawPostProcessStack(selectedEntity);
+                        drawScript(selectedEntity);
                     }
                 }
                 ImGui::End();
             }
 
+            void bindScriptSystem(ScriptSystem *sys) override { scriptSystem = sys; }
+
         private:
+            ScriptSystem *scriptSystem = nullptr;
             void drawEntityMetadata(const Entity &entity)
             {
                 std::array<char, 128> nameBuffer{};
@@ -897,6 +902,22 @@ namespace Faye
             }
 
             bool open = true;
+
+            void drawScript(const Entity &entity)
+            {
+                if (scriptSystem == nullptr)
+                    return;
+
+                const ScriptComponent *script = scriptSystem->tryGetScriptComponent(entity.id());
+                if (script == nullptr)
+                    return;
+
+                if (ImGui::CollapsingHeader("Script", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    ImGui::Text("Name: %s", script->scriptName.c_str());
+                    ImGui::TextWrapped("Path: %s", script->scriptPath.c_str());
+                }
+            }
         };
     }
 
@@ -920,6 +941,7 @@ namespace Faye
             if (!panel->isOpen())
                 continue;
 
+            panel->bindScriptSystem(scriptSystem);
             panel->draw(frameData, boundScene, selectedEntity, materialRegistry, modelRegistry, &textureThumbnailCallback);
         }
     }

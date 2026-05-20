@@ -36,6 +36,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/VkSamplerResource.cpp
     Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp
+    Scripting/ScriptSystem.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
@@ -136,6 +137,35 @@ endif()
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(faye_app PRIVATE dl pthread)
+    target_link_options(faye_app PRIVATE -rdynamic)
+endif()
+
+# --- RotatorScript example plugin ---
+FetchContent_GetProperties(assimp SOURCE_DIR _assimp_script_src BINARY_DIR _assimp_script_bin)
+
+add_library(faye_rotator_script SHARED
+    Scripting/ExampleScripts/RotatorScript.cpp)
+
+target_include_directories(faye_rotator_script
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${_assimp_script_src}/include
+    ${_assimp_script_bin}/include)
+
+target_compile_features(faye_rotator_script PRIVATE cxx_std_20)
+
+if(MSVC)
+    target_compile_options(faye_rotator_script PRIVATE /W4)
+else()
+    target_compile_options(faye_rotator_script PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# Clear the debug postfix assimp injects globally so the .so name stays predictable.
+set_target_properties(faye_rotator_script PROPERTIES DEBUG_POSTFIX "")
+
+if(FAYE_COPY_BIN_TO_REPO_BIN)
+    set_target_properties(faye_rotator_script PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 endif()
 
 faye_add_shader_target(
