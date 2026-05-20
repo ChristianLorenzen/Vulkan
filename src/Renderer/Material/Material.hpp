@@ -20,6 +20,10 @@ namespace Faye
         Mask = 1,
     };
 
+    // Handle to a MaterialTemplate (0 = built-in PBR).
+    using MaterialTemplateHandle = uint32_t;
+    static constexpr MaterialTemplateHandle kBuiltinPBRTemplateHandle = 0;
+
     enum class TextureType
     {
         Albedo,
@@ -123,6 +127,9 @@ namespace Faye
         MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
         float alphaCutoff = 0.5f;
         bool doubleSided = false;
+
+        // 0 = built-in PBR pipeline. Non-zero values index into MaterialTemplateRegistry.
+        MaterialTemplateHandle templateHandle = kBuiltinPBRTemplateHandle;
 
         MaterialData() = default;
 

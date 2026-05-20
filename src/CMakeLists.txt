@@ -16,6 +16,8 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Scene/Extractors/PointLightRenderExtractor.cpp
     Renderer/Scene/RenderExtractionManager.cpp
     Renderer/Vulkan/vk_shader_manager.cpp
+    Renderer/Vulkan/ShaderReflection.cpp
+    Renderer/Material/MaterialTemplate.cpp
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
@@ -71,6 +73,8 @@ set(FAYE_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_fog.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_edge_detect.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_debug.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/custom_material.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/custom_material.frag
 )
 
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})
@@ -105,7 +109,8 @@ target_link_libraries(faye_app
     Faye::GLFW
     Faye::Vulkan
     assimp::assimp
-    quill::quill)
+    quill::quill
+    spirv-reflect-static)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
 

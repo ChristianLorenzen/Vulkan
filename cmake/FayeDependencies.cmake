@@ -67,4 +67,16 @@ function(faye_configure_dependencies)
     )
 
     FetchContent_MakeAvailable(imgui quill assimp)
+
+    FetchContent_Declare(
+        spirv_reflect
+        GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Reflect.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+
+    set(SPIRV_REFLECT_STATIC_LIB ON  CACHE BOOL "Build SPIRV-Reflect as a static library" FORCE)
+    set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "Build the spirv-reflect CLI tool"         FORCE)
+    set(SPIRV_REFLECT_EXAMPLES   OFF CACHE BOOL "Build SPIRV-Reflect examples"              FORCE)
+    FetchContent_MakeAvailable(spirv_reflect)
 endfunction()

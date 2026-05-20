@@ -59,7 +59,7 @@ function(faye_add_shader_target target_name)
         add_custom_command(
             OUTPUT "${_output}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_output_dir}"
-            COMMAND "${_faye_glslc}" "${_shader}" -o "${_output}"
+            COMMAND "${_faye_glslc}" "${_shader}" -I "${_shader_source_root}" -o "${_output}"
             DEPENDS "${_shader}"
             COMMENT "Compiling shader ${_shader_name}"
             VERBATIM)
