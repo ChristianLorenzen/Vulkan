@@ -342,6 +342,18 @@ namespace Faye
             currentVertexOffset += static_cast<uint32_t>(mesh.vertices.size());
             currentIndexOffset += static_cast<uint32_t>(mesh.indices.size());
         }
+
+        // Build mesh node hierarchy (submesh indices map 1:1 to builder.meshes indices)
+        meshNodes.reserve(builder.nodes.size());
+        for (const auto &builderNode : builder.nodes)
+        {
+            MeshNode node;
+            node.name = builderNode.name;
+            node.submeshIndices = builderNode.meshDataIndices;
+            node.childNodeIndices = builderNode.childNodeIndices;
+            meshNodes.push_back(std::move(node));
+        }
+        rootNodeIndex = builder.rootNodeIndex;
         std::vector<uint32_t> meshIndices = std::vector<uint32_t>{};
         uint32_t vertexOffset = 0;
         for (const auto &mesh : builder.meshes)
@@ -545,24 +557,34 @@ namespace Faye
             materials.push_back(processMaterial(scene->mMaterials[materialIndex], scene));
         }
 
-        processNode(scene->mRootNode, scene);
+        rootNodeIndex = processNode(scene->mRootNode, scene);
     }
 
-    void Builder::processNode(aiNode *node, const aiScene *scene, const glm::mat4 &parentTransform)
+    uint32_t Builder::processNode(aiNode *node, const aiScene *scene, const glm::mat4 &parentTransform)
     {
         const glm::mat4 nodeTransform = parentTransform * aiMatrixToGlm(node->mTransformation);
+
+        NodeData nodeData;
+        nodeData.name = node->mName.C_Str();
 
         for (unsigned int meshIndex = 0; meshIndex < node->mNumMeshes; meshIndex++)
         {
             aiMesh *mesh = scene->mMeshes[node->mMeshes[meshIndex]];
-            // Process the mesh and add it to the builder
+            uint32_t meshDataIdx = static_cast<uint32_t>(meshes.size());
             meshes.push_back(processMesh(mesh, scene, nodeTransform));
+            nodeData.meshDataIndices.push_back(meshDataIdx);
         }
+
+        uint32_t nodeIndex = static_cast<uint32_t>(nodes.size());
+        nodes.push_back(std::move(nodeData));
 
         for (unsigned int childIndex = 0; childIndex < node->mNumChildren; childIndex++)
         {
-            processNode(node->mChildren[childIndex], scene, nodeTransform);
+            uint32_t childNodeIndex = processNode(node->mChildren[childIndex], scene, nodeTransform);
+            nodes[nodeIndex].childNodeIndices.push_back(childNodeIndex);
         }
+
+        return nodeIndex;
     }
 
     Mesh Builder::processMesh(aiMesh *mesh, const aiScene * /*scene*/, const glm::mat4 &nodeTransform)

@@ -8,6 +8,7 @@
 #include "Renderer/Resources/PrimitiveType.hpp"
 #include "Renderer/Frame/ImGuiFrameData.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
+#include "Renderer/Material/MaterialTemplate.hpp"
 #include "Scene/Scene.hpp"
 
 namespace Faye
@@ -29,9 +30,11 @@ namespace Faye
         virtual void draw(ImGuiFrameData &frameData,
                           Scene *scene,
                           Entity &selectedEntity,
+                          uint32_t &selectedMeshNodeIndex,
                           MaterialRegistry *materialRegistry = nullptr,
                           ModelRegistry *modelRegistry = nullptr,
-                          const TextureThumbnailCallback *textureThumbnailCallback = nullptr) = 0;
+                          const TextureThumbnailCallback *textureThumbnailCallback = nullptr,
+                          MaterialTemplateRegistry *materialTemplateRegistry = nullptr) = 0;
     };
 
     class EditorPanels
@@ -49,6 +52,7 @@ namespace Faye
         Entity getSelectedEntity() const { return selectedEntity; }
         void setMaterialRegistry(MaterialRegistry *registry) { materialRegistry = registry; }
         void setModelRegistry(ModelRegistry *registry) { modelRegistry = registry; }
+        void setMaterialTemplateRegistry(MaterialTemplateRegistry *registry) { materialTemplateRegistry = registry; }
         void setTextureThumbnailCallback(TextureThumbnailCallback callback) { textureThumbnailCallback = std::move(callback); }
         void setScriptSystem(ScriptSystem *sys) { scriptSystem = sys; }
         void draw(ImGuiFrameData &frameData);
@@ -59,11 +63,13 @@ namespace Faye
 
         Scene *boundScene = nullptr;
         Entity selectedEntity;
+        uint32_t selectedMeshNodeIndex = ~0u;
         PrimitiveCreateCallback primitiveCreateCallback;
         std::vector<std::unique_ptr<IEditorPanel>> panels;
 
         MaterialRegistry *materialRegistry = nullptr;
         ModelRegistry *modelRegistry = nullptr;
+        MaterialTemplateRegistry *materialTemplateRegistry = nullptr;
         TextureThumbnailCallback textureThumbnailCallback;
         ScriptSystem *scriptSystem = nullptr;
     };
