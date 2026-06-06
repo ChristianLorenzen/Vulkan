@@ -25,6 +25,8 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
+// ImGuiRenderer is forward-declared below; full definition is pulled in via
+// Vulkan.cpp only, keeping this header free of Editor dependencies.
 #include "MaterialCache.hpp"
 #include "TextureCache.hpp"
 #include "VulkanBuffer.hpp"
@@ -38,6 +40,9 @@
 #include "vk_descriptors.hpp"
 
 #include "Core/Logging/Logger.hpp"
+
+// Forward declaration — full definition only needed in Vulkan.cpp
+namespace Faye { class ImGuiRenderer; }
 
 namespace Faye
 {
@@ -75,6 +80,8 @@ namespace Faye
 		void notifyShaderRecompilation(const std::string &compiledShader);
 
 	private:
+		void initializeFrameResources();
+
 		Window &window;
 		std::unique_ptr<VulkanDevice> vk_device;
 		std::unique_ptr<VulkanRenderer> vk_renderer;
@@ -109,8 +116,8 @@ namespace Faye
 		std::unordered_map<TextureThumbnailCacheKey, VkDescriptorSet, TextureThumbnailCacheKeyHasher> textureThumbnailDescriptors;
 		uint32_t pendingViewportWidth = 0;
 		uint32_t pendingViewportHeight = 0;
+		uint64_t lastImGuiSwapchainGeneration = 0;
 
-		void initializeFrameResources();
-	};
-
-} // namespace
+                std::unique_ptr<ImGuiRenderer> imGuiRenderer;
+	}; // class Vulkan
+} // namespace Faye

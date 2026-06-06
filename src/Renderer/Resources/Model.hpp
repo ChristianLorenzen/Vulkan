@@ -30,13 +30,22 @@ namespace Faye
 
     struct Builder
     {
+        struct NodeData
+        {
+            std::string name;
+            std::vector<uint32_t> meshDataIndices;
+            std::vector<uint32_t> childNodeIndices;
+        };
+
         std::vector<Mesh> meshes;
         std::vector<MaterialData> materials;
         std::string directory;
         std::unordered_map<std::string, Texture> loadedTextures;
+        std::vector<NodeData> nodes;
+        uint32_t rootNodeIndex = ~0u;
 
         void loadModel(const std::string &modelPath);
-        void processNode(aiNode *node, const aiScene *scene, const glm::mat4 &parentTransform = glm::mat4(1.0f));
+        uint32_t processNode(aiNode *node, const aiScene *scene, const glm::mat4 &parentTransform = glm::mat4(1.0f));
         Mesh processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &nodeTransform);
         MaterialData processMaterial(aiMaterial *material, const aiScene *scene);
         Texture loadTexture(const std::string &texturePath, const aiScene *scene, TextureType textureType);
@@ -47,6 +56,15 @@ namespace Faye
     class Model
     {
     public:
+        static constexpr uint32_t kInvalidNodeIndex = ~0u;
+
+        struct MeshNode
+        {
+            std::string name;
+            std::vector<uint32_t> submeshIndices;
+            std::vector<uint32_t> childNodeIndices;
+        };
+
         struct Submesh
         {
             uint32_t firstVertex = 0;
@@ -85,6 +103,8 @@ namespace Faye
         const Bounds &getLocalBounds() const { return localBounds; }
         const std::vector<MaterialData> &getImportedMaterials() const { return importedMaterials; }
         const std::vector<Submesh> &getSubmeshes() const { return submeshes; }
+        const std::vector<MeshNode> &getMeshNodes() const { return meshNodes; }
+        uint32_t getRootNodeIndex() const { return rootNodeIndex; }
 
     private:
         void calculateLocalBounds(const std::vector<Vertex> &vertices);
@@ -106,5 +126,7 @@ namespace Faye
         Bounds localBounds{};
         std::vector<MaterialData> importedMaterials;
         std::vector<Submesh> submeshes;
+        std::vector<MeshNode> meshNodes;
+        uint32_t rootNodeIndex = kInvalidNodeIndex;
     };
 }

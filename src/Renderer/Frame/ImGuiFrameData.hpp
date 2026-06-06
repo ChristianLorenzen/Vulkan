@@ -1,6 +1,10 @@
 #pragma once
 
 #include "Renderer/View/RenderView.hpp"
+// TODO: [ARCH] ImGuiFrameData uses ImTextureID and ImVec2 from ImGui, which
+// creates a Renderer -> Editor/ImGui dependency. To remove this, define
+// renderer-side equivalents (e.g. RendererTextureID, RendererVec2) and
+// translate at the Vulkan orchestration layer (Vulkan.cpp).
 #include "imgui.h"
 
 namespace Faye

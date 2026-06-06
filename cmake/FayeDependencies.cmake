@@ -67,4 +67,36 @@ function(faye_configure_dependencies)
     )
 
     FetchContent_MakeAvailable(imgui quill assimp)
+
+    FetchContent_Declare(
+        spirv_reflect
+        GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Reflect.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+
+    set(SPIRV_REFLECT_STATIC_LIB ON  CACHE BOOL "Build SPIRV-Reflect as a static library" FORCE)
+    set(SPIRV_REFLECT_EXECUTABLE OFF CACHE BOOL "Build the spirv-reflect CLI tool"         FORCE)
+    set(SPIRV_REFLECT_EXAMPLES   OFF CACHE BOOL "Build SPIRV-Reflect examples"              FORCE)
+    FetchContent_MakeAvailable(spirv_reflect)
+
+    # Lua 5.4 — used by LuaScriptSystem
+    FetchContent_Declare(
+        lua
+        GIT_REPOSITORY https://github.com/walterschell/Lua.git
+        GIT_TAG        master
+        GIT_SHALLOW    TRUE
+    )
+    set(LUA_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(LUA_BUILD_COMPILER OFF CACHE BOOL "" FORCE)
+
+    # sol2 — header-only C++/Lua binding layer
+    FetchContent_Declare(
+        sol2
+        GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+
+    FetchContent_MakeAvailable(lua sol2)
 endfunction()

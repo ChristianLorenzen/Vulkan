@@ -23,6 +23,9 @@
 #include "Renderer/Vulkan/vk_shader_manager.hpp"
 #include "Scene/SceneManager.hpp"
 #include "Scene/SceneQueries.hpp"
+#include "Scripting/ScriptSystem.hpp"
+#include "Scripting/LuaScriptSystem.hpp"
+#include "Scripting/EngineContext.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
 
@@ -64,8 +67,9 @@ public:
                                                 { return createPrimitiveEntity(primitiveType); });
         editorPanels.setMaterialRegistry(materialRegistry.get());
         editorPanels.setModelRegistry(modelRegistry.get());
+        editorPanels.setScriptSystem(&scriptSystem);
         editorPanels.setTextureThumbnailCallback([this](MaterialHandle handle, TextureType textureType) -> ImTextureID
-                                                {
+                                                 {
                                                     if (vkData == nullptr || materialRegistry == nullptr)
                                                     {
                                                         return 0;
@@ -78,13 +82,13 @@ public:
                                                     }
 
                                                     return reinterpret_cast<ImTextureID>(
-                                                        vkData->getMaterialTextureThumbnail(handle, *material, textureType));
-                                                });
+                                                        vkData->getMaterialTextureThumbnail(handle, *material, textureType)); });
 
         hotReloadShaderSubscriptionToken = hotReloadManager.subscribe([this](const HotReloadEvent &event)
                                                                       { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
         hotReloadShaderSubscriptionTokenTwo = hotReloadManager.subscribe([this](const HotReloadEvent &event)
                                                                          { LOG_INFO(Logger::getInstance(), "Received hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string()); });
+        scriptSystem.registerHotReload(hotReloadManager);
         hotReloadManager.start();
 
         LOG_INFO(Logger::getInstance(), "Starting main loop...");
@@ -101,6 +105,7 @@ public:
             hotReloadShaderSubscriptionTokenTwo = 0;
         }
 
+        scriptSystem.unregisterHotReload();
         hotReloadManager.stop();
     }
 
@@ -125,6 +130,9 @@ private:
     HotReloadManager hotReloadManager;
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionToken = 0;
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
+    ScriptSystem scriptSystem;
+    LuaScriptSystem luaScriptSystem;
+    EngineContext scriptEngineContext;  // single source of truth for dt/time passed to all script types
     VulkanShaderManager shaderManager;
     FrameTimer timer;
     std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
@@ -323,13 +331,13 @@ private:
         // modelTransform.scale = {1.0f, 1.0f, 1.0f};
         // modelMesh.materialHandle = defaultMat;
 
-        Entity modelgltf = scene.createEntity("Test gltf");
-        auto &modelgltfTransform = modelgltf.addTransform();
-        auto &modelgltfMesh = modelgltf.addMesh(registerImportedModel("src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf"));
-        modelgltfTransform.translation = {0.f, -0.5f, 2.f};
-        modelgltfTransform.rotation = {0.f, 180.f, 0.f};
-        modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
-        modelgltfMesh.materialHandle = defaultMat;
+        // Entity modelgltf = scene.createEntity("Test gltf");
+        // auto &modelgltfTransform = modelgltf.addTransform();
+        // auto &modelgltfMesh = modelgltf.addMesh(registerImportedModel("src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf"));
+        // modelgltfTransform.translation = {0.f, -0.5f, 2.f};
+        // modelgltfTransform.rotation = {0.f, 180.f, 0.f};
+        // modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
+        // modelgltfMesh.materialHandle = defaultMat;
 
         Entity modelAdam = scene.createEntity("Adam Model");
         auto &modelAdamTransform = modelAdam.addTransform();
@@ -338,6 +346,22 @@ private:
         modelAdamTransform.translation = {0.f, 0.f, 0.f};
         modelAdamTransform.rotation = {0.f, 0.f, 0.f};
         modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
+
+        // Scripting system wiring.
+        scriptSystem.bindScene(&scene);
+
+        // Lua scripting system wiring.
+        luaScriptSystem.bindEngineAPI();
+
+        // Demo: attach the RotatorScript to Cube A if the .so is present.
+        // The .so is absent on a fresh build until faye_rotator_script is compiled.
+        scriptSystem.loadScript(meshEntity, "bin/libfaye_rotator_script.so");
+
+        // Demo: attach the Lua rotator to Cube B if the script file is present.
+        if (std::filesystem::exists("src/Scripting/ExampleScripts/rotator.lua"))
+        {
+            luaScriptSystem.loadScript(secondMeshEntity, "src/Scripting/ExampleScripts/rotator.lua", &scene);
+        }
     }
 
     void mainLoop()
@@ -388,6 +412,11 @@ private:
             {
                 glfwSetWindowShouldClose(glfwWindow->getWindow(), true);
             }
+
+            scriptEngineContext.dt    = static_cast<float>(timer.getDelta());
+            scriptEngineContext.time += scriptEngineContext.dt;
+            scriptSystem.update(scriptEngineContext, &scene);
+            luaScriptSystem.update(scriptEngineContext, &scene);
 
             RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry, *materialRegistry);
 

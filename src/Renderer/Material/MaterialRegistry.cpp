@@ -4,6 +4,17 @@
 
 using namespace Faye;
 
+Faye::MaterialRegistry::MaterialRegistry()
+{
+    MaterialData fallback{};
+    fallback.name = "Default Material";
+    fallback.color = {1.0f, 1.0f, 1.0f};
+    fallback.baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
+    fallback.metallicFactor = 0.0f;
+    fallback.roughnessFactor = 1.0f;
+    defaultHandle = registerMaterial(std::move(fallback));
+}
+
 Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(MaterialData materialData, MaterialPipelineConfig pipelineConfig)
 {
     return registerMaterial(std::make_unique<Material>(std::move(materialData), std::move(pipelineConfig)));
@@ -31,4 +42,22 @@ const Faye::Material *Faye::MaterialRegistry::getMaterial(MaterialHandle handle)
 {
     auto iterator = materials.find(handle.value);
     return iterator != materials.end() ? iterator->second.get() : nullptr;
+}
+
+Faye::Material *Faye::MaterialRegistry::getMaterialOrDefault(MaterialHandle handle)
+{
+    if (Material *material = getMaterial(handle))
+    {
+        return material;
+    }
+    return getMaterial(defaultHandle);
+}
+
+const Faye::Material *Faye::MaterialRegistry::getMaterialOrDefault(MaterialHandle handle) const
+{
+    if (const Material *material = getMaterial(handle))
+    {
+        return material;
+    }
+    return getMaterial(defaultHandle);
 }

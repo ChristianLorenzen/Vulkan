@@ -3,11 +3,6 @@
 #include <stdio.h>
 #include <unordered_map>
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_vulkan.h"
-#include "Editor/ImGui/ImGuiCustomStyle.hpp"
-
 #include "Vulkan.hpp"
 
 #include "quill/LogMacros.h"
@@ -37,7 +32,6 @@ Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window
 
 Faye::VulkanRenderer::~VulkanRenderer()
 {
-    shutdownImGui();
     cleanupSceneRenderTargets();
     destroySceneViewportSampler();
     destroySceneRenderPass();
@@ -293,11 +287,7 @@ void Faye::VulkanRenderer::createSceneRenderTargets()
     createPostProcessImages();
     createSceneFramebuffers();
     createPostProcessFramebuffers();
-
-    if (imguiInitialized)
-    {
-        registerSceneViewportTextures();
-    }
+    createSceneViewportSampler();
 }
 
 bool Faye::VulkanRenderer::resizeSceneIfNeeded(uint32_t w, uint32_t h)
@@ -431,11 +421,6 @@ void Faye::VulkanRenderer::createPostProcessFramebuffers()
 
 void Faye::VulkanRenderer::cleanupSceneRenderTargets()
 {
-    if (imguiInitialized)
-    {
-        unregisterSceneViewportTextures();
-    }
-
     sceneRenderPassInstances.clear();
 
     for (size_t i = 0; i < sceneColorResources.size(); i++)
@@ -474,7 +459,6 @@ void Faye::VulkanRenderer::cleanupPostProcessRenderTargets()
         target.images.clear();
         target.imageMemories.clear();
         target.imageViews.clear();
-        target.viewportDescriptorSets.clear();
     }
 }
 
@@ -518,96 +502,6 @@ void Faye::VulkanRenderer::destroySceneViewportSampler()
     }
 }
 
-void Faye::VulkanRenderer::registerSceneViewportTextures()
-{
-    if (!imguiInitialized || sceneViewportSampler == VK_NULL_HANDLE || sceneColorResources.empty())
-    {
-        return;
-    }
-
-    for (const auto &target : postProcessTargets)
-    {
-        if (target.imageViews.empty())
-        {
-            return;
-        }
-    }
-
-    unregisterSceneViewportTextures();
-    sceneViewportDescriptorSets.reserve(sceneColorResources.size());
-    sceneMotionViewportDescriptorSets.reserve(sceneMotionResources.size());
-    sceneDepthViewportDescriptorSets.reserve(sceneDepthResources.size());
-
-    for (const auto &resource : sceneColorResources)
-    {
-        sceneViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
-            sceneViewportSampler,
-            resource.imageView,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-    }
-
-    for (const auto &resource : sceneMotionResources)
-    {
-        sceneMotionViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
-            sceneViewportSampler,
-            resource.imageView,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-    }
-
-    for (const auto &resource : sceneDepthResources)
-    {
-        sceneDepthViewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
-            sceneViewportSampler,
-            resource.imageView,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-    }
-
-    for (auto &target : postProcessTargets)
-    {
-        target.viewportDescriptorSets.reserve(target.imageViews.size());
-        for (const auto &imageView : target.imageViews)
-        {
-            target.viewportDescriptorSets.push_back(ImGui_ImplVulkan_AddTexture(
-                sceneViewportSampler,
-                imageView,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-        }
-    }
-}
-
-void Faye::VulkanRenderer::unregisterSceneViewportTextures()
-{
-    for (auto descriptorSet : sceneViewportDescriptorSets)
-    {
-        ImGui_ImplVulkan_RemoveTexture(descriptorSet);
-    }
-
-    sceneViewportDescriptorSets.clear();
-
-    for (auto descriptorSet : sceneMotionViewportDescriptorSets)
-    {
-        ImGui_ImplVulkan_RemoveTexture(descriptorSet);
-    }
-
-    sceneMotionViewportDescriptorSets.clear();
-
-    for (auto descriptorSet : sceneDepthViewportDescriptorSets)
-    {
-        ImGui_ImplVulkan_RemoveTexture(descriptorSet);
-    }
-
-    sceneDepthViewportDescriptorSets.clear();
-
-    for (auto &target : postProcessTargets)
-    {
-        for (auto descriptorSet : target.viewportDescriptorSets)
-        {
-            ImGui_ImplVulkan_RemoveTexture(descriptorSet);
-        }
-
-        target.viewportDescriptorSets.clear();
-    }
-}
 
 void Faye::VulkanRenderer::destroySceneRenderPass()
 {
@@ -641,76 +535,6 @@ VkImageView Faye::VulkanRenderer::createImageView(VkImage image, VkFormat format
     return imageView;
 }
 
-void Faye::VulkanRenderer::initImGui(VkDescriptorPool descriptorPool)
-{
-    imguiDescriptorPool = descriptorPool;
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    const char *defaultFontPath = "src/include/fonts/Roboto-Regular.ttf";
-
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-
-    // Add Roboto as default font.
-    std::ifstream fontFile(defaultFontPath);
-    if (fontFile.good())
-    {
-        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 18.0f);
-    }
-    else
-    {
-        LOG_WARNING(
-            Logger::getInstance(),
-            "Could not load ImGui font file {}. Falling back to the default ImGui font.",
-            defaultFontPath);
-        io.FontDefault = io.Fonts->AddFontDefault();
-    }
-
-    // Add custom styling.
-    ImGuiStyle &style = ImGui::GetStyle();
-    style.FrameRounding = 2.0f;
-    style.WindowRounding = 4.f;
-    style.WindowBorderSize = 0.0f;
-
-    ImGui::StyleColorsCustom();
-
-    ImGui_ImplGlfw_InitForVulkan(window.getWindow(), true);
-    ImGui_ImplVulkan_InitInfo info = {};
-    info.Instance = vk_device.getInstance();
-    info.PhysicalDevice = vk_device.getPhysicalDevice();
-    info.Device = vk_device.getDevice();
-    info.QueueFamily = vk_device.getGraphicsQueueFamilyIndex();
-    info.Queue = vk_device.getGraphicsQueue();
-    info.DescriptorPool = descriptorPool;
-    info.PipelineInfoMain.RenderPass = vk_swapchain->getRenderPass();
-
-    info.MinImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
-    info.ImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
-
-    ImGui_ImplVulkan_Init(&info);
-
-    vkDeviceWaitIdle(vk_device.getDevice());
-    imguiInitialized = true;
-    createSceneViewportSampler();
-    registerSceneViewportTextures();
-}
-
-void Faye::VulkanRenderer::shutdownImGui()
-{
-    if (!imguiInitialized)
-    {
-        return;
-    }
-
-    unregisterSceneViewportTextures();
-    ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    imguiInitialized = false;
-}
 
 // void Faye::VulkanRenderer::createDescriptorSetLayout()
 // {
@@ -1053,12 +877,6 @@ void Faye::VulkanRenderer::recreateSwapchain()
     if (sceneRenderPassInstances.empty())
     {
         createSceneRenderTargets();
-    }
-
-    if (imguiInitialized && imguiDescriptorPool != VK_NULL_HANDLE)
-    {
-        shutdownImGui();
-        initImGui(imguiDescriptorPool);
     }
 }
 

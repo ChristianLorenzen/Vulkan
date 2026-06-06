@@ -4,10 +4,12 @@ set(FAYE_ENGINE_SOURCES
     Core/IO/FileSystem.cpp
     Editor/ImGui/EditorPanels.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp
+    Editor/ImGui/ImGuiRenderer.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
     Renderer/Material/TextureLoader.cpp
+    Renderer/Material/TextureRegistry.cpp
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
     Renderer/Scene/Extractors/CameraRenderExtractor.cpp
@@ -15,6 +17,8 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Scene/Extractors/PointLightRenderExtractor.cpp
     Renderer/Scene/RenderExtractionManager.cpp
     Renderer/Vulkan/vk_shader_manager.cpp
+    Renderer/Vulkan/ShaderReflection.cpp
+    Renderer/Material/MaterialTemplate.cpp
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
@@ -32,6 +36,8 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/VkSamplerResource.cpp
     Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp
+    Scripting/ScriptSystem.cpp
+    Scripting/LuaScriptSystem.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
@@ -70,6 +76,8 @@ set(FAYE_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_fog.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_edge_detect.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_debug.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/custom_material.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/custom_material.frag
 )
 
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})
@@ -104,7 +112,10 @@ target_link_libraries(faye_app
     Faye::GLFW
     Faye::Vulkan
     assimp::assimp
-    quill::quill)
+    quill::quill
+    spirv-reflect-static
+    lua_static
+    sol2::sol2)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
 
@@ -129,6 +140,35 @@ endif()
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(faye_app PRIVATE dl pthread)
+    target_link_options(faye_app PRIVATE -rdynamic)
+endif()
+
+# --- RotatorScript example plugin ---
+FetchContent_GetProperties(assimp SOURCE_DIR _assimp_script_src BINARY_DIR _assimp_script_bin)
+
+add_library(faye_rotator_script SHARED
+    Scripting/ExampleScripts/RotatorScript.cpp)
+
+target_include_directories(faye_rotator_script
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${_assimp_script_src}/include
+    ${_assimp_script_bin}/include)
+
+target_compile_features(faye_rotator_script PRIVATE cxx_std_20)
+
+if(MSVC)
+    target_compile_options(faye_rotator_script PRIVATE /W4)
+else()
+    target_compile_options(faye_rotator_script PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# Clear the debug postfix assimp injects globally so the .so name stays predictable.
+set_target_properties(faye_rotator_script PROPERTIES DEBUG_POSTFIX "")
+
+if(FAYE_COPY_BIN_TO_REPO_BIN)
+    set_target_properties(faye_rotator_script PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 endif()
 
 faye_add_shader_target(

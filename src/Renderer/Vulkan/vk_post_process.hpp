@@ -90,7 +90,7 @@ namespace Faye
         void renderEffects(FrameContext &frameContext, const PostProcessStackComponent *stack);
         void renderComposite(FrameContext &frameContext, const PostProcessStackComponent *stack);
         bool hasEnabledEffects(const PostProcessStackComponent *stack) const;
-        VkDescriptorSet getViewportDescriptorSet(const PostProcessStackComponent *stack) const;
+        uint32_t getFinalTargetIndex(const PostProcessStackComponent *stack) const;
         void invalidatePipelines(const std::string &compiledShader);
 
     private:
@@ -103,7 +103,6 @@ namespace Faye
 
         void recreatePresentPass();
         uint32_t getEnabledEffectCount(const PostProcessStackComponent *stack) const;
-        uint32_t getFinalTargetIndex(const PostProcessStackComponent *stack) const;
         FullscreenEffectPass &getOrCreateEffectPass(const PostProcessEffectDefinition &definition);
         std::unordered_map<std::string, std::vector<VkImageView>> makeNamedInputViews(
             const std::vector<VkImageView> &sourceColorViews) const;

@@ -286,17 +286,6 @@ bool Faye::PostProcessChain::hasEnabledEffects(const PostProcessStackComponent *
     return getEnabledEffectCount(stack) > 0;
 }
 
-VkDescriptorSet Faye::PostProcessChain::getViewportDescriptorSet(const PostProcessStackComponent *stack) const
-{
-    const uint32_t finalTargetIndex = getFinalTargetIndex(stack);
-    if (finalTargetIndex == VulkanRenderer::kPostProcessTargetCount)
-    {
-        return vk_renderer.getSceneViewportDescriptorSet();
-    }
-
-    return vk_renderer.getPostProcessViewportDescriptorSet(finalTargetIndex);
-}
-
 void Faye::PostProcessChain::invalidatePipelines(const std::string &compiledShader)
 {
     presentPass->invalidatePipelines(compiledShader);
