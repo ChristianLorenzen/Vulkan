@@ -42,7 +42,10 @@
 #include "Core/Logging/Logger.hpp"
 
 // Forward declaration — full definition only needed in Vulkan.cpp
-namespace Faye { class ImGuiRenderer; }
+namespace Faye
+{
+	class ImGuiRenderer;
+}
 
 namespace Faye
 {
@@ -118,6 +121,9 @@ namespace Faye
 		uint32_t pendingViewportHeight = 0;
 		uint64_t lastImGuiSwapchainGeneration = 0;
 
-                std::unique_ptr<ImGuiRenderer> imGuiRenderer;
+		std::unique_ptr<ImGuiRenderer> imGuiRenderer;
+
+		float totalElapsedTime = 0.0f;
+		VkSampler sceneDepthSampler = VK_NULL_HANDLE;
 	}; // class Vulkan
 } // namespace Faye

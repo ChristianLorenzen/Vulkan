@@ -77,6 +77,11 @@ namespace Faye
         return requireScene().addPostProcessStack(entityId);
     }
 
+    WaterComponent &Entity::addWater() const
+    {
+        return requireScene().addWater(entityId);
+    }
+
     void Entity::removeTransform() const
     {
         requireScene().removeTransform(entityId);
@@ -135,6 +140,11 @@ namespace Faye
     PostProcessStackComponent *Entity::tryGetPostProcessStack() const
     {
         return scene != nullptr ? scene->tryGetPostProcessStack(entityId) : nullptr;
+    }
+
+    WaterComponent *Entity::tryGetWater() const
+    {
+        return scene != nullptr ? scene->tryGetWater(entityId) : nullptr;
     }
 
     Scene &Entity::requireScene() const

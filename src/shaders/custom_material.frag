@@ -45,6 +45,8 @@ layout(set = 0, binding = 0) uniform GlobalUbo {
     vec4 ambientLightColor;
     PointLight pointLights[10];
     int numLights;
+    int time;
+    int _pad[3];
 } ubo;
 
 // Standard material parameters (provides real GPU-backed values until

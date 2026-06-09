@@ -33,9 +33,12 @@ namespace Faye
         void endSceneRenderPass(VkCommandBuffer commandBuffer) override;
         void beginSwapchainRenderPass(VkCommandBuffer commandBuffer) override;
         void endSwapchainRenderPass(VkCommandBuffer commandBuffer) override;
+        void beginDepthPrepassRenderPass(VkCommandBuffer commandBuffer);
+        void endDepthPrepassRenderPass(VkCommandBuffer commandBuffer);
         void beginPostProcessRenderPass(VkCommandBuffer commandBuffer, uint32_t targetIndex);
         void endPostProcessRenderPass(VkCommandBuffer commandBuffer);
 
+        VkRenderPass getDepthPrepassRenderPass() const { return depthPrepassRenderPass ? depthPrepassRenderPass->getHandle() : VK_NULL_HANDLE; }
         VkRenderPass getSceneRenderPass() const { return sceneRenderPass ? sceneRenderPass->getHandle() : VK_NULL_HANDLE; }
         VkRenderPass getSwapChainRenderPass() const { return vk_swapchain->getRenderPass(); }
         VkRenderPass getPostProcessRenderPass() const { return postProcessRenderPass->getHandle(); }
@@ -46,6 +49,7 @@ namespace Faye
         std::vector<VkImageView> getSceneImageViews() const override;
         std::vector<VkImageView> getSceneMotionImageViews() const override;
         std::vector<VkImageView> getSceneDepthImageViews() const override;
+        std::vector<VkImageView> getDepthPrepassImageViews() const;
         std::vector<VkImageView> getPostProcessTargetImageViews(uint32_t targetIndex) const override { return postProcessTargets.at(targetIndex).imageViews; }
         VkImageView getSceneColorImageView(uint32_t index) const override;
         uint64_t getSwapchainGeneration() const { return swapchainGeneration; }
@@ -76,6 +80,7 @@ namespace Faye
             std::vector<VulkanRenderPassInstance> renderPassInstances;
         };
 
+        void createDepthPrepassRenderPass();
         void createSceneRenderPass();
         void createPostProcessRenderPass();
         void createSceneRenderTargets();
@@ -87,6 +92,7 @@ namespace Faye
         void cleanupPostProcessRenderTargets();
         void createSceneViewportSampler();
         void destroySceneViewportSampler();
+        void destroyDepthPrepassRenderPass();
         void destroySceneRenderPass();
         void destroyPostProcessRenderPass();
         VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
@@ -97,6 +103,7 @@ namespace Faye
         Window &window;
         VulkanDevice &vk_device;
         std::unique_ptr<VulkanSwapchain> vk_swapchain;
+        std::unique_ptr<VulkanRenderPass> depthPrepassRenderPass;
         std::unique_ptr<VulkanRenderPass> sceneRenderPass;
         std::unique_ptr<VulkanRenderPass> postProcessRenderPass;
         VkExtent2D sceneRenderExtent{};
@@ -108,9 +115,9 @@ namespace Faye
         std::vector<VkImageResource> sceneColorResources;
         std::vector<VkImageResource> sceneMotionResources;
         std::vector<VkImageResource> sceneDepthResources;
+        std::vector<VkImageResource> depthPrepassResources;
 
-
-
+        std::vector<VulkanRenderPassInstance> depthPrepassRenderPassInstances;
         std::vector<VulkanRenderPassInstance> sceneRenderPassInstances;
         std::array<PostProcessTargetResources, kPostProcessTargetCount> postProcessTargets;
         std::vector<VkCommandBuffer> commandBuffers;

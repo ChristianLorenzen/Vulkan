@@ -42,6 +42,8 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width
     glfwSetErrorCallback(VKGLFW::glfwErrorCallback);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
 
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
@@ -59,6 +61,7 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width
         glfwSetCursorPosCallback(window, Input::cursorCallback);
         glfwSetMouseButtonCallback(window, Input::mouseButtonCallback);
         glfwSetScrollCallback(window, Input::scrollCallback);
+        glfwSetWindowSizeLimits(window, 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
         LOG_INFO(Logger::getInstance(), "GLFW Window created successfully.");
     }

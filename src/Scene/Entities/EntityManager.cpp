@@ -38,6 +38,7 @@ namespace Faye
         cameraComponents.erase(entity);
         pointLightComponents.erase(entity);
         postProcessStackComponents.erase(entity);
+        waterComponents.erase(entity);
     }
 
     bool EntityManager::isValid(EntityId entity) const
@@ -248,6 +249,30 @@ namespace Faye
     {
         auto iterator = postProcessStackComponents.find(entity);
         return iterator != postProcessStackComponents.end() ? &iterator->second : nullptr;
+    }
+
+    WaterComponent &EntityManager::addWater(EntityId entity)
+    {
+        setComponent(entity, ComponentKind::Water);
+        return waterComponents[entity];
+    }
+
+    void EntityManager::removeWater(EntityId entity)
+    {
+        waterComponents.erase(entity);
+        clearComponent(entity, ComponentKind::Water);
+    }
+
+    WaterComponent *EntityManager::tryGetWater(EntityId entity)
+    {
+        auto iterator = waterComponents.find(entity);
+        return iterator != waterComponents.end() ? &iterator->second : nullptr;
+    }
+
+    const WaterComponent *EntityManager::tryGetWater(EntityId entity) const
+    {
+        auto iterator = waterComponents.find(entity);
+        return iterator != waterComponents.end() ? &iterator->second : nullptr;
     }
 
     void EntityManager::requireEntity(EntityId entity) const

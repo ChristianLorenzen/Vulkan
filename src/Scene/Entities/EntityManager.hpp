@@ -28,6 +28,7 @@ namespace Faye
         Camera,
         PointLight,
         PostProcessStack,
+        Water,
         Count,
     };
 
@@ -52,6 +53,8 @@ namespace Faye
             return "Point Light";
         case ComponentKind::PostProcessStack:
             return "Post Process Stack";
+        case ComponentKind::Water:
+            return "Water";
         case ComponentKind::Count:
             break;
         }
@@ -82,6 +85,7 @@ namespace Faye
         CameraComponent &addCamera(EntityId entity);
         PointLightComponent &addPointLight(EntityId entity);
         PostProcessStackComponent &addPostProcessStack(EntityId entity);
+        WaterComponent &addWater(EntityId entity);
 
         void removeTransform(EntityId entity);
         void removeRigidBody2d(EntityId entity);
@@ -89,6 +93,7 @@ namespace Faye
         void removeCamera(EntityId entity);
         void removePointLight(EntityId entity);
         void removePostProcessStack(EntityId entity);
+        void removeWater(EntityId entity);
 
         TransformComponent *tryGetTransform(EntityId entity);
         const TransformComponent *tryGetTransform(EntityId entity) const;
@@ -107,6 +112,8 @@ namespace Faye
 
         PostProcessStackComponent *tryGetPostProcessStack(EntityId entity);
         const PostProcessStackComponent *tryGetPostProcessStack(EntityId entity) const;
+        WaterComponent *tryGetWater(EntityId entity);
+        const WaterComponent *tryGetWater(EntityId entity) const;
 
     private:
         void requireEntity(EntityId entity) const;
@@ -125,5 +132,6 @@ namespace Faye
         std::unordered_map<EntityId, CameraComponent> cameraComponents;
         std::unordered_map<EntityId, PointLightComponent> pointLightComponents;
         std::unordered_map<EntityId, PostProcessStackComponent> postProcessStackComponents;
+        std::unordered_map<EntityId, WaterComponent> waterComponents;
     };
 }

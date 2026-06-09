@@ -170,6 +170,12 @@ namespace Faye
         std::string vertexShaderPath{"shader.vert"};
         std::string fragmentShaderPath{"shader.frag"};
 
+        // When true the pipeline blends colour attachment 0 with standard
+        // src-alpha / one-minus-src-alpha blending and disables depth writes
+        // (depth testing stays enabled). Used by translucent materials such
+        // as water. Motion-vector attachment 1 is never blended.
+        bool enableAlphaBlending = false;
+
         MaterialPipelineConfig() = default;
 
         MaterialPipelineConfig(std::string vertexShaderPath, std::string fragmentShaderPath)

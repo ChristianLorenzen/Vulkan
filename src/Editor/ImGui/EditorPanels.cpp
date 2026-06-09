@@ -470,9 +470,11 @@ namespace Faye
                 const bool isSelected = selectedEntity.id() == entity.id() &&
                                         selectedMeshNodeIndex == nodeIndex;
 
-                const bool hasChildren = [&]() {
+                const bool hasChildren = [&]()
+                {
                     for (uint32_t childIdx : node.childNodeIndices)
-                        if (nodeHasGeometry(nodes, childIdx)) return true;
+                        if (nodeHasGeometry(nodes, childIdx))
+                            return true;
                     return false;
                 }();
 
@@ -543,6 +545,7 @@ namespace Faye
                         drawMesh(selectedEntity);
                         drawMaterial(selectedEntity, selectedMeshNodeIndex, materialRegistry, modelRegistry, textureThumbnailCallback, materialTemplateRegistry);
                         drawCamera(selectedEntity);
+                        drawWater(selectedEntity);
                         drawPointLight(selectedEntity);
                         drawPostProcessStack(selectedEntity);
                         drawScript(selectedEntity);
@@ -1185,6 +1188,26 @@ namespace Faye
                     ImGui::TextWrapped("Path: %s", script->scriptPath.c_str());
                 }
             }
+
+            void drawWater(const Entity &entity)
+            {
+                auto *water = entity.tryGetWater();
+                if (water == nullptr)
+                    return;
+
+                if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    int divs = static_cast<int>(water->subdivisions);
+                    if (ImGui::DragInt("Subdivisions", &divs, 1.0f, 4, 256, "%d"))
+                    {
+                        water->subdivisions = static_cast<uint32_t>(std::clamp(divs, 4, 256));
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Changes are applied automatically by\nthe WaterSubdivision script each frame.");
+                }
+            }
         };
     }
 
@@ -1261,6 +1284,7 @@ namespace Faye
                 drawPrimitiveMenuItem(PrimitiveType::Sphere);
                 drawPrimitiveMenuItem(PrimitiveType::Plane);
                 drawPrimitiveMenuItem(PrimitiveType::Capsule);
+                drawPrimitiveMenuItem(PrimitiveType::WaterPlane);
                 ImGui::EndMenu();
             }
             ImGui::EndMenuBar();

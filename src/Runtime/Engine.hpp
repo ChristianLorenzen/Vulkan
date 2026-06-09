@@ -26,6 +26,7 @@
 #include "Scripting/ScriptSystem.hpp"
 #include "Scripting/LuaScriptSystem.hpp"
 #include "Scripting/EngineContext.hpp"
+#include "Scripting/BuiltinScripts/WaterSubdivisionScript.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
 
@@ -132,10 +133,11 @@ private:
     HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
     ScriptSystem scriptSystem;
     LuaScriptSystem luaScriptSystem;
-    EngineContext scriptEngineContext;  // single source of truth for dt/time passed to all script types
+    EngineContext scriptEngineContext; // single source of truth for dt/time passed to all script types
     VulkanShaderManager shaderManager;
     FrameTimer timer;
     std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
+    MaterialHandle waterMaterialHandle{};
     Entity activeCameraEntity;
     Entity postProcessSettingsEntity;
     bool editorViewportHovered = true;
@@ -230,10 +232,35 @@ private:
 
         Scene &scene = sceneManager->getActiveScene();
         Entity entity = scene.createEntity(std::string(primitiveTypeName(primitiveType)));
-        entity.addTransform();
+        auto &transform = entity.addTransform();
 
         auto &mesh = entity.addMesh(ensurePrimitiveHandle(primitiveType));
-        mesh.materialHandle = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
+
+        if (primitiveType == PrimitiveType::WaterPlane)
+        {
+            mesh.materialHandle = waterMaterialHandle;
+
+            // Scale up to a large world-space surface (20×20 metres by default).
+            transform.scale = {20.0f, 1.0f, 20.0f};
+
+            // Add WaterComponent so the subdivision count is inspectable.
+            auto &water = entity.addWater();
+            water.subdivisions = 64;
+
+            // Attach the subdivision script — it watches WaterComponent.subdivisions
+            // and rebuilds the mesh when the value changes.
+            scriptSystem.attachBuiltinScript(entity,
+                new WaterSubdivisionScript([this](uint32_t divs) -> ModelHandle {
+                    return modelRegistry->registerModel(
+                        Model::createPrimitive(*vkData->getVkDevice(),
+                            PrimitiveType::WaterPlane, divs));
+                }),
+                "WaterSubdivision");
+        }
+        else
+        {
+            mesh.materialHandle = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
+        }
 
         return entity;
     }
@@ -255,6 +282,24 @@ private:
         MaterialHandle greenMat = materialRegistry->registerMaterial(MaterialData{"Green Material", glm::vec3(0.0f, 1.0f, 0.0f)});
         MaterialHandle blueMat = materialRegistry->registerMaterial(MaterialData{"Blue Material", glm::vec3(0.0f, 0.0f, 1.0f)});
         MaterialHandle shinyMat = materialRegistry->registerMaterial(MaterialData{"Shiny Material", glm::vec3(1.0f, 1.0f, 1.0f), {}, glm::vec4(1.0f), glm::vec4(0.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 32.0f)});
+
+        // Water material — uses water.vert/water.frag via MaterialPipelineConfig.
+        // The pipeline is selected per-material by SimpleRenderSystem at draw time.
+        // Texture slot mapping (fixed by MaterialCache::writeDescriptorSet):
+        //   Albedo   (binding 0) → normalMap1 in water.frag → waternormal1.jpg
+        //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
+        //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
+        MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
+        waterMaterialData.shininess    = 64.0f;    // specularShininess.w  -- editor: Shininess
+        waterMaterialData.normalScale  = 0.4f;     // surfaceFactors.z     -- editor: Normal Scale
+        waterMaterialData.textures.push_back(loadTextureFromFile("src/textures/waternormal1.jpg", TextureType::Albedo));
+        waterMaterialData.textures.push_back(loadTextureFromFile("src/textures/waternormal2.jpg", TextureType::Normal));
+        waterMaterialData.textures.push_back(loadTextureFromFile("src/textures/waterfoam1.jpg",   TextureType::Metallic));
+        MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
+        waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
+        waterMaterialHandle = materialRegistry->registerMaterial(
+            std::move(waterMaterialData),
+            std::move(waterPipelineConfig));
 
         MaterialData spyBoxMaterial{"Spy Box Material", glm::vec3(1.0f, 1.0f, 1.0f)};
         spyBoxMaterial.textures.push_back(loadTextureFromFile("src/textures/spy.jpg", TextureType::Albedo));
@@ -413,7 +458,7 @@ private:
                 glfwSetWindowShouldClose(glfwWindow->getWindow(), true);
             }
 
-            scriptEngineContext.dt    = static_cast<float>(timer.getDelta());
+            scriptEngineContext.dt = static_cast<float>(timer.getDelta());
             scriptEngineContext.time += scriptEngineContext.dt;
             scriptSystem.update(scriptEngineContext, &scene);
             luaScriptSystem.update(scriptEngineContext, &scene);

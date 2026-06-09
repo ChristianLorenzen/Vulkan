@@ -11,6 +11,7 @@ namespace Faye
         Sphere,
         Plane,
         Capsule,
+        WaterPlane,
         Count,
     };
 
@@ -26,6 +27,8 @@ namespace Faye
             return "Plane";
         case PrimitiveType::Capsule:
             return "Capsule";
+        case PrimitiveType::WaterPlane:
+            return "Water Plane";
         case PrimitiveType::Count:
             break;
         }

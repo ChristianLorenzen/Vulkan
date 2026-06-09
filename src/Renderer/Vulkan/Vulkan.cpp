@@ -98,6 +98,7 @@ void Faye::Vulkan::initializeFrameResources()
 
     globalSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
                           .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
+                          .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .build();
 
     materialSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
@@ -117,12 +118,52 @@ void Faye::Vulkan::initializeFrameResources()
         *materialSetLayout,
         *materialPool);
 
+    // Depth sampler for contact-foam in water.frag (set=0, binding=1).
+    // We always sample the OTHER frame's depth (previous frame completed, so it
+    // is safely in DEPTH_STENCIL_READ_ONLY_OPTIMAL by the time we read it).
+    if (sceneDepthSampler == VK_NULL_HANDLE)
+    {
+        VkSamplerCreateInfo depthSamplerInfo{};
+        depthSamplerInfo.sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        depthSamplerInfo.magFilter        = VK_FILTER_NEAREST;
+        depthSamplerInfo.minFilter        = VK_FILTER_NEAREST;
+        depthSamplerInfo.addressModeU     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        depthSamplerInfo.addressModeV     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        depthSamplerInfo.addressModeW     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        depthSamplerInfo.anisotropyEnable = VK_FALSE;
+        depthSamplerInfo.maxAnisotropy    = 1.0f;
+        depthSamplerInfo.compareEnable    = VK_FALSE;
+        depthSamplerInfo.compareOp        = VK_COMPARE_OP_ALWAYS;
+        depthSamplerInfo.mipmapMode       = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        depthSamplerInfo.borderColor      = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        if (vkCreateSampler(vk_device->getDevice(), &depthSamplerInfo, nullptr, &sceneDepthSampler) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create scene depth sampler");
+        }
+    }
+
+    // Bind the depth PREPASS image for the same frame index.
+    // The prepass runs before the scene pass each frame, writing opaque-only
+    // depth to depthPrepassResources[i]. The scene pass then reads it via
+    // set=0 binding=1. Using the same-frame index is safe because:
+    //   1. The prepass render pass has an outgoing dependency that makes depth
+    //      writes visible to subsequent fragment shader reads.
+    //   2. The prepass image (depthPrepassResources) is separate from the
+    //      scene depth (sceneDepthResources) so there is no read-write hazard.
+    const auto prepassViews = vk_renderer->getDepthPrepassImageViews();
     globalDescriptorSets.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < globalDescriptorSets.size(); i++)
+    for (int i = 0; i < static_cast<int>(globalDescriptorSets.size()); i++)
     {
         auto bufferInfo = uboBuffers[i]->descriptorInfo();
+
+        VkDescriptorImageInfo depthInfo{};
+        depthInfo.sampler     = sceneDepthSampler;
+        depthInfo.imageView   = prepassViews[i];
+        depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
         VulkanDescriptorWriter(*globalSetLayout, *globalPool)
             .writeBuffer(0, &bufferInfo)
+            .writeImage(1, &depthInfo)
             .build(globalDescriptorSets[i]);
     }
 
@@ -132,6 +173,10 @@ void Faye::Vulkan::initializeFrameResources()
         *materialCache,
         globalSetLayout->getDescriptorSetLayout(),
         materialSetLayout->getDescriptorSetLayout());
+
+    simpleRenderSystem->prepareDepthPrepassPipeline(
+        vk_renderer->getDepthPrepassRenderPass(),
+        globalSetLayout->getDescriptorSetLayout());
 
     pointLightRenderSystem = std::make_unique<PointLightRenderSystem>(
         *vk_device,
@@ -168,6 +213,11 @@ Faye::Vulkan::~Vulkan()
     postProcessChain.reset();
     materialCache.reset();
     textureCache.reset();
+    if (sceneDepthSampler != VK_NULL_HANDLE)
+    {
+        vkDestroySampler(vk_device->getDevice(), sceneDepthSampler, nullptr);
+        sceneDepthSampler = VK_NULL_HANDLE;
+    }
     vk_renderer.reset();
     globalSetLayout.reset();
     materialSetLayout.reset();
@@ -281,6 +331,18 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
         if (vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight))
         {
             imGuiRenderer->registerViewportTextures(*vk_renderer);
+            // Depth prepass images are recreated on resize -- update binding=1 descriptors.
+            const auto prepassViews = vk_renderer->getDepthPrepassImageViews();
+            for (int i = 0; i < static_cast<int>(globalDescriptorSets.size()); i++)
+            {
+                VkDescriptorImageInfo depthInfo{};
+                depthInfo.sampler     = sceneDepthSampler;
+                depthInfo.imageView   = prepassViews[i];
+                depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+                VulkanDescriptorWriter(*globalSetLayout, *globalPool)
+                    .writeImage(1, &depthInfo)
+                    .overwrite(globalDescriptorSets[i]);
+            }
         }
         pendingViewportWidth = 0;
         pendingViewportHeight = 0;
@@ -321,17 +383,29 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
             *primaryCamera,
             globalDescriptorSets[frameIndex]};
 
+        totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
+
         GlobalUBO ubo{};
         ubo.priorViewProjection = primaryCamera->getPriorViewProjection();
         ubo.projection = primaryCamera->getProjection();
         ubo.view = primaryCamera->getView();
         ubo.inverseView = primaryCamera->getInverseView();
+        ubo.time = totalElapsedTime;
+        ubo.deltaTime = static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
+        ubo.inverseProjection = primaryCamera->getInverseProjection();
 
         // Update point light system UBO with the point light data from this frame's render scene.
         pointLightRenderSystem->update(frameContext, frameInput.renderScene, ubo);
 
         uboBuffers[frameIndex]->writeToBuffer(&ubo);
         uboBuffers[frameIndex]->flush();
+
+        // Opaque depth prepass -- write depth for all non-water objects.
+        // water.frag samples this via set=0 binding=1 (prepassDepth) to
+        // compute contact/intersection foam without self-contamination.
+        vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
+        simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
+        vk_renderer->endDepthPrepassRenderPass(commandBuffer);
 
         vk_renderer->beginSceneRenderPass(commandBuffer);
 

@@ -54,6 +54,11 @@ void ScriptSystem::doUnload(EntityId entityId, LoadedScript &script)
                 destroyFn(script.instance);
             }
         }
+        else
+        {
+            // Built-in script: no shared library, owned directly via new/delete.
+            delete script.instance;
+        }
         script.instance = nullptr;
     }
 
@@ -123,6 +128,35 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
     };
 
     LOG_INFO(Logger::getInstance(), "ScriptSystem: loaded '{}' for entity {}", scriptName, entityId);
+}
+
+void ScriptSystem::attachBuiltinScript(Entity entity, IScript *instance, const std::string &name)
+{
+    if (instance == nullptr)
+        return;
+
+    const EntityId entityId = entity.id();
+
+    // Unload any existing script first.
+    auto it = loadedScripts.find(entityId);
+    if (it != loadedScripts.end())
+    {
+        doUnload(entityId, it->second);
+        loadedScripts.erase(it);
+    }
+
+    if (boundScene != nullptr)
+    {
+        instance->onStart(entity, boundScene);
+    }
+
+    loadedScripts[entityId] = LoadedScript{
+        .libHandle = nullptr,   // built-in: no .so handle, doUnload will delete
+        .instance  = instance,
+        .component = ScriptComponent{"<builtin>", name},
+    };
+
+    LOG_INFO(Logger::getInstance(), "ScriptSystem: attached built-in '{}' for entity {}", name, entityId);
 }
 
 void ScriptSystem::unloadScript(Entity entity)

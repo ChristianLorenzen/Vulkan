@@ -50,7 +50,7 @@ namespace Faye
         MaterialData processMaterial(aiMaterial *material, const aiScene *scene);
         Texture loadTexture(const std::string &texturePath, const aiScene *scene, TextureType textureType);
         Texture processTexture(aiTextureType type, const aiScene *scene);
-        static Builder makePrimitive(PrimitiveType primitiveType);
+        static Builder makePrimitive(PrimitiveType primitiveType, uint32_t subdivisions = 64);
     };
 
     class Model
@@ -94,7 +94,7 @@ namespace Faye
         Model &operator=(const Model &) = delete;
 
         static std::unique_ptr<Model> createModelFromFile(VulkanDevice &device, const std::string &modelPath);
-        static std::unique_ptr<Model> createPrimitive(VulkanDevice &device, PrimitiveType primitiveType);
+        static std::unique_ptr<Model> createPrimitive(VulkanDevice &device, PrimitiveType primitiveType, uint32_t subdivisions = 64);
 
         void bind(VkCommandBuffer commandBuffer);
         void draw(VkCommandBuffer commandBuffer);

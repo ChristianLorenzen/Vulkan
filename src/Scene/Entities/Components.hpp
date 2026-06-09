@@ -45,4 +45,12 @@ namespace Faye
         float intensity = 1.0f;
         float radius = 0.25f;
     };
+
+    /// Marks an entity as a water surface and holds its mesh subdivision count.
+    /// The WaterSubdivisionScript watches this component and rebuilds the mesh
+    /// whenever subdivisions changes.
+    struct WaterComponent
+    {
+        uint32_t subdivisions = 64;
+    };
 }

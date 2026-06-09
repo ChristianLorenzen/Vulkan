@@ -57,6 +57,7 @@ namespace Faye
         CameraComponent &addCamera(EntityId entity, bool primary = false);
         PointLightComponent &addPointLight(EntityId entity);
         PostProcessStackComponent &addPostProcessStack(EntityId entity);
+        WaterComponent &addWater(EntityId entity);
 
         void removeTransform(EntityId entity);
         void removeRigidBody2d(EntityId entity);
@@ -64,6 +65,7 @@ namespace Faye
         void removeCamera(EntityId entity);
         void removePointLight(EntityId entity);
         void removePostProcessStack(EntityId entity);
+        void removeWater(EntityId entity);
 
         TransformComponent *tryGetTransform(EntityId entity);
         const TransformComponent *tryGetTransform(EntityId entity) const;
@@ -82,6 +84,8 @@ namespace Faye
 
         PostProcessStackComponent *tryGetPostProcessStack(EntityId entity);
         const PostProcessStackComponent *tryGetPostProcessStack(EntityId entity) const;
+        WaterComponent *tryGetWater(EntityId entity);
+        const WaterComponent *tryGetWater(EntityId entity) const;
 
         void setPrimaryCamera(EntityId entity);
         void setPrimaryCamera(Entity entity);

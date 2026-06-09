@@ -36,6 +36,7 @@ namespace Faye
         CameraComponent &addCamera(bool primary = false) const;
         PointLightComponent &addPointLight() const;
         PostProcessStackComponent &addPostProcessStack() const;
+        WaterComponent &addWater() const;
 
         void removeTransform() const;
         void removeRigidBody2d() const;
@@ -50,6 +51,7 @@ namespace Faye
         CameraComponent *tryGetCamera() const;
         PointLightComponent *tryGetPointLight() const;
         PostProcessStackComponent *tryGetPostProcessStack() const;
+        WaterComponent *tryGetWater() const;
 
     private:
         Scene &requireScene() const;

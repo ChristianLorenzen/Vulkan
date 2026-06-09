@@ -175,6 +175,60 @@ namespace Faye
             return builder;
         }
 
+        // 64x64 subdivided plane for Gerstner wave displacement.
+        // Spans [-0.5, 0.5] in XZ at Y=0. UV tiles once across the full mesh.
+        // Tangent is +X with handedness +1, consistent with water.vert analytics.
+        Builder makeWaterPlaneBuilder(uint32_t divisions = 64)
+        {
+            Builder builder{};
+            Mesh mesh{};
+
+            const float half  = 0.5f;
+            const float step  = 1.0f / static_cast<float>(divisions);
+            const uint32_t verts = divisions + 1;
+
+            mesh.vertices.reserve(verts * verts);
+            for (uint32_t row = 0; row < verts; ++row)
+            {
+                for (uint32_t col = 0; col < verts; ++col)
+                {
+                    const float x = -half + static_cast<float>(col) * step;
+                    const float z = -half + static_cast<float>(row) * step;
+                    const float u = static_cast<float>(col) * step;
+                    const float v = static_cast<float>(row) * step;
+                    mesh.vertices.push_back(makeVertex(
+                        {x, 0.0f, z},
+                        {1.0f, 1.0f, 1.0f},
+                        {0.0f, 1.0f, 0.0f},
+                        {u, v},
+                        {1.0f, 0.0f, 0.0f, 1.0f}));
+                }
+            }
+
+            mesh.indices.reserve(divisions * divisions * 6);
+            for (uint32_t row = 0; row < divisions; ++row)
+            {
+                for (uint32_t col = 0; col < divisions; ++col)
+                {
+                    const uint32_t tl = row * verts + col;
+                    const uint32_t tr = tl + 1;
+                    const uint32_t bl = tl + verts;
+                    const uint32_t br = bl + 1;
+
+                    mesh.indices.push_back(tl);
+                    mesh.indices.push_back(bl);
+                    mesh.indices.push_back(tr);
+
+                    mesh.indices.push_back(tr);
+                    mesh.indices.push_back(bl);
+                    mesh.indices.push_back(br);
+                }
+            }
+
+            builder.meshes.push_back(mesh);
+            return builder;
+        }
+
         Builder makeSphereBuilder(uint32_t sectors = 24, uint32_t stacks = 16)
         {
             Builder builder{};
@@ -394,9 +448,9 @@ namespace Faye
         return std::make_unique<Model>(device, builder);
     }
 
-    std::unique_ptr<Model> Model::createPrimitive(VulkanDevice &device, PrimitiveType primitiveType)
+    std::unique_ptr<Model> Model::createPrimitive(VulkanDevice &device, PrimitiveType primitiveType, uint32_t subdivisions)
     {
-        return std::make_unique<Model>(device, Builder::makePrimitive(primitiveType));
+        return std::make_unique<Model>(device, Builder::makePrimitive(primitiveType, subdivisions));
     }
 
     void Model::calculateLocalBounds(const std::vector<Vertex> &vertices)
@@ -833,7 +887,7 @@ namespace Faye
         return Texture{};
     }
 
-    Builder Builder::makePrimitive(PrimitiveType primitiveType)
+    Builder Builder::makePrimitive(PrimitiveType primitiveType, uint32_t subdivisions)
     {
         switch (primitiveType)
         {
@@ -845,6 +899,8 @@ namespace Faye
             return makePlaneBuilder();
         case PrimitiveType::Capsule:
             return makeCapsuleBuilder();
+        case PrimitiveType::WaterPlane:
+            return makeWaterPlaneBuilder(subdivisions);
         case PrimitiveType::Count:
             break;
         }

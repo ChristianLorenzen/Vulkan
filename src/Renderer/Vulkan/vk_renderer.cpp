@@ -33,6 +33,7 @@ Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window
 Faye::VulkanRenderer::~VulkanRenderer()
 {
     cleanupSceneRenderTargets();
+    destroyDepthPrepassRenderPass();
     destroySceneViewportSampler();
     destroySceneRenderPass();
     destroyPostProcessRenderPass();
@@ -71,6 +72,17 @@ std::vector<VkImageView> Faye::VulkanRenderer::getSceneDepthImageViews() const
     std::vector<VkImageView> views;
     views.reserve(sceneDepthResources.size());
     for (const auto &resource : sceneDepthResources)
+    {
+        views.push_back(resource.imageView);
+    }
+    return views;
+}
+
+std::vector<VkImageView> Faye::VulkanRenderer::getDepthPrepassImageViews() const
+{
+    std::vector<VkImageView> views;
+    views.reserve(depthPrepassResources.size());
+    for (const auto &resource : depthPrepassResources)
     {
         views.push_back(resource.imageView);
     }
@@ -170,6 +182,24 @@ void Faye::VulkanRenderer::endSwapchainRenderPass(VkCommandBuffer commandBuffer)
     vk_swapchain->getRenderPassInstance(currentImageIndex).end(commandBuffer);
 }
 
+void Faye::VulkanRenderer::beginDepthPrepassRenderPass(VkCommandBuffer commandBuffer)
+{
+    assert(isFrameStarted && "Can't call beginDepthPrepassRenderPass while frame is not in progress.");
+    assert(commandBuffer == getCurrentCommandBuffer() && "Can't begin depth prepass render pass on command buffer from a different frame.");
+
+    depthPrepassRenderPassInstances[currentFrameIndex].begin(
+        commandBuffer,
+        makeFullscreenBeginOptions(sceneRenderExtent));
+}
+
+void Faye::VulkanRenderer::endDepthPrepassRenderPass(VkCommandBuffer commandBuffer)
+{
+    assert(isFrameStarted && "Can't call endDepthPrepassRenderPass while frame is not in progress.");
+    assert(commandBuffer == getCurrentCommandBuffer() && "Can't end depth prepass render pass on command buffer from a different frame.");
+
+    depthPrepassRenderPassInstances[currentFrameIndex].end(commandBuffer);
+}
+
 void Faye::VulkanRenderer::beginPostProcessRenderPass(VkCommandBuffer commandBuffer, uint32_t targetIndex)
 {
     assert(isFrameStarted && "Can't call beginPostProcessRenderPass while frame is not in progress.");
@@ -188,6 +218,45 @@ void Faye::VulkanRenderer::endPostProcessRenderPass(VkCommandBuffer commandBuffe
 
     postProcessTargets[static_cast<size_t>(activePostProcessTargetIndex)].renderPassInstances[currentFrameIndex].end(commandBuffer);
     activePostProcessTargetIndex = -1;
+}
+
+void Faye::VulkanRenderer::createDepthPrepassRenderPass()
+{
+    RenderPassBuilder builder{};
+    builder
+        .setName("Depth Prepass")
+        .addDepthAttachment(
+            "depthPrepass",
+            sceneDepthFormat,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            VkClearDepthStencilValue{1.0f, 0},
+            VK_ATTACHMENT_LOAD_OP_CLEAR,
+            VK_ATTACHMENT_STORE_OP_STORE,            // keep depth for sampling
+            VK_IMAGE_LAYOUT_UNDEFINED)
+        .addSubpass(makeGraphicsSubpass(
+            {},                                      // no colour outputs
+            std::nullopt,                            // no motion vector output
+            makeDepthAttachmentRef("depthPrepass")))
+        // Ensure previous fragment-shader reads are done before we write depth.
+        .addDependency({VK_SUBPASS_EXTERNAL,
+                        0,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                        VK_ACCESS_SHADER_READ_BIT,
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        0})
+        // Ensure prepass depth writes are visible to subsequent fragment reads.
+        .addDependency({0,
+                        VK_SUBPASS_EXTERNAL,
+                        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                        VK_ACCESS_SHADER_READ_BIT,
+                        0});
+
+    depthPrepassRenderPass = std::make_unique<VulkanRenderPass>(
+        vk_device,
+        std::move(builder).build());
 }
 
 void Faye::VulkanRenderer::createSceneRenderPass()
@@ -278,6 +347,11 @@ void Faye::VulkanRenderer::createSceneRenderTargets()
         createSceneRenderPass();
     }
 
+    if (depthPrepassRenderPass == nullptr)
+    {
+        createDepthPrepassRenderPass();
+    }
+
     if (postProcessRenderPass == nullptr)
     {
         createPostProcessRenderPass();
@@ -310,9 +384,22 @@ void Faye::VulkanRenderer::createSceneImages()
     sceneColorResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     sceneMotionResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     sceneDepthResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    depthPrepassResources.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
 
     for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
     {
+        // Depth prepass image (opaque-only depth; sampled by water.frag)
+        VkImageResourceCreateInfo prepassDepthInfo{};
+        prepassDepthInfo.extent = {sceneRenderExtent.width, sceneRenderExtent.height, 1};
+        prepassDepthInfo.format = sceneDepthFormat;
+        prepassDepthInfo.usage  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        prepassDepthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        prepassDepthInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        prepassDepthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        prepassDepthInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        prepassDepthInfo.imageType = VK_IMAGE_TYPE_2D;
+        depthPrepassResources[i].createOwned(vk_device, prepassDepthInfo, true);
+
         VkImageResourceCreateInfo colorCreateInfo{};
         colorCreateInfo.extent = {sceneRenderExtent.width, sceneRenderExtent.height, 1};
         colorCreateInfo.format = sceneColorFormat;
@@ -388,6 +475,17 @@ void Faye::VulkanRenderer::createPostProcessImages()
 
 void Faye::VulkanRenderer::createSceneFramebuffers()
 {
+    depthPrepassRenderPassInstances.clear();
+    depthPrepassRenderPassInstances.reserve(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        depthPrepassRenderPassInstances.emplace_back(
+            vk_device,
+            *depthPrepassRenderPass,
+            sceneRenderExtent,
+            std::vector<VkImageView>{depthPrepassResources[i].imageView});
+    }
+
     sceneRenderPassInstances.clear();
     sceneRenderPassInstances.reserve(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
 
@@ -421,7 +519,14 @@ void Faye::VulkanRenderer::createPostProcessFramebuffers()
 
 void Faye::VulkanRenderer::cleanupSceneRenderTargets()
 {
+    depthPrepassRenderPassInstances.clear();
     sceneRenderPassInstances.clear();
+
+    for (size_t i = 0; i < depthPrepassResources.size(); i++)
+    {
+        depthPrepassResources[i].destroy(vk_device.getDevice());
+    }
+    depthPrepassResources.clear();
 
     for (size_t i = 0; i < sceneColorResources.size(); i++)
     {
@@ -502,6 +607,12 @@ void Faye::VulkanRenderer::destroySceneViewportSampler()
     }
 }
 
+
+void Faye::VulkanRenderer::destroyDepthPrepassRenderPass()
+{
+    depthPrepassRenderPassInstances.clear();
+    depthPrepassRenderPass.reset();
+}
 
 void Faye::VulkanRenderer::destroySceneRenderPass()
 {

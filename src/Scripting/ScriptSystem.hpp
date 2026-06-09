@@ -31,6 +31,11 @@ namespace Faye
         /// Silently skips if the file does not exist.
         void loadScript(Entity entity, const std::string &soPath);
 
+        /// Attach a pre-constructed built-in script instance to an entity.
+        /// The ScriptSystem takes ownership and will call delete on the instance
+        /// when unloaded (no dlclose — libHandle stays null).
+        void attachBuiltinScript(Entity entity, IScript *instance, const std::string &name);
+
         /// Stop and unload the script attached to an entity.
         void unloadScript(Entity entity);
 

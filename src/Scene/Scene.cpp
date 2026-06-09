@@ -210,6 +210,26 @@ namespace Faye
         return entityManager.tryGetPostProcessStack(entity);
     }
 
+    WaterComponent &Scene::addWater(EntityId entity)
+    {
+        return entityManager.addWater(entity);
+    }
+
+    void Scene::removeWater(EntityId entity)
+    {
+        entityManager.removeWater(entity);
+    }
+
+    WaterComponent *Scene::tryGetWater(EntityId entity)
+    {
+        return entityManager.tryGetWater(entity);
+    }
+
+    const WaterComponent *Scene::tryGetWater(EntityId entity) const
+    {
+        return entityManager.tryGetWater(entity);
+    }
+
     void Scene::setPrimaryCamera(EntityId entity)
     {
         auto *camera = tryGetCamera(entity);

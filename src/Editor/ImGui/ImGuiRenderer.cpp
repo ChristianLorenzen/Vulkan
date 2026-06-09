@@ -55,12 +55,35 @@ void ImGuiRenderer::init(GLFWwindow *window,
     }
 
     ImGuiStyle &style = ImGui::GetStyle();
-    style.FrameRounding = 2.0f;
-    style.WindowRounding = 4.f;
-    style.WindowBorderSize = 0.0f;
 
-    ImGui::StyleColorsCustom();
+    // ── Geometry ────────────────────────────────────────────────────────────
+    style.WindowPadding = ImVec2(10.0f, 8.0f);
+    style.FramePadding = ImVec2(8.0f, 4.0f);
+    style.CellPadding = ImVec2(6.0f, 4.0f);
+    style.ItemSpacing = ImVec2(8.0f, 5.0f);
+    style.ItemInnerSpacing = ImVec2(5.0f, 4.0f);
+    style.IndentSpacing = 18.0f;
+    style.ScrollbarSize = 11.0f;
+    style.GrabMinSize = 8.0f;
 
+    // ── Rounding ─────────────────────────────────────────────────────────────
+    style.WindowRounding = 6.0f;
+    style.ChildRounding = 4.0f;
+    style.FrameRounding = 3.0f;
+    style.PopupRounding = 4.0f;
+    style.ScrollbarRounding = 3.0f;
+    style.GrabRounding = 3.0f;
+    style.TabRounding = 4.0f;
+
+    // ── Borders ──────────────────────────────────────────────────────────────
+    style.WindowBorderSize = 1.0f;
+    style.ChildBorderSize = 1.0f;
+    style.PopupBorderSize = 1.0f;
+    style.FrameBorderSize = 0.0f;
+    style.TabBorderSize = 0.0f;
+
+    // ImGui::StyleColorsCustom();
+    ImGui::SetColourThemePabloDark();
     ImGui_ImplGlfw_InitForVulkan(window, true);
 
     ImGui_ImplVulkan_InitInfo info = {};

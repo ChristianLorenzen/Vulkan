@@ -31,7 +31,8 @@ size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const Mat
 {
     const size_t vertexHash = std::hash<std::string>{}(key.vertexShaderPath);
     const size_t fragmentHash = std::hash<std::string>{}(key.fragmentShaderPath);
-    return vertexHash ^ (fragmentHash + 0x9e3779b9 + (vertexHash << 6) + (vertexHash >> 2));
+    const size_t combined = vertexHash ^ (fragmentHash + 0x9e3779b9 + (vertexHash << 6) + (vertexHash >> 2));
+    return combined ^ (key.alphaBlend ? size_t{0x9e3779b97f4a7c15ULL} : size_t{0});
 }
 
 Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
@@ -43,6 +44,10 @@ Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkRenderPass 
 
 Faye::SimpleRenderSystem::~SimpleRenderSystem()
 {
+    if (depthPrepassPipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(vk_device.getDevice(), depthPrepassPipelineLayout, nullptr);
+    }
     vkDestroyPipelineLayout(vk_device.getDevice(), pipelineLayout, nullptr);
 }
 
@@ -109,7 +114,8 @@ Faye::SimpleRenderSystem::MaterialPipelineKey Faye::SimpleRenderSystem::makePipe
 
     return MaterialPipelineKey{
         resolveCompiledShaderPath(std::string(vertexShader)),
-        resolveCompiledShaderPath(std::string(fragmentShader))};
+        resolveCompiledShaderPath(std::string(fragmentShader)),
+        materialState.pipelineConfig.enableAlphaBlending};
 }
 
 std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const MaterialPipelineKey &key) const
@@ -119,6 +125,24 @@ std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const M
     PipelineConfigInfo pipelineConfig{};
     VulkanPipeline::defaultPipelineConfigInfo(pipelineConfig);
     pipelineConfig.colorBlendAttachments.resize(2, pipelineConfig.colorBlendAttachments.front());
+
+    if (key.alphaBlend)
+    {
+        // Translucent material (e.g. water): blend colour attachment 0 only.
+        // Attachment 1 carries motion vectors and must never be blended.
+        VkPipelineColorBlendAttachmentState &att0 = pipelineConfig.colorBlendAttachments[0];
+        att0.blendEnable         = VK_TRUE;
+        att0.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        att0.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        att0.colorBlendOp        = VK_BLEND_OP_ADD;
+        att0.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        att0.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        att0.alphaBlendOp        = VK_BLEND_OP_ADD;
+
+        // Depth test stays on so opaque geometry occludes the water, but the
+        // translucent surface must not write depth and punch holes in later draws.
+        pipelineConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
+    }
 
     pipelineConfig.renderPass = renderPass;
     pipelineConfig.pipelineLayout = pipelineLayout;
@@ -289,6 +313,111 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
                 &push);
 
             renderable.model->drawSubmesh(frameContext.commandBuffer, submesh);
+        }
+    }
+}
+
+void Faye::SimpleRenderSystem::prepareDepthPrepassPipeline(
+    VkRenderPass depthPrepassRenderPass,
+    VkDescriptorSetLayout globalSetLayout)
+{
+    if (depthPrepassPipelineLayout == VK_NULL_HANDLE)
+    {
+        VkPushConstantRange pcRange{};
+        pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pcRange.offset = 0;
+        pcRange.size   = sizeof(SimplePushConstantData);
+
+        std::vector<VkDescriptorSetLayout> layouts{globalSetLayout};
+        VkPipelineLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layoutInfo.setLayoutCount         = static_cast<uint32_t>(layouts.size());
+        layoutInfo.pSetLayouts            = layouts.data();
+        layoutInfo.pushConstantRangeCount = 1;
+        layoutInfo.pPushConstantRanges    = &pcRange;
+
+        if (vkCreatePipelineLayout(vk_device.getDevice(), &layoutInfo, nullptr, &depthPrepassPipelineLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create depth prepass pipeline layout");
+        }
+    }
+
+    PipelineConfigInfo config{};
+    VulkanPipeline::defaultPipelineConfigInfo(config);
+    config.colorBlendAttachments.clear();            // depth-only: no colour outputs
+    config.colorBlendingInfo.attachmentCount = 0;
+    config.colorBlendingInfo.pAttachments    = nullptr;
+    config.renderPass    = depthPrepassRenderPass;
+    config.pipelineLayout = depthPrepassPipelineLayout;
+
+    depthPrepassPipeline = std::make_unique<VulkanPipeline>(
+        vk_device,
+        resolveCompiledShaderPath("depth_prepass.vert"),
+        resolveCompiledShaderPath("depth_prepass.frag"),
+        config);
+}
+
+void Faye::SimpleRenderSystem::renderDepthPrepass(
+    FrameContext &frameContext, const RenderSceneSnapshot &renderScene)
+{
+    if (!depthPrepassPipeline)
+    {
+        return;
+    }
+
+    depthPrepassPipeline->bind(frameContext.commandBuffer);
+
+    vkCmdBindDescriptorSets(
+        frameContext.commandBuffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        depthPrepassPipelineLayout,
+        0, 1,
+        &frameContext.globalDescriptorSet,
+        0, nullptr);
+
+    for (const auto &renderable : renderScene.renderables)
+    {
+        if (renderable.model == nullptr)
+        {
+            continue;
+        }
+
+        // Skip water — it is translucent/animated and must NOT occlude other objects.
+        if (renderable.material != nullptr)
+        {
+            const std::string &vs = renderable.material->getVertexShaderPath();
+            if (vs.find("water") != std::string::npos)
+            {
+                continue;
+            }
+        }
+
+        SimplePushConstantData push{};
+        push.modelMatrix      = renderable.modelMatrix;
+        push.priorModelMatrix = renderable.priorModelMatrix;
+        push.baseColor        = glm::vec4(1.0f);
+
+        vkCmdPushConstants(
+            frameContext.commandBuffer,
+            depthPrepassPipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,
+            sizeof(SimplePushConstantData),
+            &push);
+
+        renderable.model->bind(frameContext.commandBuffer);
+
+        const auto &submeshes = renderable.model->getSubmeshes();
+        if (submeshes.empty())
+        {
+            renderable.model->draw(frameContext.commandBuffer);
+        }
+        else
+        {
+            for (const auto &submesh : submeshes)
+            {
+                renderable.model->drawSubmesh(frameContext.commandBuffer, submesh);
+            }
         }
     }
 }
