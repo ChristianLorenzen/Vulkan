@@ -41,6 +41,9 @@
 
 #include "Core/Logging/Logger.hpp"
 
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+
 // Forward declaration — full definition only needed in Vulkan.cpp
 namespace Faye
 {

@@ -177,8 +177,23 @@ VulkanDevice::VulkanDevice(Window &window) : window{window}
     LOG_INFO(Logger::getInstance(), "Creating Devices...");
     createPhysicalDevice();
     createLogicalDevice();
+    createAllocator();
     LOG_INFO(Logger::getInstance(), "Creating Command Pools...");
     createCommandPools();
+}
+
+void VulkanDevice::createAllocator()
+{
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.vulkanApiVersion = VK_VERSION;
+    allocatorInfo.physicalDevice = physicalDevice;
+    allocatorInfo.device = device;
+    allocatorInfo.instance = instance;
+
+    if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create VMA allocator");
+    }
 }
 
 bool VulkanDevice::shouldEnableValidationLayers()
@@ -218,6 +233,7 @@ bool VulkanDevice::shouldEnableValidationLayers()
 
 VulkanDevice::~VulkanDevice()
 {
+    vmaDestroyAllocator(allocator);
     vkDestroyCommandPool(device, commandPool, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -768,33 +784,18 @@ std::vector<const char *> VulkanDevice::getRequiredExtensions()
     return extensions;
 }
 
-void VulkanDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
+void VulkanDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, const VmaAllocationCreateInfo &allocInfo, VkBuffer &buffer, VmaAllocation &allocation)
 {
-    VkBufferCreateInfo bufferInfo = {};
+    VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
+    if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer, &allocation, nullptr) != VK_SUCCESS)
     {
-        throw std::runtime_error("Failed to create vertex buffer...");
+        throw std::runtime_error("Failed to create buffer via VMA");
     }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo = {};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
-    {
-        throw std::runtime_error("Failed to allocate vertex buffer memory...");
-    }
-
-    vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
 
 void VulkanDevice::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
@@ -873,30 +874,12 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 /// @param imageMemory
 void VulkanDevice::createImageWithInfo(
     const VkImageCreateInfo &imageInfo,
-    VkMemoryPropertyFlags properties,
+    const VmaAllocationCreateInfo &allocInfo,
     VkImage &image,
-    VkDeviceMemory &imageMemory)
+    VmaAllocation &allocation)
 {
-    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
+    if (vmaCreateImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr) != VK_SUCCESS)
     {
-        throw std::runtime_error("failed to create image!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to allocate image memory!");
-    }
-
-    if (vkBindImageMemory(device, image, imageMemory, 0) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to bind image memory!");
+        throw std::runtime_error("Failed to create image via VMA");
     }
 }
