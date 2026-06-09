@@ -419,10 +419,10 @@ void VulkanDevice::createInstance()
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Hello Triangle";
-    appInfo.applicationVersion = VK_MAKE_API_VERSION(1, 0, 0, 0);
+    appInfo.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
     appInfo.pEngineName = "No Engine";
-    appInfo.engineVersion = VK_MAKE_API_VERSION(1, 0, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_2;
+    appInfo.engineVersion = VK_MAKE_API_VERSION(0, 0, 0, 1);
+    appInfo.apiVersion = VK_VERSION;
 
     VkInstanceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -636,15 +636,30 @@ void VulkanDevice::createLogicalDevice()
     }
 
     // Setup device features. Empty for now, but should fill out once we start using Vulkan features.
-    VkPhysicalDeviceFeatures deviceFeatures = {};
-    deviceFeatures.samplerAnisotropy = VK_TRUE;
+    // VkPhysicalDeviceFeatures deviceFeatures = {};
+    // deviceFeatures.samplerAnisotropy = VK_TRUE;
+
+    VkPhysicalDeviceVulkan13Features featuresVK13 = {};
+    featuresVK13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+
+    VkPhysicalDeviceVulkan12Features featuresVK12 = {};
+    featuresVK12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    featuresVK12.pNext = &featuresVK13;
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.pNext = &featuresVK12;
+
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
 
     // Create logical device
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.pEnabledFeatures = &deviceFeatures;
+    // We have the &deviceFeatures struct, but setting to null since now using pNext chaining.
+    createInfo.pEnabledFeatures = nullptr;
+    createInfo.pNext = &deviceFeatures2;
 
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();

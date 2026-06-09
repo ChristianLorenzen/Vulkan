@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
+#include "vk_defines.hpp"
 #include "vk_types.hpp"
 #include "Platform/Window/Window.hpp"
 
