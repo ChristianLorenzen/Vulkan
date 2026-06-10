@@ -48,8 +48,7 @@ namespace Faye
         for (size_t i = 0; i < depthImages.size(); i++)
         {
             vkDestroyImageView(device->getDevice(), depthImageViews[i], nullptr);
-            vkDestroyImage(device->getDevice(), depthImages[i], nullptr);
-            vkFreeMemory(device->getDevice(), depthImageMemorys[i], nullptr);
+            vmaDestroyImage(device->getAllocator(), depthImages[i], depthImageMemorys[i]);
         }
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
@@ -278,7 +277,7 @@ namespace Faye
         }
     }
 
-    void VulkanSwapchain::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory)
+    void VulkanSwapchain::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &imageMemory)
     {
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -295,7 +294,9 @@ namespace Faye
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        device->createImageWithInfo(imageInfo, properties, image, imageMemory);
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        device->createImageWithInfo(imageInfo, allocInfo, image, imageMemory);
     }
 
     void VulkanSwapchain::createSyncObjects()

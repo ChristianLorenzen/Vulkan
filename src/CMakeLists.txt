@@ -31,6 +31,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/Vulkan.cpp
     Renderer/Vulkan/VulkanBuffer.cpp
     Renderer/Vulkan/VkImageResource.cpp
+    Renderer/Vulkan/vma_implementation.cpp
     Renderer/Vulkan/MaterialCache.cpp
     Renderer/Vulkan/TextureCache.cpp
     Renderer/Vulkan/VkSamplerResource.cpp

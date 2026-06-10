@@ -33,6 +33,7 @@ Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window
 Faye::VulkanRenderer::~VulkanRenderer()
 {
     cleanupSceneRenderTargets();
+    cleanupPostProcessRenderTargets();
     destroyDepthPrepassRenderPass();
     destroySceneViewportSampler();
     destroySceneRenderPass();
@@ -231,11 +232,11 @@ void Faye::VulkanRenderer::createDepthPrepassRenderPass()
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
             VkClearDepthStencilValue{1.0f, 0},
             VK_ATTACHMENT_LOAD_OP_CLEAR,
-            VK_ATTACHMENT_STORE_OP_STORE,            // keep depth for sampling
+            VK_ATTACHMENT_STORE_OP_STORE, // keep depth for sampling
             VK_IMAGE_LAYOUT_UNDEFINED)
         .addSubpass(makeGraphicsSubpass(
-            {},                                      // no colour outputs
-            std::nullopt,                            // no motion vector output
+            {},           // no colour outputs
+            std::nullopt, // no motion vector output
             makeDepthAttachmentRef("depthPrepass")))
         // Ensure previous fragment-shader reads are done before we write depth.
         .addDependency({VK_SUBPASS_EXTERNAL,
@@ -392,7 +393,7 @@ void Faye::VulkanRenderer::createSceneImages()
         VkImageResourceCreateInfo prepassDepthInfo{};
         prepassDepthInfo.extent = {sceneRenderExtent.width, sceneRenderExtent.height, 1};
         prepassDepthInfo.format = sceneDepthFormat;
-        prepassDepthInfo.usage  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        prepassDepthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         prepassDepthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         prepassDepthInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         prepassDepthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -463,9 +464,12 @@ void Faye::VulkanRenderer::createPostProcessImages()
             postProcessColorImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
             postProcessColorImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
+            VmaAllocationCreateInfo allocInfo{};
+            allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
             vk_device.createImageWithInfo(
                 postProcessColorImageInfo,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                allocInfo,
                 target.images[i],
                 target.imageMemories[i]);
             target.imageViews[i] = createImageView(target.images[i], sceneColorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -557,8 +561,7 @@ void Faye::VulkanRenderer::cleanupPostProcessRenderTargets()
         for (size_t i = 0; i < target.imageViews.size(); i++)
         {
             vkDestroyImageView(vk_device.getDevice(), target.imageViews[i], nullptr);
-            vkDestroyImage(vk_device.getDevice(), target.images[i], nullptr);
-            vkFreeMemory(vk_device.getDevice(), target.imageMemories[i], nullptr);
+            vmaDestroyImage(vk_device.getAllocator(), target.images[i], target.imageMemories[i]);
         }
 
         target.images.clear();
@@ -607,7 +610,6 @@ void Faye::VulkanRenderer::destroySceneViewportSampler()
     }
 }
 
-
 void Faye::VulkanRenderer::destroyDepthPrepassRenderPass()
 {
     depthPrepassRenderPassInstances.clear();
@@ -645,7 +647,6 @@ VkImageView Faye::VulkanRenderer::createImageView(VkImage image, VkFormat format
 
     return imageView;
 }
-
 
 // void Faye::VulkanRenderer::createDescriptorSetLayout()
 // {

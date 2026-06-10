@@ -40,7 +40,8 @@ namespace Faye
     struct VkImageResource
     {
         VkImage image = VK_NULL_HANDLE;
-        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
+        VmaAllocator allocator = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
         VkFormat format = VK_FORMAT_UNDEFINED;
         VkExtent3D extent{0, 0, 0};
@@ -67,10 +68,10 @@ namespace Faye
         void createOwned(VulkanDevice &device,
                          const VkImageResourceCreateInfo &createInfo,
                          bool createDefaultView = true);
-        void wrapExternal(VkDevice device,
+        void wrapExternal(VulkanDevice &device,
                           const VkImageWrapInfo &wrapInfo,
                           bool createDefaultView = true);
-        void wrapSwapchainImage(VkDevice device,
+        void wrapSwapchainImage(VulkanDevice &device,
                                 VkImage swapchainImage,
                                 VkFormat swapchainFormat,
                                 VkExtent2D swapchainExtent,

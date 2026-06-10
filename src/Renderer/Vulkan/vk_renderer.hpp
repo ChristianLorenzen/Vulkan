@@ -75,7 +75,7 @@ namespace Faye
         struct PostProcessTargetResources
         {
             std::vector<VkImage> images;
-            std::vector<VkDeviceMemory> imageMemories;
+            std::vector<VmaAllocation> imageMemories;
             std::vector<VkImageView> imageViews;
             std::vector<VulkanRenderPassInstance> renderPassInstances;
         };

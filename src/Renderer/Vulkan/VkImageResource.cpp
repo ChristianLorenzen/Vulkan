@@ -36,7 +36,8 @@ Faye::VkImageResource &Faye::VkImageResource::operator=(VkImageResource &&other)
     }
 
     image = std::exchange(other.image, VK_NULL_HANDLE);
-    memory = std::exchange(other.memory, VK_NULL_HANDLE);
+    allocation = std::exchange(other.allocation, VK_NULL_HANDLE);
+    allocator = std::exchange(other.allocator, VK_NULL_HANDLE);
     imageView = std::exchange(other.imageView, VK_NULL_HANDLE);
     format = std::exchange(other.format, VK_FORMAT_UNDEFINED);
     extent = std::exchange(other.extent, VkExtent3D{0, 0, 0});
@@ -62,7 +63,8 @@ bool Faye::VkImageResource::hasView() const
 void Faye::VkImageResource::reset()
 {
     image = VK_NULL_HANDLE;
-    memory = VK_NULL_HANDLE;
+    allocation = VK_NULL_HANDLE;
+    allocator = VK_NULL_HANDLE;
     imageView = VK_NULL_HANDLE;
     format = VK_FORMAT_UNDEFINED;
     extent = {0, 0, 0};
@@ -78,57 +80,47 @@ void Faye::VkImageResource::createOwned(VulkanDevice &device,
                                         const VkImageResourceCreateInfo &createInfo,
                                         bool createDefaultView)
 {
-    destroy(device.getDevice());
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = createInfo.imageType;
+    imageInfo.extent = createInfo.extent;
+    imageInfo.mipLevels = createInfo.mipLevels;
+    imageInfo.arrayLayers = createInfo.arrayLayers;
+    imageInfo.format = createInfo.format;
+    imageInfo.tiling = createInfo.tiling;
+    imageInfo.initialLayout = createInfo.initialLayout;
+    imageInfo.usage = createInfo.usage;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageInfo.samples = createInfo.samples;
+    imageInfo.flags = createInfo.flags;
 
-    if (createInfo.extent.width == 0 || createInfo.extent.height == 0 || createInfo.extent.depth == 0)
-    {
-        throw std::runtime_error("VkImageResource requires a non-zero extent");
-    }
-    if (createInfo.format == VK_FORMAT_UNDEFINED)
-    {
-        throw std::runtime_error("VkImageResource requires a valid VkFormat");
-    }
-    if (createInfo.usage == 0)
-    {
-        throw std::runtime_error("VkImageResource requires at least one usage flag");
-    }
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-    extent = createInfo.extent;
+    device.createImageWithInfo(imageInfo, allocInfo, image, allocation);
+    allocator = device.getAllocator();
+    ownsImage = true;
+
     format = createInfo.format;
+    extent = createInfo.extent;
     layout = createInfo.initialLayout;
-    aspectFlags = createInfo.aspectFlags != 0 ? createInfo.aspectFlags : defaultAspectFlagsForFormat(createInfo.format);
+    aspectFlags = createInfo.aspectFlags != 0
+                      ? createInfo.aspectFlags
+                      : defaultAspectFlagsForFormat(createInfo.format);
     viewType = createInfo.viewType;
     mipLevels = createInfo.mipLevels;
     arrayLayers = createInfo.arrayLayers;
     ownsImage = true;
 
-    VkImageCreateInfo imageCreateInfo{};
-    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageCreateInfo.flags = createInfo.flags;
-    imageCreateInfo.imageType = createInfo.imageType;
-    imageCreateInfo.extent = createInfo.extent;
-    imageCreateInfo.mipLevels = createInfo.mipLevels;
-    imageCreateInfo.arrayLayers = createInfo.arrayLayers;
-    imageCreateInfo.format = createInfo.format;
-    imageCreateInfo.tiling = createInfo.tiling;
-    imageCreateInfo.initialLayout = createInfo.initialLayout;
-    imageCreateInfo.usage = createInfo.usage;
-    imageCreateInfo.samples = createInfo.samples;
-    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    device.createImageWithInfo(imageCreateInfo, createInfo.memoryProperties, image, memory);
-
     if (createDefaultView)
-    {
         createImageView(device.getDevice());
-    }
 }
 
-void Faye::VkImageResource::wrapExternal(VkDevice device,
+void Faye::VkImageResource::wrapExternal(VulkanDevice &device,
                                          const VkImageWrapInfo &wrapInfo,
                                          bool createDefaultView)
 {
-    destroy(device);
+    destroy(device.getDevice());
 
     if (wrapInfo.image == VK_NULL_HANDLE)
     {
@@ -148,15 +140,14 @@ void Faye::VkImageResource::wrapExternal(VkDevice device,
     mipLevels = wrapInfo.mipLevels;
     arrayLayers = wrapInfo.arrayLayers;
     ownsImage = false;
-    memory = VK_NULL_HANDLE;
 
     if (createDefaultView)
     {
-        createImageView(device);
+        createImageView(device.getDevice());
     }
 }
 
-void Faye::VkImageResource::wrapSwapchainImage(VkDevice device,
+void Faye::VkImageResource::wrapSwapchainImage(VulkanDevice &device,
                                                VkImage swapchainImage,
                                                VkFormat swapchainFormat,
                                                VkExtent2D swapchainExtent,
@@ -180,20 +171,20 @@ void Faye::VkImageResource::wrapSwapchainImage(VkDevice device,
 
 void Faye::VkImageResource::destroy(VkDevice device)
 {
+
     if (imageView != VK_NULL_HANDLE)
     {
         vkDestroyImageView(device, imageView, nullptr);
+        imageView = VK_NULL_HANDLE;
     }
-    if (ownsImage && image != VK_NULL_HANDLE)
+    if (ownsImage && image != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
     {
-        vkDestroyImage(device, image, nullptr);
+        vmaDestroyImage(allocator, image, allocation);
+        image = VK_NULL_HANDLE;
+        allocation = VK_NULL_HANDLE;
+        allocator = VK_NULL_HANDLE;
     }
-    if (ownsImage && memory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(device, memory, nullptr);
-    }
-
-    reset();
+    ownsImage = false;
 }
 
 VkImageView Faye::VkImageResource::createImageView(VkDevice device,

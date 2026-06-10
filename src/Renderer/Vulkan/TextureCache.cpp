@@ -24,6 +24,10 @@ namespace Faye
     TextureCache::~TextureCache()
     {
         clear();
+        for (auto &[type, resource] : fallbackTextures)
+        {
+            resource->destroy(vk_device.getDevice());
+        }
         fallbackTextures.clear();
     }
 
@@ -61,6 +65,10 @@ namespace Faye
 
     void TextureCache::clear()
     {
+        for (auto &[key, resource] : textureResources)
+        {
+            resource->destroy(vk_device.getDevice());
+        }
         textureResources.clear();
     }
 

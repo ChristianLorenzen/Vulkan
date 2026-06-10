@@ -47,7 +47,7 @@ namespace Faye
 
         VkFormat findDepthFormat();
 
-        void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
+        void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &imageMemory);
 
     private:
         void init();
@@ -77,7 +77,7 @@ namespace Faye
         std::unique_ptr<VulkanRenderPass> swapChainRenderPass;
 
         std::vector<VkImage> depthImages;
-        std::vector<VkDeviceMemory> depthImageMemorys;
+        std::vector<VmaAllocation> depthImageMemorys;
         std::vector<VkImageView> depthImageViews;
         std::vector<VkImage> swapChainImages;
         std::vector<VkImageView> swapChainImageViews;

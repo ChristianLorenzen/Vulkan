@@ -53,7 +53,7 @@ namespace Faye
 
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
-        void createImageWithInfo(const VkImageCreateInfo &imageInfo, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
+        void createImageWithInfo(const VkImageCreateInfo &imageInfo, const VmaAllocationCreateInfo &allocInfo, VkImage &image, VmaAllocation &allocation);
 
     private:
         void createInstance();
