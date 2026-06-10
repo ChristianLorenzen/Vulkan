@@ -22,7 +22,6 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
-    Renderer/Vulkan/vk_render_pass.cpp
     Renderer/Vulkan/vk_render_system.cpp
     Renderer/Vulkan/point_light_render_system.cpp
     Renderer/Vulkan/vk_post_process.cpp

@@ -33,7 +33,7 @@ namespace Faye
 	class PointLightRenderSystem
 	{
 	public:
-		PointLightRenderSystem(VulkanDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout);
+		PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VkDescriptorSetLayout globalSetLayout);
 		~PointLightRenderSystem();
 
 		PointLightRenderSystem(const PointLightRenderSystem &) = delete;
@@ -51,7 +51,7 @@ namespace Faye
 		VkPipelineLayout pipelineLayout;
 
 		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
-		void createPipeline(VkRenderPass renderPass);
+		void createPipeline(VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat);
 	};
 
 } // namespace

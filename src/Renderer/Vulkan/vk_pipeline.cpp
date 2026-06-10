@@ -91,8 +91,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     pipelineInfo.pDepthStencilState = &config.depthStencilInfo;
     pipelineInfo.pDynamicState = &config.dynamicStateInfo;
     pipelineInfo.layout = config.pipelineLayout;
-    pipelineInfo.renderPass = config.renderPass;
-    pipelineInfo.subpass = config.subpass;
+    pipelineInfo.renderPass = VK_NULL_HANDLE;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
@@ -100,6 +99,18 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     colorBlendingInfo.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
     colorBlendingInfo.pAttachments = colorBlendAttachments.data();
     pipelineInfo.pColorBlendState = &colorBlendingInfo;
+
+    // Dynamic rendering: when no VkRenderPass is provided, the pipeline must declare
+    // its attachment formats via VkPipelineRenderingCreateInfo. Without this chained,
+    // the pipeline is created with zero attachments (depth format UNDEFINED), which
+    // silently disables depth testing and blending state at draw time.
+    VkPipelineRenderingCreateInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(config.colorAttachmentFormats.size());
+    renderingInfo.pColorAttachmentFormats = config.colorAttachmentFormats.empty() ? nullptr : config.colorAttachmentFormats.data();
+    renderingInfo.depthAttachmentFormat = config.depthAttachmentFormat;
+    renderingInfo.stencilAttachmentFormat = config.stencilAttachmentFormat;
+    pipelineInfo.pNext = &renderingInfo;
 
     LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
 

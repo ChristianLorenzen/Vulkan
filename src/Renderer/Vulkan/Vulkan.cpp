@@ -75,7 +75,7 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
         vk_device->getGraphicsQueueFamilyIndex(),
         vk_device->getGraphicsQueue(),
         imGUIPool->getPool(),
-        vk_renderer->getSwapChainRenderPass(),
+        vk_renderer->getSwapchainColorFormat(),
         VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
         VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     imGuiRenderer->registerViewportTextures(*vk_renderer);
@@ -124,18 +124,18 @@ void Faye::Vulkan::initializeFrameResources()
     if (sceneDepthSampler == VK_NULL_HANDLE)
     {
         VkSamplerCreateInfo depthSamplerInfo{};
-        depthSamplerInfo.sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        depthSamplerInfo.magFilter        = VK_FILTER_NEAREST;
-        depthSamplerInfo.minFilter        = VK_FILTER_NEAREST;
-        depthSamplerInfo.addressModeU     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        depthSamplerInfo.addressModeV     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        depthSamplerInfo.addressModeW     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        depthSamplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        depthSamplerInfo.magFilter = VK_FILTER_NEAREST;
+        depthSamplerInfo.minFilter = VK_FILTER_NEAREST;
+        depthSamplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        depthSamplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        depthSamplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         depthSamplerInfo.anisotropyEnable = VK_FALSE;
-        depthSamplerInfo.maxAnisotropy    = 1.0f;
-        depthSamplerInfo.compareEnable    = VK_FALSE;
-        depthSamplerInfo.compareOp        = VK_COMPARE_OP_ALWAYS;
-        depthSamplerInfo.mipmapMode       = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        depthSamplerInfo.borderColor      = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        depthSamplerInfo.maxAnisotropy = 1.0f;
+        depthSamplerInfo.compareEnable = VK_FALSE;
+        depthSamplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+        depthSamplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        depthSamplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         if (vkCreateSampler(vk_device->getDevice(), &depthSamplerInfo, nullptr, &sceneDepthSampler) != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create scene depth sampler");
@@ -157,8 +157,8 @@ void Faye::Vulkan::initializeFrameResources()
         auto bufferInfo = uboBuffers[i]->descriptorInfo();
 
         VkDescriptorImageInfo depthInfo{};
-        depthInfo.sampler     = sceneDepthSampler;
-        depthInfo.imageView   = prepassViews[i];
+        depthInfo.sampler = sceneDepthSampler;
+        depthInfo.imageView = prepassViews[i];
         depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
         VulkanDescriptorWriter(*globalSetLayout, *globalPool)
@@ -169,18 +169,22 @@ void Faye::Vulkan::initializeFrameResources()
 
     simpleRenderSystem = std::make_unique<SimpleRenderSystem>(
         *vk_device,
-        vk_renderer->getSceneRenderPass(),
+        vk_renderer->getSceneColorFormat(),
+        vk_renderer->getSceneMotionFormat(),
+        vk_renderer->getSceneDepthFormat(),
         *materialCache,
         globalSetLayout->getDescriptorSetLayout(),
         materialSetLayout->getDescriptorSetLayout());
 
     simpleRenderSystem->prepareDepthPrepassPipeline(
-        vk_renderer->getDepthPrepassRenderPass(),
+        vk_renderer->getSceneDepthFormat(),
         globalSetLayout->getDescriptorSetLayout());
 
     pointLightRenderSystem = std::make_unique<PointLightRenderSystem>(
         *vk_device,
-        vk_renderer->getSceneRenderPass(),
+        vk_renderer->getSceneColorFormat(),
+        vk_renderer->getSceneMotionFormat(),
+        vk_renderer->getSceneDepthFormat(),
         globalSetLayout->getDescriptorSetLayout());
 
     postProcessChain = std::make_unique<PostProcessChain>(
@@ -336,8 +340,8 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
             for (int i = 0; i < static_cast<int>(globalDescriptorSets.size()); i++)
             {
                 VkDescriptorImageInfo depthInfo{};
-                depthInfo.sampler     = sceneDepthSampler;
-                depthInfo.imageView   = prepassViews[i];
+                depthInfo.sampler = sceneDepthSampler;
+                depthInfo.imageView = prepassViews[i];
                 depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
                 VulkanDescriptorWriter(*globalSetLayout, *globalPool)
                     .writeImage(1, &depthInfo)
@@ -369,7 +373,7 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
                 vk_device->getGraphicsQueueFamilyIndex(),
                 vk_device->getGraphicsQueue(),
                 imGUIPool->getPool(),
-                vk_renderer->getSwapChainRenderPass(),
+                vk_renderer->getSwapchainColorFormat(),
                 VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
                 VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
             imGuiRenderer->registerViewportTextures(*vk_renderer);

@@ -10,13 +10,13 @@
 
 Faye::FullscreenEffectPass::FullscreenEffectPass(
     VulkanDevice &device,
-    VkRenderPass renderPass,
+    VkFormat colorFormat,
     VulkanDescriptorPool &pool,
     PostProcessEffectDefinition definition)
     : vk_device(device),
       effectDefinition(std::move(definition)),
       descriptorPool(pool),
-      renderPass(renderPass)
+      colorFormat(colorFormat)
 {
     LOG_INFO(Logger::getInstance(), "Creating FullscreenEffectPass...");
     createDescriptorSetLayout();
@@ -171,7 +171,7 @@ void Faye::FullscreenEffectPass::createPipeline()
     pipelineConfig.depthStencilInfo.depthTestEnable = VK_FALSE;
     pipelineConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
 
-    pipelineConfig.renderPass = renderPass;
+    pipelineConfig.colorAttachmentFormats = {colorFormat};
     pipelineConfig.pipelineLayout = pipelineLayout;
 
     vk_pipeline = std::make_unique<VulkanPipeline>(
@@ -299,7 +299,7 @@ void Faye::PostProcessChain::recreatePresentPass()
 {
     presentPass = std::make_unique<FullscreenEffectPass>(
         vk_device,
-        vk_renderer.getSwapChainRenderPass(),
+        vk_renderer.getSwapchainColorFormat(),
         descriptorPool,
         getPostProcessPresentEffectDefinition());
 }
@@ -343,7 +343,7 @@ Faye::FullscreenEffectPass &Faye::PostProcessChain::getOrCreateEffectPass(const 
                                    definition.id,
                                    std::make_unique<FullscreenEffectPass>(
                                        vk_device,
-                                       vk_renderer.getPostProcessRenderPass(),
+                                       vk_renderer.getSceneColorFormat(),
                                        descriptorPool,
                                        definition))
                        .first;

@@ -21,17 +21,12 @@ namespace Faye
         LOG_INFO(Logger::getInstance(), "Creating Swapchain...");
         createSwapChain();
         createImageViews();
-        createDepthResources();
-        createRenderPass();
-        createFramebuffers();
+        swapChainDepthFormat = findDepthFormat();
         createSyncObjects();
     }
 
     VulkanSwapchain::~VulkanSwapchain()
     {
-        swapChainRenderPassInstances.clear();
-        swapChainRenderPass.reset();
-
         for (auto imageView : swapChainImageViews)
         {
             vkDestroyImageView(device->getDevice(), imageView, nullptr);
@@ -43,12 +38,6 @@ namespace Faye
         {
             vkDestroySwapchainKHR(device->getDevice(), swapChain, nullptr);
             swapChain = nullptr;
-        }
-
-        for (size_t i = 0; i < depthImages.size(); i++)
-        {
-            vkDestroyImageView(device->getDevice(), depthImageViews[i], nullptr);
-            vmaDestroyImage(device->getAllocator(), depthImages[i], depthImageMemorys[i]);
         }
 
         for (size_t i = 0; i < imageCount(); i++)
@@ -76,27 +65,36 @@ namespace Faye
         {
             vkWaitForFences(device->getDevice(), 1, &imagesInFlight[*imageIndex], VK_TRUE, UINT64_MAX);
         }
-
         imagesInFlight[*imageIndex] = inFlightFences[currentFrame];
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
-        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
-        submitInfo.pWaitDstStageMask = waitStages;
-
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = buffers;
-
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[*imageIndex]};
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
-
         vkResetFences(device->getDevice(), 1, &inFlightFences[currentFrame]);
-        if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
+
+        VkSemaphoreSubmitInfo waitSemInfo{};
+        waitSemInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        waitSemInfo.semaphore = imageAvailableSemaphores[currentFrame];
+        waitSemInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        waitSemInfo.value = 0; // binary semaphore
+
+        VkSemaphoreSubmitInfo signalSemInfo{};
+        signalSemInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        signalSemInfo.semaphore = renderFinishedSemaphores[*imageIndex];
+        signalSemInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        signalSemInfo.value = 0; // binary semaphore
+
+        VkCommandBufferSubmitInfo cmdBufInfo{};
+        cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufInfo.commandBuffer = *buffers;
+
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.waitSemaphoreInfoCount = 1;
+        submitInfo.pWaitSemaphoreInfos = &waitSemInfo;
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufInfo;
+        submitInfo.signalSemaphoreInfoCount = 1;
+        submitInfo.pSignalSemaphoreInfos = &signalSemInfo;
+
+        if (vkQueueSubmit2(device->getGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to submit draw command buffer\n");
         }
@@ -104,7 +102,7 @@ namespace Faye
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
+        presentInfo.pWaitSemaphores = &renderFinishedSemaphores[*imageIndex];
 
         VkSwapchainKHR swapChains[] = {swapChain};
         presentInfo.swapchainCount = 1;
@@ -112,9 +110,7 @@ namespace Faye
         presentInfo.pImageIndices = imageIndex;
 
         auto result = vkQueuePresentKHR(device->getPresentQueue(), &presentInfo);
-
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
         return result;
     }
 
@@ -209,100 +205,6 @@ namespace Faye
         return imageView;
     }
 
-    void VulkanSwapchain::createRenderPass()
-    {
-        RenderPassBuilder builder{};
-        builder
-            .setName("Swapchain Present Pass")
-            .addColorAttachment(
-                "swapchainColor",
-                getSwapChainImageFormat(),
-                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
-            .addDepthAttachment(
-                "swapchainDepth",
-                findDepthFormat(),
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .addSubpass(makeGraphicsSubpass(
-                {makeColorAttachmentRef("swapchainColor")},
-                std::nullopt,
-                makeDepthAttachmentRef("swapchainDepth")))
-            .addDependency({VK_SUBPASS_EXTERNAL,
-                            0,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                            0,
-                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                            0});
-
-        swapChainRenderPass = std::make_unique<VulkanRenderPass>(
-            *device,
-            std::move(builder).build());
-    }
-
-    void VulkanSwapchain::createFramebuffers()
-    {
-        swapChainRenderPassInstances.clear();
-        swapChainRenderPassInstances.reserve(imageCount());
-
-        for (size_t i = 0; i < imageCount(); i++)
-        {
-            swapChainRenderPassInstances.emplace_back(
-                *device,
-                *swapChainRenderPass,
-                getSwapChainExtent(),
-                std::vector<VkImageView>{swapChainImageViews[i], depthImageViews[i]});
-        }
-    }
-
-    void VulkanSwapchain::createDepthResources()
-    {
-        VkFormat depthFormat = findDepthFormat();
-        swapChainDepthFormat = depthFormat;
-        VkExtent2D swapChainExtent = getSwapChainExtent();
-
-        depthImages.resize(imageCount());
-        depthImageMemorys.resize(imageCount());
-        depthImageViews.resize(imageCount());
-
-        for (size_t i = 0; i < depthImages.size(); i++)
-        {
-            // Inits VkImageCreateInfo struct, and then allocates and binds the memory
-            createImage(
-                swapChainExtent.width,
-                swapChainExtent.height,
-                1,
-                depthFormat,
-                VK_IMAGE_TILING_OPTIMAL,
-                VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                depthImages[i],
-                depthImageMemorys[i]);
-            depthImageViews[i] = createImageView(depthImages[i], depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-        }
-    }
-
-    void VulkanSwapchain::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &imageMemory)
-    {
-        VkImageCreateInfo imageInfo{};
-        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.extent.width = static_cast<uint32_t>(width);
-        imageInfo.extent.height = static_cast<uint32_t>(height);
-        imageInfo.extent.depth = 1;
-        imageInfo.mipLevels = mipLevels;
-        imageInfo.arrayLayers = 1;
-        imageInfo.format = format;
-        imageInfo.tiling = tiling;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageInfo.usage = usage;
-        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo allocInfo{};
-        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-        device->createImageWithInfo(imageInfo, allocInfo, image, imageMemory);
-    }
-
     void VulkanSwapchain::createSyncObjects()
     {
         imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -328,10 +230,8 @@ namespace Faye
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         {
             if (vkCreateSemaphore(device->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-                vkCreateSemaphore(device->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
                 vkCreateFence(device->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS)
             {
-
                 throw std::runtime_error("failed to create synchronization objects for a frame!");
             }
         }

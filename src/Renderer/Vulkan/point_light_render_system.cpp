@@ -19,11 +19,11 @@ struct PointLightPushConstantData
     float radius;
 };
 
-Faye::PointLightRenderSystem::PointLightRenderSystem(VulkanDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout) : vk_device(device)
+Faye::PointLightRenderSystem::PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VkDescriptorSetLayout globalSetLayout) : vk_device(device)
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
     createPipelineLayout(globalSetLayout);
-    createPipeline(renderPass);
+    createPipeline(colorFormat, motionFormat, depthFormat);
 }
 
 Faye::PointLightRenderSystem::~PointLightRenderSystem()
@@ -56,7 +56,7 @@ void Faye::PointLightRenderSystem::createPipelineLayout(VkDescriptorSetLayout gl
     }
 }
 
-void Faye::PointLightRenderSystem::createPipeline(VkRenderPass renderPass)
+void Faye::PointLightRenderSystem::createPipeline(VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat)
 {
     assert(pipelineLayout != nullptr && "Pipeline layout is null");
 
@@ -65,7 +65,8 @@ void Faye::PointLightRenderSystem::createPipeline(VkRenderPass renderPass)
     pipelineConfig.attributeDescriptions.clear();
     pipelineConfig.bindingDescriptions.clear();
     pipelineConfig.colorBlendAttachments.resize(2, pipelineConfig.colorBlendAttachments.front());
-    pipelineConfig.renderPass = renderPass;
+    pipelineConfig.colorAttachmentFormats = {colorFormat, motionFormat};
+    pipelineConfig.depthAttachmentFormat = depthFormat;
     pipelineConfig.pipelineLayout = pipelineLayout;
 
     vk_pipeline = std::make_unique<VulkanPipeline>(

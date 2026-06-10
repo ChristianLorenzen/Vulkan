@@ -37,7 +37,7 @@ namespace Faye
 	class SimpleRenderSystem
 	{
 	public:
-		SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
+		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
 		~SimpleRenderSystem();
 
 		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -49,7 +49,7 @@ namespace Faye
 		void renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
 
                 // Prepares the cached depth-prepass pipeline (call once after construction).
-                void prepareDepthPrepassPipeline(VkRenderPass depthPrepassRenderPass,
+                void prepareDepthPrepassPipeline(VkFormat depthFormat,
                                                  VkDescriptorSetLayout globalSetLayout);
                 // Renders all non-water renderables depth-only.
                 void renderDepthPrepass(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
@@ -70,7 +70,7 @@ namespace Faye
                 };
 
                 VulkanDevice &vk_device;
-                VkRenderPass renderPass;
+                VkFormat sceneColorFormat, sceneMotionFormat, sceneDepthFormat;
                 MaterialCache &materialCache;
                 std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
 

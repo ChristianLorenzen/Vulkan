@@ -28,7 +28,7 @@ namespace Faye
                   uint32_t queueFamily,
                   VkQueue queue,
                   VkDescriptorPool descriptorPool,
-                  VkRenderPass renderPass,
+                  VkFormat swapchainColorFormat,
                   uint32_t minImageCount,
                   uint32_t imageCount);
 

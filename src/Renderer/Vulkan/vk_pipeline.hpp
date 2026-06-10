@@ -27,8 +27,10 @@ namespace Faye
         std::vector<VkDynamicState> dynamicStateEnables;
         VkPipelineDynamicStateCreateInfo dynamicStateInfo;
         VkPipelineLayout pipelineLayout = nullptr;
-        VkRenderPass renderPass = nullptr;
-        uint32_t subpass = 0;
+
+        std::vector<VkFormat> colorAttachmentFormats;
+        VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+        VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
     };
 
     class VulkanPipeline : Pipeline

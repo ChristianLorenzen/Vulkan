@@ -34,10 +34,7 @@ Faye::VulkanRenderer::~VulkanRenderer()
 {
     cleanupSceneRenderTargets();
     cleanupPostProcessRenderTargets();
-    destroyDepthPrepassRenderPass();
     destroySceneViewportSampler();
-    destroySceneRenderPass();
-    destroyPostProcessRenderPass();
     freeCommandBuffers();
 }
 
@@ -154,9 +151,55 @@ void Faye::VulkanRenderer::beginSceneRenderPass(VkCommandBuffer commandBuffer)
     assert(isFrameStarted && "Can't call beginSceneRenderPass while frame is not in progress.");
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't begin render pass on command buffer from a different frame.");
 
-    sceneRenderPassInstances[currentFrameIndex].begin(
-        commandBuffer,
-        makeFullscreenBeginOptions(sceneRenderExtent));
+    auto &color = sceneColorResources[currentFrameIndex];
+    auto &motion = sceneMotionResources[currentFrameIndex];
+    auto &depth = sceneDepthResources[currentFrameIndex];
+
+    color.recordTransition(commandBuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                           VK_ACCESS_2_SHADER_READ_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    motion.recordTransition(commandBuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_ACCESS_2_SHADER_READ_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    depth.recordTransition(commandBuffer, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+                           VK_ACCESS_2_SHADER_READ_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
+    VkRenderingAttachmentInfo colorAtt{};
+    colorAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAtt.imageView = color.imageView;
+    colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAtt.clearValue.color = {{0, 0, 0, 1}};
+
+    VkRenderingAttachmentInfo motionAtt = colorAtt; // same load/store/clear
+    motionAtt.imageView = motion.imageView;
+
+    VkRenderingAttachmentInfo colorAtts[2] = {colorAtt, motionAtt}; // order matches pipeline formats
+
+    VkRenderingAttachmentInfo depthAtt{};
+    depthAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAtt.imageView = depth.imageView;
+    depthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depthAtt.clearValue.depthStencil = {1.0f, 0};
+
+    VkRenderingInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    info.renderArea = {{0, 0}, sceneRenderExtent};
+    info.layerCount = 1;
+    info.colorAttachmentCount = 2;
+    info.pColorAttachments = colorAtts;
+    info.pDepthAttachment = &depthAtt;
+    vkCmdBeginRendering(commandBuffer, &info);
+    // + vkCmdSetViewport / vkCmdSetScissor as in 3.1
+
+    VkViewport vp{0, 0, (float)sceneRenderExtent.width, (float)sceneRenderExtent.height, 0, 1};
+    VkRect2D sc{{0, 0}, sceneRenderExtent};
+    vkCmdSetViewport(commandBuffer, 0, 1, &vp);
+    vkCmdSetScissor(commandBuffer, 0, 1, &sc);
 }
 
 void Faye::VulkanRenderer::endSceneRenderPass(VkCommandBuffer commandBuffer)
@@ -164,7 +207,20 @@ void Faye::VulkanRenderer::endSceneRenderPass(VkCommandBuffer commandBuffer)
     assert(isFrameStarted && "Can't call endSceneRenderPass while frame is not in progress.");
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't end render pass on command buffer from a different frame.");
 
-    sceneRenderPassInstances[currentFrameIndex].end(commandBuffer);
+    vkCmdEndRendering(commandBuffer);
+
+    sceneColorResources[currentFrameIndex].recordTransition(commandBuffer,
+                                                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                                            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+    sceneMotionResources[currentFrameIndex].recordTransition(commandBuffer,
+                                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                             VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                                             VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+    sceneDepthResources[currentFrameIndex].recordTransition(commandBuffer,
+                                                            VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+                                                            VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT);
 }
 
 void Faye::VulkanRenderer::beginSwapchainRenderPass(VkCommandBuffer commandBuffer)
@@ -172,7 +228,37 @@ void Faye::VulkanRenderer::beginSwapchainRenderPass(VkCommandBuffer commandBuffe
     assert(isFrameStarted && "Can't call beginSwapchainRenderPass while frame is not in progress.");
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't begin render pass on command buffer from a different frame.");
 
-    vk_swapchain->getRenderPassInstance(currentImageIndex).begin(commandBuffer, makeFullscreenBeginOptions(vk_swapchain->getSwapChainExtent()));
+    VkImage img = vk_swapchain->getImage(currentImageIndex); // add getter if needed
+    VkImageView view = vk_swapchain->getImageView(currentImageIndex);
+
+    // Acquire->color: the image-available semaphore gates the QUEUE; this gates LAYOUT.
+    VkImageResource::imageBarrier(commandBuffer, img, VK_IMAGE_ASPECT_COLOR_BIT,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                  0, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+
+    VkRenderingAttachmentInfo colorAtt{};
+    colorAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAtt.imageView = view;
+    colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAtt.clearValue.color = {{0, 0, 0, 1}};
+
+    VkRenderingInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    info.renderArea = {{0, 0}, vk_swapchain->getSwapChainExtent()};
+    info.layerCount = 1;
+    info.colorAttachmentCount = 1;
+    info.pColorAttachments = &colorAtt;
+    info.pDepthAttachment = nullptr; // see depth note below
+    vkCmdBeginRendering(commandBuffer, &info);
+
+    const VkExtent2D swapExtent = vk_swapchain->getSwapChainExtent();
+    VkViewport vp{0, 0, (float)swapExtent.width, (float)swapExtent.height, 0, 1};
+    VkRect2D sc{{0, 0}, swapExtent};
+    vkCmdSetViewport(commandBuffer, 0, 1, &vp);
+    vkCmdSetScissor(commandBuffer, 0, 1, &sc);
 }
 
 void Faye::VulkanRenderer::endSwapchainRenderPass(VkCommandBuffer commandBuffer)
@@ -180,7 +266,12 @@ void Faye::VulkanRenderer::endSwapchainRenderPass(VkCommandBuffer commandBuffer)
     assert(isFrameStarted && "Can't call endSwapchainRenderPass while frame is not in progress.");
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't end render pass on command buffer from a different frame.");
 
-    vk_swapchain->getRenderPassInstance(currentImageIndex).end(commandBuffer);
+    vkCmdEndRendering(commandBuffer);
+
+    VkImageResource::imageBarrier(commandBuffer, vk_swapchain->getImage(currentImageIndex), VK_IMAGE_ASPECT_COLOR_BIT,
+                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                  VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 0);
 }
 
 void Faye::VulkanRenderer::beginDepthPrepassRenderPass(VkCommandBuffer commandBuffer)
@@ -188,9 +279,37 @@ void Faye::VulkanRenderer::beginDepthPrepassRenderPass(VkCommandBuffer commandBu
     assert(isFrameStarted && "Can't call beginDepthPrepassRenderPass while frame is not in progress.");
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't begin depth prepass render pass on command buffer from a different frame.");
 
-    depthPrepassRenderPassInstances[currentFrameIndex].begin(
-        commandBuffer,
-        makeFullscreenBeginOptions(sceneRenderExtent));
+    auto &depth = depthPrepassResources[currentFrameIndex];
+    // Re-add the EXTERNAL->0 dependency (vk_renderer.cpp:242): prior frame's shader
+    // reads of this image must finish before we write depth again.
+    depth.recordTransition(commandBuffer,
+                           VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+                           VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                           VK_ACCESS_2_SHADER_READ_BIT,
+                           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
+    VkRenderingAttachmentInfo depthAtt{};
+    depthAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAtt.imageView = depth.imageView;
+    depthAtt.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depthAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;   // was the pass's loadOp
+    depthAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // keep for sampling
+    depthAtt.clearValue.depthStencil = {1.0f, 0};
+
+    VkRenderingInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    info.renderArea = {{0, 0}, sceneRenderExtent};
+    info.layerCount = 1;
+    info.colorAttachmentCount = 0; // depth-only
+    info.pColorAttachments = nullptr;
+    info.pDepthAttachment = &depthAtt;
+    vkCmdBeginRendering(commandBuffer, &info);
+
+    VkViewport vp{0, 0, (float)sceneRenderExtent.width, (float)sceneRenderExtent.height, 0, 1};
+    VkRect2D sc{{0, 0}, sceneRenderExtent};
+    vkCmdSetViewport(commandBuffer, 0, 1, &vp);
+    vkCmdSetScissor(commandBuffer, 0, 1, &sc);
 }
 
 void Faye::VulkanRenderer::endDepthPrepassRenderPass(VkCommandBuffer commandBuffer)
@@ -198,7 +317,14 @@ void Faye::VulkanRenderer::endDepthPrepassRenderPass(VkCommandBuffer commandBuff
     assert(isFrameStarted && "Can't call endDepthPrepassRenderPass while frame is not in progress.");
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't end depth prepass render pass on command buffer from a different frame.");
 
-    depthPrepassRenderPassInstances[currentFrameIndex].end(commandBuffer);
+    vkCmdEndRendering(commandBuffer);
+
+    depthPrepassResources[currentFrameIndex].recordTransition(commandBuffer,
+                                                              VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+                                                              VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                                                              VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                                              VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+                                                              VK_ACCESS_2_SHADER_READ_BIT);
 }
 
 void Faye::VulkanRenderer::beginPostProcessRenderPass(VkCommandBuffer commandBuffer, uint32_t targetIndex)
@@ -208,7 +334,36 @@ void Faye::VulkanRenderer::beginPostProcessRenderPass(VkCommandBuffer commandBuf
     assert(targetIndex < kPostProcessTargetCount && "Post process target index is out of range.");
 
     activePostProcessTargetIndex = static_cast<int>(targetIndex);
-    postProcessTargets[targetIndex].renderPassInstances[currentFrameIndex].begin(commandBuffer, makeFullscreenBeginOptions(sceneRenderExtent));
+
+    auto &target = postProcessTargets[targetIndex];
+
+    // Contents are fully overwritten each frame (loadOp CLEAR), so discarding via
+    // UNDEFINED is fine and avoids tracking the image's previous layout.
+    VkImageResource::imageBarrier(commandBuffer, target.images[currentFrameIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                  VK_ACCESS_2_SHADER_READ_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+
+    VkRenderingAttachmentInfo colorAtt{};
+    colorAtt.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAtt.imageView = target.imageViews[currentFrameIndex];
+    colorAtt.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAtt.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAtt.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAtt.clearValue.color = {{0, 0, 0, 1}};
+
+    VkRenderingInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    info.renderArea = {{0, 0}, sceneRenderExtent};
+    info.layerCount = 1;
+    info.colorAttachmentCount = 1;
+    info.pColorAttachments = &colorAtt;
+    vkCmdBeginRendering(commandBuffer, &info);
+
+    VkViewport vp{0, 0, (float)sceneRenderExtent.width, (float)sceneRenderExtent.height, 0, 1};
+    VkRect2D sc{{0, 0}, sceneRenderExtent};
+    vkCmdSetViewport(commandBuffer, 0, 1, &vp);
+    vkCmdSetScissor(commandBuffer, 0, 1, &sc);
 }
 
 void Faye::VulkanRenderer::endPostProcessRenderPass(VkCommandBuffer commandBuffer)
@@ -217,119 +372,16 @@ void Faye::VulkanRenderer::endPostProcessRenderPass(VkCommandBuffer commandBuffe
     assert(commandBuffer == getCurrentCommandBuffer() && "Can't end render pass on command buffer from a different frame.");
     assert(activePostProcessTargetIndex >= 0 && "Can't end post process render pass before it begins.");
 
-    postProcessTargets[static_cast<size_t>(activePostProcessTargetIndex)].renderPassInstances[currentFrameIndex].end(commandBuffer);
+    vkCmdEndRendering(commandBuffer);
+
+    VkImageResource::imageBarrier(commandBuffer,
+                                  postProcessTargets[static_cast<size_t>(activePostProcessTargetIndex)].images[currentFrameIndex],
+                                  VK_IMAGE_ASPECT_COLOR_BIT,
+                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT);
+
     activePostProcessTargetIndex = -1;
-}
-
-void Faye::VulkanRenderer::createDepthPrepassRenderPass()
-{
-    RenderPassBuilder builder{};
-    builder
-        .setName("Depth Prepass")
-        .addDepthAttachment(
-            "depthPrepass",
-            sceneDepthFormat,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-            VkClearDepthStencilValue{1.0f, 0},
-            VK_ATTACHMENT_LOAD_OP_CLEAR,
-            VK_ATTACHMENT_STORE_OP_STORE, // keep depth for sampling
-            VK_IMAGE_LAYOUT_UNDEFINED)
-        .addSubpass(makeGraphicsSubpass(
-            {},           // no colour outputs
-            std::nullopt, // no motion vector output
-            makeDepthAttachmentRef("depthPrepass")))
-        // Ensure previous fragment-shader reads are done before we write depth.
-        .addDependency({VK_SUBPASS_EXTERNAL,
-                        0,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                        0})
-        // Ensure prepass depth writes are visible to subsequent fragment reads.
-        .addDependency({0,
-                        VK_SUBPASS_EXTERNAL,
-                        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        0});
-
-    depthPrepassRenderPass = std::make_unique<VulkanRenderPass>(
-        vk_device,
-        std::move(builder).build());
-}
-
-void Faye::VulkanRenderer::createSceneRenderPass()
-{
-    RenderPassBuilder builder{};
-    builder
-        .setName("Scene Offscreen Pass")
-        .addColorAttachment(
-            "sceneColor",
-            sceneColorFormat,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-        .addMotionAttachment(
-            "sceneMotion",
-            sceneMotionFormat,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-        .addDepthAttachment(
-            "sceneDepth",
-            sceneDepthFormat,
-            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
-        .addSubpass(makeGraphicsSubpass(
-            {makeColorAttachmentRef("sceneColor")},
-            makeMotionAttachmentRef("sceneMotion"),
-            makeDepthAttachmentRef("sceneDepth")))
-        .addDependency({VK_SUBPASS_EXTERNAL,
-                        0,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        0,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                        0})
-        .addDependency({0,
-                        VK_SUBPASS_EXTERNAL,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        0});
-
-    sceneRenderPass = std::make_unique<VulkanRenderPass>(
-        vk_device,
-        std::move(builder).build());
-}
-
-void Faye::VulkanRenderer::createPostProcessRenderPass()
-{
-    RenderPassBuilder builder{};
-    builder
-        .setName("Post Process Pass")
-        .addColorAttachment(
-            "postProcessColor",
-            sceneColorFormat,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-        .addSubpass(makeGraphicsSubpass(
-            {makeColorAttachmentRef("postProcessColor")}))
-        .addDependency({VK_SUBPASS_EXTERNAL,
-                        0,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-                        0,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-                        0})
-        .addDependency({0,
-                        VK_SUBPASS_EXTERNAL,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        0});
-
-    postProcessRenderPass = std::make_unique<VulkanRenderPass>(
-        vk_device,
-        std::move(builder).build());
 }
 
 void Faye::VulkanRenderer::createSceneRenderTargets()
@@ -343,25 +395,8 @@ void Faye::VulkanRenderer::createSceneRenderTargets()
     sceneMotionFormat = VK_FORMAT_R16G16_SFLOAT;
     sceneDepthFormat = vk_swapchain->findDepthFormat();
 
-    if (sceneRenderPass == nullptr)
-    {
-        createSceneRenderPass();
-    }
-
-    if (depthPrepassRenderPass == nullptr)
-    {
-        createDepthPrepassRenderPass();
-    }
-
-    if (postProcessRenderPass == nullptr)
-    {
-        createPostProcessRenderPass();
-    }
-
     createSceneImages();
     createPostProcessImages();
-    createSceneFramebuffers();
-    createPostProcessFramebuffers();
     createSceneViewportSampler();
 }
 
@@ -477,55 +512,8 @@ void Faye::VulkanRenderer::createPostProcessImages()
     }
 }
 
-void Faye::VulkanRenderer::createSceneFramebuffers()
-{
-    depthPrepassRenderPassInstances.clear();
-    depthPrepassRenderPassInstances.reserve(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        depthPrepassRenderPassInstances.emplace_back(
-            vk_device,
-            *depthPrepassRenderPass,
-            sceneRenderExtent,
-            std::vector<VkImageView>{depthPrepassResources[i].imageView});
-    }
-
-    sceneRenderPassInstances.clear();
-    sceneRenderPassInstances.reserve(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-
-    for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        sceneRenderPassInstances.emplace_back(
-            vk_device,
-            *sceneRenderPass,
-            sceneRenderExtent,
-            std::vector<VkImageView>{sceneColorResources[i].imageView, sceneMotionResources[i].imageView, sceneDepthResources[i].imageView});
-    }
-}
-
-void Faye::VulkanRenderer::createPostProcessFramebuffers()
-{
-    for (auto &target : postProcessTargets)
-    {
-        target.renderPassInstances.clear();
-        target.renderPassInstances.reserve(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-
-        for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
-        {
-            target.renderPassInstances.emplace_back(
-                vk_device,
-                *postProcessRenderPass,
-                sceneRenderExtent,
-                std::vector<VkImageView>{target.imageViews[i]});
-        }
-    }
-}
-
 void Faye::VulkanRenderer::cleanupSceneRenderTargets()
 {
-    depthPrepassRenderPassInstances.clear();
-    sceneRenderPassInstances.clear();
-
     for (size_t i = 0; i < depthPrepassResources.size(); i++)
     {
         depthPrepassResources[i].destroy(vk_device.getDevice());
@@ -556,8 +544,6 @@ void Faye::VulkanRenderer::cleanupPostProcessRenderTargets()
 {
     for (auto &target : postProcessTargets)
     {
-        target.renderPassInstances.clear();
-
         for (size_t i = 0; i < target.imageViews.size(); i++)
         {
             vkDestroyImageView(vk_device.getDevice(), target.imageViews[i], nullptr);
@@ -610,22 +596,6 @@ void Faye::VulkanRenderer::destroySceneViewportSampler()
     }
 }
 
-void Faye::VulkanRenderer::destroyDepthPrepassRenderPass()
-{
-    depthPrepassRenderPassInstances.clear();
-    depthPrepassRenderPass.reset();
-}
-
-void Faye::VulkanRenderer::destroySceneRenderPass()
-{
-    sceneRenderPass.reset();
-}
-
-void Faye::VulkanRenderer::destroyPostProcessRenderPass()
-{
-    postProcessRenderPass.reset();
-}
-
 VkImageView Faye::VulkanRenderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 {
     VkImageViewCreateInfo viewInfo = {};
@@ -648,36 +618,6 @@ VkImageView Faye::VulkanRenderer::createImageView(VkImage image, VkFormat format
     return imageView;
 }
 
-// void Faye::VulkanRenderer::createDescriptorSetLayout()
-// {
-//     VkDescriptorSetLayoutBinding uboLayoutBinding = {};
-//     uboLayoutBinding.binding = 0;
-//     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-//     uboLayoutBinding.descriptorCount = 1;
-
-//     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-//     uboLayoutBinding.pImmutableSamplers = nullptr;
-
-//     VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
-//     samplerLayoutBinding.binding = 1;
-//     samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-//     samplerLayoutBinding.descriptorCount = 1;
-//     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-//     samplerLayoutBinding.pImmutableSamplers = nullptr;
-
-//     std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
-//     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-//     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-//     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-//     layoutInfo.pBindings = bindings.data();
-
-//     if (vkCreateDescriptorSetLayout(vk_device.getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
-//     {
-//         throw std::runtime_error("Failed to create descriptor set layout");
-//     }
-
-// }
-
 void Faye::VulkanRenderer::freeCommandBuffers()
 {
     if (commandBuffers.empty())
@@ -688,266 +628,6 @@ void Faye::VulkanRenderer::freeCommandBuffers()
     vkFreeCommandBuffers(vk_device.getDevice(), *vk_device.getCommandPool(), static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
     commandBuffers.clear();
 }
-
-// void Faye::VulkanRenderer::generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels)
-// {
-//     // Check if image format supports linear blitting
-//     VkFormatProperties formatProperties;
-//     vkGetPhysicalDeviceFormatProperties(vk_device.getPhysicalDevice(), imageFormat, &formatProperties);
-
-//     if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
-//     {
-//         throw std::runtime_error("Texture image format does not support linear blitting!");
-//     }
-
-//     VkCommandBuffer commandBuffer = vk_device.beginSingleTimeCommands();
-
-//     VkImageMemoryBarrier barrier = {};
-//     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-//     barrier.image = image;
-//     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//     barrier.subresourceRange.baseArrayLayer = 0;
-//     barrier.subresourceRange.layerCount = 1;
-//     barrier.subresourceRange.levelCount = 1;
-
-//     int32_t mipWidth = texWidth;
-//     int32_t mipHeight = texHeight;
-
-//     for (uint32_t i = 1; i < mipLevels; i++)
-//     {
-//         barrier.subresourceRange.baseMipLevel = i - 1;
-//         barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-//         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-//         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-//         barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-//         vkCmdPipelineBarrier(commandBuffer,
-//                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-//                              0, nullptr,
-//                              0, nullptr,
-//                              1, &barrier);
-
-//         VkImageBlit blit{};
-//         blit.srcOffsets[0] = {0, 0, 0};
-//         blit.srcOffsets[1] = {mipWidth, mipHeight, 1};
-//         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//         blit.srcSubresource.mipLevel = i - 1;
-//         blit.srcSubresource.baseArrayLayer = 0;
-//         blit.srcSubresource.layerCount = 1;
-//         blit.dstOffsets[0] = {0, 0, 0};
-//         blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1};
-//         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//         blit.dstSubresource.mipLevel = i;
-//         blit.dstSubresource.baseArrayLayer = 0;
-//         blit.dstSubresource.layerCount = 1;
-
-//         vkCmdBlitImage(commandBuffer,
-//                        image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-//                        image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-//                        1, &blit,
-//                        VK_FILTER_LINEAR);
-
-//         barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-//         barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-//         barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-//         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-//         vkCmdPipelineBarrier(commandBuffer,
-//                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-//                              0, nullptr,
-//                              0, nullptr,
-//                              1, &barrier);
-
-//         if (mipWidth > 1)
-//             mipWidth /= 2;
-//         if (mipHeight > 1)
-//             mipHeight /= 2;
-//     }
-
-//     barrier.subresourceRange.baseMipLevel = mipLevels - 1;
-//     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-//     barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-//     barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-//     barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-//     vkCmdPipelineBarrier(commandBuffer,
-//                          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-//                          0, nullptr,
-//                          0, nullptr,
-//                          1, &barrier);
-
-//     vk_device.endSingleTimeCommands(commandBuffer);
-// }
-
-// bool Faye::VulkanRenderer::hasStencilComponent(VkFormat format)
-// {
-//     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
-// }
-
-// void Faye::VulkanRenderer::createTextureImageView()
-// {
-//     textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
-// }
-
-// VkImageView Faye::VulkanRenderer::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
-// {
-//     VkImageViewCreateInfo viewInfo = {};
-//     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-//     viewInfo.image = image;
-//     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-//     viewInfo.format = format;
-//     viewInfo.subresourceRange.aspectMask = aspectFlags;
-//     viewInfo.subresourceRange.baseMipLevel = 0;
-//     viewInfo.subresourceRange.levelCount = mipLevels;
-//     viewInfo.subresourceRange.baseArrayLayer = 0;
-//     viewInfo.subresourceRange.layerCount = 1;
-
-//     VkImageView imageView;
-//     if (vkCreateImageView(vk_device.getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS)
-//     {
-//         throw std::runtime_error("Failed to create texture image view");
-//     }
-
-//     return imageView;
-// }
-
-// void Faye::VulkanRenderer::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels)
-// {
-//     VkCommandBuffer commandBuffer = vk_device.beginSingleTimeCommands();
-
-//     VkImageMemoryBarrier barrier{};
-//     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-//     barrier.oldLayout = oldLayout;
-//     barrier.newLayout = newLayout;
-//     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-//     barrier.image = image;
-//     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-//     barrier.subresourceRange.baseMipLevel = 0;
-//     barrier.subresourceRange.levelCount = mipLevels;
-//     barrier.subresourceRange.baseArrayLayer = 0;
-//     barrier.subresourceRange.layerCount = 1;
-
-//     VkPipelineStageFlags sourceStage;
-//     VkPipelineStageFlags destinationStage;
-
-//     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-//     {
-//         barrier.srcAccessMask = 0;
-//         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-//         sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-//         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-//     }
-//     else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-//     {
-//         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-//         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-//         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-//         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-//     }
-//     else
-//     {
-//         throw std::invalid_argument("unsupported layout transition!");
-//     }
-
-//     vkCmdPipelineBarrier(
-//         commandBuffer,
-//         sourceStage, destinationStage,
-//         0,
-//         0, nullptr,
-//         0, nullptr,
-//         1, &barrier);
-
-//     vk_device.endSingleTimeCommands(commandBuffer);
-// }
-
-// void Faye::VulkanRenderer::createTextureSampler()
-// {
-//     VkPhysicalDeviceProperties properties = {};
-//     vkGetPhysicalDeviceProperties(vk_device.getPhysicalDevice(), &properties);
-
-//     VkSamplerCreateInfo samplerInfo = {};
-//     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-//     samplerInfo.magFilter = VK_FILTER_LINEAR;
-//     samplerInfo.minFilter = VK_FILTER_LINEAR;
-//     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-//     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-//     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-//     samplerInfo.anisotropyEnable = VK_TRUE;
-//     samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
-//     samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-//     samplerInfo.unnormalizedCoordinates = VK_FALSE;
-//     samplerInfo.compareEnable = VK_FALSE;
-//     samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-//     samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-//     samplerInfo.mipLodBias = 0.0f;
-//     samplerInfo.minLod = 0.0f;
-//     samplerInfo.maxLod = static_cast<float>(mipLevels);
-
-//     if (vkCreateSampler(vk_device.getDevice(), &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS)
-//     {
-//         throw std::runtime_error("Failed to create texture sampler!");
-//     }
-// }
-
-// void Faye::VulkanRenderer::createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory)
-// {
-//     VkImageCreateInfo imageInfo{};
-//     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-//     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-//     imageInfo.extent.width = static_cast<uint32_t>(width);
-//     imageInfo.extent.height = static_cast<uint32_t>(height);
-//     imageInfo.extent.depth = 1;
-//     imageInfo.mipLevels = mipLevels;
-//     imageInfo.arrayLayers = 1;
-//     imageInfo.format = format;
-//     imageInfo.tiling = tiling;
-//     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-//     imageInfo.usage = usage;
-//     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-//     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-//     if (vkCreateImage(vk_device.getDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS)
-//     {
-//         throw std::runtime_error("failed to create image!");
-//     }
-
-//     VkMemoryRequirements memRequirements;
-//     vkGetImageMemoryRequirements(vk_device.getDevice(), image, &memRequirements);
-
-//     VkMemoryAllocateInfo allocInfo{};
-//     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-//     allocInfo.allocationSize = memRequirements.size;
-//     allocInfo.memoryTypeIndex = vk_device.findMemoryType(memRequirements.memoryTypeBits, properties);
-
-//     if (vkAllocateMemory(vk_device.getDevice(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS)
-//     {
-//         throw std::runtime_error("failed to allocate image memory!");
-//     }
-
-//     vkBindImageMemory(vk_device.getDevice(), image, imageMemory, 0);
-// }
-
-// void Faye::VulkanRenderer::updateUniformBuffer(uint32_t currentImage, Faye::Camera &camera)
-// {
-//     static auto startTime = std::chrono::high_resolution_clock::now();
-
-//     auto currentTime = std::chrono::high_resolution_clock::now();
-//     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-//     UniformBufferObject ubo{};
-
-//     ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-//     ubo.view = camera.getViewMatrix(); //glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-//     ubo.proj = glm::perspective(glm::radians(80.0f), vk_swapchain->getSwapChainExtent().width / (float)vk_swapchain->getSwapChainExtent().height, 0.1f, 100.0f);
-//     ubo.proj[1][1] *= -1;
-
-//     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
-// }
 
 // ------------------------------------- Conversion Functions ------------------------------------- //
 
@@ -986,7 +666,7 @@ void Faye::VulkanRenderer::recreateSwapchain()
 
     ++swapchainGeneration;
 
-    if (sceneRenderPassInstances.empty())
+    if (sceneColorResources.empty())
     {
         createSceneRenderTargets();
     }

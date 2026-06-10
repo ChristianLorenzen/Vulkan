@@ -35,8 +35,8 @@ size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const Mat
     return combined ^ (key.alphaBlend ? size_t{0x9e3779b97f4a7c15ULL} : size_t{0});
 }
 
-Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
-    : vk_device(device), renderPass(renderPass), materialCache(materialCache)
+Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
+    : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache)
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
     createPipelineLayout(globalSetLayout, materialSetLayout);
@@ -131,20 +131,21 @@ std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const M
         // Translucent material (e.g. water): blend colour attachment 0 only.
         // Attachment 1 carries motion vectors and must never be blended.
         VkPipelineColorBlendAttachmentState &att0 = pipelineConfig.colorBlendAttachments[0];
-        att0.blendEnable         = VK_TRUE;
+        att0.blendEnable = VK_TRUE;
         att0.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
         att0.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        att0.colorBlendOp        = VK_BLEND_OP_ADD;
+        att0.colorBlendOp = VK_BLEND_OP_ADD;
         att0.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         att0.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        att0.alphaBlendOp        = VK_BLEND_OP_ADD;
+        att0.alphaBlendOp = VK_BLEND_OP_ADD;
 
         // Depth test stays on so opaque geometry occludes the water, but the
         // translucent surface must not write depth and punch holes in later draws.
         pipelineConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
     }
 
-    pipelineConfig.renderPass = renderPass;
+    pipelineConfig.colorAttachmentFormats = {sceneColorFormat, sceneMotionFormat};
+    pipelineConfig.depthAttachmentFormat = sceneDepthFormat;
     pipelineConfig.pipelineLayout = pipelineLayout;
 
     return std::make_unique<VulkanPipeline>(
@@ -318,7 +319,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
 }
 
 void Faye::SimpleRenderSystem::prepareDepthPrepassPipeline(
-    VkRenderPass depthPrepassRenderPass,
+    VkFormat depthFormat,
     VkDescriptorSetLayout globalSetLayout)
 {
     if (depthPrepassPipelineLayout == VK_NULL_HANDLE)
@@ -326,15 +327,15 @@ void Faye::SimpleRenderSystem::prepareDepthPrepassPipeline(
         VkPushConstantRange pcRange{};
         pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         pcRange.offset = 0;
-        pcRange.size   = sizeof(SimplePushConstantData);
+        pcRange.size = sizeof(SimplePushConstantData);
 
         std::vector<VkDescriptorSetLayout> layouts{globalSetLayout};
         VkPipelineLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layoutInfo.setLayoutCount         = static_cast<uint32_t>(layouts.size());
-        layoutInfo.pSetLayouts            = layouts.data();
+        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layoutInfo.setLayoutCount = static_cast<uint32_t>(layouts.size());
+        layoutInfo.pSetLayouts = layouts.data();
         layoutInfo.pushConstantRangeCount = 1;
-        layoutInfo.pPushConstantRanges    = &pcRange;
+        layoutInfo.pPushConstantRanges = &pcRange;
 
         if (vkCreatePipelineLayout(vk_device.getDevice(), &layoutInfo, nullptr, &depthPrepassPipelineLayout) != VK_SUCCESS)
         {
@@ -344,10 +345,10 @@ void Faye::SimpleRenderSystem::prepareDepthPrepassPipeline(
 
     PipelineConfigInfo config{};
     VulkanPipeline::defaultPipelineConfigInfo(config);
-    config.colorBlendAttachments.clear();            // depth-only: no colour outputs
+    config.colorBlendAttachments.clear(); // depth-only: no colour outputs
     config.colorBlendingInfo.attachmentCount = 0;
-    config.colorBlendingInfo.pAttachments    = nullptr;
-    config.renderPass    = depthPrepassRenderPass;
+    config.colorBlendingInfo.pAttachments = nullptr;
+    config.depthAttachmentFormat = depthFormat;
     config.pipelineLayout = depthPrepassPipelineLayout;
 
     depthPrepassPipeline = std::make_unique<VulkanPipeline>(
@@ -393,9 +394,9 @@ void Faye::SimpleRenderSystem::renderDepthPrepass(
         }
 
         SimplePushConstantData push{};
-        push.modelMatrix      = renderable.modelMatrix;
+        push.modelMatrix = renderable.modelMatrix;
         push.priorModelMatrix = renderable.priorModelMatrix;
-        push.baseColor        = glm::vec4(1.0f);
+        push.baseColor = glm::vec4(1.0f);
 
         vkCmdPushConstants(
             frameContext.commandBuffer,

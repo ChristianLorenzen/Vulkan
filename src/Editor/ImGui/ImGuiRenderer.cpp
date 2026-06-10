@@ -26,7 +26,7 @@ void ImGuiRenderer::init(GLFWwindow *window,
                          uint32_t queueFamily,
                          VkQueue queue,
                          VkDescriptorPool descriptorPool,
-                         VkRenderPass renderPass,
+                         VkFormat swapchainColorFormat,
                          uint32_t minImageCount,
                          uint32_t imageCount)
 {
@@ -93,7 +93,13 @@ void ImGuiRenderer::init(GLFWwindow *window,
     info.QueueFamily = queueFamily;
     info.Queue = queue;
     info.DescriptorPool = descriptorPool;
-    info.PipelineInfoMain.RenderPass = renderPass;
+    info.UseDynamicRendering = true;
+    info.PipelineInfoMain.RenderPass = VK_NULL_HANDLE;
+    static VkFormat colorFormat = swapchainColorFormat; // pass this in instead of renderPass
+    info.PipelineInfoMain.PipelineRenderingCreateInfo.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+    info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &colorFormat;
     info.MinImageCount = minImageCount;
     info.ImageCount = imageCount;
 
