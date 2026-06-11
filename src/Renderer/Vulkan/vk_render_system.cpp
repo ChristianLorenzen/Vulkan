@@ -138,10 +138,6 @@ std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const M
         att0.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         att0.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         att0.alphaBlendOp = VK_BLEND_OP_ADD;
-
-        // Depth test stays on so opaque geometry occludes the water, but the
-        // translucent surface must not write depth and punch holes in later draws.
-        pipelineConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
     }
 
     pipelineConfig.colorAttachmentFormats = {sceneColorFormat, sceneMotionFormat};
@@ -240,6 +236,14 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
             pipeline.bind(frameContext.commandBuffer);
 
+            vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
+            vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+            vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+            vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_TRUE);
+            vkCmdSetDepthWriteEnable(frameContext.commandBuffer,
+                                     materialState.pipelineConfig.enableAlphaBlending ? VK_FALSE : VK_TRUE);
+            vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
+
             vkCmdBindDescriptorSets(
                 frameContext.commandBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -289,6 +293,14 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             const MaterialState &materialState = materialCache.getOrCreateState(resolvedHandle, *resolvedMaterial);
             VulkanPipeline &pipeline = getOrCreatePipeline(materialState);
             pipeline.bind(frameContext.commandBuffer);
+
+            vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
+            vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+            vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+            vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_TRUE);
+            vkCmdSetDepthWriteEnable(frameContext.commandBuffer,
+                                     materialState.pipelineConfig.enableAlphaBlending ? VK_FALSE : VK_TRUE);
+            vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
             vkCmdBindDescriptorSets(
                 frameContext.commandBuffer,
@@ -367,6 +379,13 @@ void Faye::SimpleRenderSystem::renderDepthPrepass(
     }
 
     depthPrepassPipeline->bind(frameContext.commandBuffer);
+
+    vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
+    vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+    vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_TRUE);
+    vkCmdSetDepthWriteEnable(frameContext.commandBuffer, VK_TRUE);
+    vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
     vkCmdBindDescriptorSets(
         frameContext.commandBuffer,

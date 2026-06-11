@@ -14,16 +14,6 @@ VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFile
 
 VulkanPipeline::~VulkanPipeline()
 {
-    if (fragShaderModule != VK_NULL_HANDLE)
-    {
-        vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
-    }
-
-    if (vertShaderModule != VK_NULL_HANDLE)
-    {
-        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
-    }
-
     if (graphicsPipeline != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device.getDevice(), graphicsPipeline, nullptr);
@@ -35,8 +25,17 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     auto vertShaderCode = FileSystem::readFile(vertFilepath);
     auto fragShaderCode = FileSystem::readFile(fragFilepath);
 
-    vertShaderModule = createShaderModule(vertShaderCode);
-    fragShaderModule = createShaderModule(fragShaderCode);
+    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule fragShaderModule{VK_NULL_HANDLE};
+
+    try {
+        fragShaderModule = createShaderModule(fragShaderCode);
+    }
+    catch (const std::exception &e)
+    {
+        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+        throw; // Re-throw the exception after cleanup
+    }
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -70,14 +69,6 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
-    std::vector<VkDynamicState> dynamicStates = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamicState = {};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data();
-
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
@@ -87,7 +78,6 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     pipelineInfo.pViewportState = &config.viewportInfo;
     pipelineInfo.pRasterizationState = &config.rasterizationInfo;
     pipelineInfo.pMultisampleState = &config.multisamplingInfo;
-    pipelineInfo.pColorBlendState = &config.colorBlendingInfo;
     pipelineInfo.pDepthStencilState = &config.depthStencilInfo;
     pipelineInfo.pDynamicState = &config.dynamicStateInfo;
     pipelineInfo.layout = config.pipelineLayout;
@@ -114,12 +104,13 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
 
     LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
 
-    if (vkCreateGraphicsPipelines(device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+    VkResult result = vkCreateGraphicsPipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &graphicsPipeline);
+    
+    vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
+    vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+
+    if (result != VK_SUCCESS)
     {
-        vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
-        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
-        fragShaderModule = VK_NULL_HANDLE;
-        vertShaderModule = VK_NULL_HANDLE;
         throw std::runtime_error("Failed to create graphics pipeline");
     }
 }
@@ -198,9 +189,19 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo)
     configInfo.depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
     configInfo.depthStencilInfo.stencilTestEnable = VK_FALSE;
 
-    configInfo.dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    configInfo.dynamicStateEnables = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_CULL_MODE,
+        VK_DYNAMIC_STATE_FRONT_FACE,
+        VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
+        VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
+        VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE,
+        VK_DYNAMIC_STATE_DEPTH_COMPARE_OP,
+    };
+
     configInfo.dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    configInfo.dynamicStateInfo.dynamicStateCount = configInfo.dynamicStateEnables.size();
+    configInfo.dynamicStateInfo.dynamicStateCount = static_cast<uint32_t>(configInfo.dynamicStateEnables.size());
     configInfo.dynamicStateInfo.pDynamicStates = configInfo.dynamicStateEnables.data();
     configInfo.dynamicStateInfo.flags = 0;
 

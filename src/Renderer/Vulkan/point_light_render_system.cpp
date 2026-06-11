@@ -92,6 +92,13 @@ void Faye::PointLightRenderSystem::render(FrameContext &frameContext, const Rend
 {
     vk_pipeline->bind(frameContext.commandBuffer);
 
+    vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
+    vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+    vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_TRUE);
+    vkCmdSetDepthWriteEnable(frameContext.commandBuffer, VK_TRUE);
+    vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
+
     vkCmdBindDescriptorSets(
         frameContext.commandBuffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,

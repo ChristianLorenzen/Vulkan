@@ -178,6 +178,7 @@ VulkanDevice::VulkanDevice(Window &window) : window{window}
     createPhysicalDevice();
     createLogicalDevice();
     createAllocator();
+    createPipelineCache();
     LOG_INFO(Logger::getInstance(), "Creating Command Pools...");
     createCommandPools();
 }
@@ -231,8 +232,28 @@ bool VulkanDevice::shouldEnableValidationLayers()
     return false;
 }
 
+void VulkanDevice::savePipelineCache()
+{
+    if (pipelineCache != VK_NULL_HANDLE)
+    {
+        size_t dataSize = 0;
+        vkGetPipelineCacheData(device, pipelineCache, &dataSize, nullptr);
+        if (dataSize > 0)
+        {
+            std::vector<char> data(dataSize);
+            vkGetPipelineCacheData(device, pipelineCache, &dataSize, data.data());
+            if (std::ofstream file{"pipeline_cache.bin", std::ios::binary})
+            {
+                file.write(data.data(), static_cast<std::streamsize>(dataSize));
+            }
+        }
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+    }
+}
+
 VulkanDevice::~VulkanDevice()
 {
+    savePipelineCache();
     vmaDestroyAllocator(allocator);
     vkDestroyCommandPool(device, commandPool, nullptr);
     vkDestroyDevice(device, nullptr);
@@ -651,10 +672,6 @@ void VulkanDevice::createLogicalDevice()
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    // Setup device features. Empty for now, but should fill out once we start using Vulkan features.
-    // VkPhysicalDeviceFeatures deviceFeatures = {};
-    // deviceFeatures.samplerAnisotropy = VK_TRUE;
-
     VkPhysicalDeviceVulkan13Features featuresVK13 = {};
     featuresVK13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
 
@@ -698,6 +715,36 @@ void VulkanDevice::createLogicalDevice()
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+}
+
+void VulkanDevice::createPipelineCache()
+{
+    constexpr const char *kCachePath = "pipeline_cache.bin";
+
+    std::vector<char> cacheData;
+    if (std::ifstream file{kCachePath, std::ios::binary | std::ios::ate})
+    {
+        const std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        cacheData.resize(size);
+        file.read(cacheData.data(), size);
+        LOG_INFO(Logger::getInstance(), "Loaded existing pipeline cache");
+    }
+    else
+    {
+        LOG_INFO(Logger::getInstance(), "No existing pipeline cache found, starting with an empty cache");
+    }
+
+    VkPipelineCacheCreateInfo cacheInfo{};
+    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    cacheInfo.initialDataSize = cacheData.size();
+    cacheInfo.pInitialData = cacheData.empty() ? nullptr : cacheData.data();
+
+    if (vkCreatePipelineCache(device, &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS)
+    {
+        LOG_WARNING(Logger::getInstance(), "Failed to create pipeline cache, continuing without it");
+        pipelineCache = VK_NULL_HANDLE;
+    }
 }
 
 void VulkanDevice::createCommandPools()

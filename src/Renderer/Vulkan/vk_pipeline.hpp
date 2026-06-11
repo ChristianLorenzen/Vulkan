@@ -50,11 +50,7 @@ namespace Faye
         void createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config);
 
         VkShaderModule createShaderModule(const std::vector<char> &code);
-        // Dangling references to the Vulkan device.
-        // Only done as this should exist as long as this pipeline does.
         VulkanDevice &device;
         VkPipeline graphicsPipeline{VK_NULL_HANDLE};
-        VkShaderModule vertShaderModule{VK_NULL_HANDLE};
-        VkShaderModule fragShaderModule{VK_NULL_HANDLE};
     };
 }

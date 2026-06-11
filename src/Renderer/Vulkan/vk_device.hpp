@@ -32,6 +32,7 @@ namespace Faye
         VkQueue getPresentQueue() { return presentQueue; }
         uint32_t getGraphicsQueueFamilyIndex() const { return graphicsQueueFamilyIndex; }
         VmaAllocator getAllocator() { return allocator; }
+        VkPipelineCache getPipelineCache() { return pipelineCache; }
 
         SwapChainSupportDetails getSwapchainSupport() { return querySwapChainSupport(physicalDevice); }
         QueueFamilyIndices findPhysicalQueueFamilies() { return findQueueFamilies(physicalDevice); }
@@ -64,6 +65,8 @@ namespace Faye
         void setupDebugMessenger();
         void destroyDebugMessenger();
         void createAllocator();
+        void createPipelineCache();
+        void savePipelineCache();
         void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo) const;
 
         bool isDeviceSuitable(VkPhysicalDevice device);
@@ -74,6 +77,7 @@ namespace Faye
         VkSampleCountFlagBits getMaxUsableSampleCount();
 
         VmaAllocator allocator = VK_NULL_HANDLE;
+        VkPipelineCache pipelineCache = VK_NULL_HANDLE;
 
         VkInstance instance;
         VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;

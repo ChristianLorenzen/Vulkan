@@ -168,8 +168,6 @@ void Faye::FullscreenEffectPass::createPipeline()
     VulkanPipeline::defaultPipelineConfigInfo(pipelineConfig);
     pipelineConfig.attributeDescriptions.clear();
     pipelineConfig.bindingDescriptions.clear();
-    pipelineConfig.depthStencilInfo.depthTestEnable = VK_FALSE;
-    pipelineConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
 
     pipelineConfig.colorAttachmentFormats = {colorFormat};
     pipelineConfig.pipelineLayout = pipelineLayout;
@@ -202,6 +200,13 @@ void Faye::FullscreenEffectPass::render(
     updateDescriptorSet(static_cast<uint32_t>(frameContext.frameIndex), namedInputs);
 
     vk_pipeline->bind(frameContext.commandBuffer);
+
+    vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
+    vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+    vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_FALSE);
+    vkCmdSetDepthWriteEnable(frameContext.commandBuffer, VK_FALSE);
+    vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
     vkCmdBindDescriptorSets(
         frameContext.commandBuffer,
