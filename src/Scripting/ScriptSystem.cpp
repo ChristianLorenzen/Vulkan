@@ -1,10 +1,40 @@
 #include "Scripting/ScriptSystem.hpp"
 
-#include <dlfcn.h>
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+
+// Map POSIX dl* API to Win32 equivalents so the rest of this file is unchanged.
+static void *dl_open(const char *path)  { return reinterpret_cast<void *>(LoadLibraryA(path)); }
+static int   dl_close(void *h)          { return FreeLibrary(reinterpret_cast<HMODULE>(h)) ? 0 : -1; }
+static void *dl_sym(void *h, const char *sym) { return reinterpret_cast<void *>(GetProcAddress(reinterpret_cast<HMODULE>(h), sym)); }
+static const char *dl_error()
+{
+    DWORD err = GetLastError();
+    if (err == 0) return nullptr;
+    static char buf[512];
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   nullptr, err, 0, buf, sizeof(buf), nullptr);
+    return buf;
+}
+
+// Macro arguments not used in the replacement body are discarded by the
+// preprocessor — RTLD_NOW/RTLD_LOCAL are never seen by the compiler.
+#  define dlopen(path, flags) dl_open(path)
+#  define dlclose(h)          dl_close(h)
+#  define dlsym(h, sym)       dl_sym(h, sym)
+#  define dlerror()           dl_error()
+#  define SHARED_LIB_EXT ".dll"
+#else
+#  include <dlfcn.h>
+#  define SHARED_LIB_EXT ".so"
+#endif
+
 #include <filesystem>
 #include <string>
 
 #include "Core/Logging/Logger.hpp"
+#include "Core/Path/Paths.hpp"
 #include "Scene/Entities/Entity.hpp"
 #include "Scene/Scene.hpp"
 #include "quill/LogMacros.h"
@@ -221,8 +251,8 @@ void ScriptSystem::registerHotReload(HotReloadManager &hotReloadManager)
 
     hotReloadManager.addWatch({
         .id             = "script-libs",
-        .rootPath       = "./bin",
-        .fileExtensions = {".so"},
+        .rootPath       = Paths::bin(),
+        .fileExtensions = {SHARED_LIB_EXT},
         .recursive      = false,
     });
 

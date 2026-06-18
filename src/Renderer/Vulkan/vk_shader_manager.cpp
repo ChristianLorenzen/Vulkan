@@ -1,4 +1,5 @@
 #include "vk_shader_manager.hpp"
+#include "Core/Path/Paths.hpp"
 
 #include <filesystem>
 #include <stdio.h>
@@ -17,7 +18,7 @@ std::string Faye::VulkanShaderManager::shaderFileChange(const std::filesystem::p
 std::string Faye::VulkanShaderManager::resolveCompiledShaderPath(const std::filesystem::path &shaderPath)
 {
     std::string fileName = shaderPath.filename().string();
-    return "./src/shaders/compiled/" + fileName + ".spv";
+    return Paths::compiledShader(fileName).string();
 };
 
 std::string Faye::VulkanShaderManager::compileShader(const std::filesystem::path &sourcePath)

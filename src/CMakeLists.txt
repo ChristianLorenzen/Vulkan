@@ -2,6 +2,7 @@ set(FAYE_ENGINE_SOURCES
     Assets/ModelRegistry.cpp
     Core/HotReload/HotReloadManager.cpp
     Core/IO/FileSystem.cpp
+    Core/Path/Paths.cpp
     Editor/ImGui/EditorPanels.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp
     Editor/ImGui/ImGuiRenderer.cpp
@@ -62,22 +63,9 @@ if(FAYE_BUILD_IMGUI_DEMO)
     list(APPEND FAYE_IMGUI_SOURCES ${_imgui_src}/imgui_demo.cpp)
 endif()
 
-set(FAYE_SHADER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/point_light.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/point_light.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_tint.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_exposure.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_contrast.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_vignette.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_fog.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_edge_detect.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/post_process_depth_debug.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/custom_material.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/custom_material.frag
+file(GLOB FAYE_SHADER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.frag
 )
 
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})
@@ -119,6 +107,12 @@ target_link_libraries(faye_app
     sol2::sol2)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
+
+# Bake the repo root as an absolute path so asset/shader paths work regardless
+# of the working directory (avoids CWD dependency when launching from an IDE).
+target_compile_definitions(faye_app PRIVATE
+    FAYE_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
+)
 
 if(MSVC)
     target_compile_options(faye_app PRIVATE /W4)

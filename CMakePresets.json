@@ -14,10 +14,6 @@
       "name": "windows-debug",
       "displayName": "Windows Debug (MSVC x64)",
       "binaryDir": "${sourceDir}/build-win",
-      "architecture": {
-        "value": "x64",
-        "strategy": "set"
-      },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -26,10 +22,6 @@
       "name": "windows-release",
       "displayName": "Windows Release (MSVC x64)",
       "binaryDir": "${sourceDir}/build-win-rel",
-      "architecture": {
-        "value": "x64",
-        "strategy": "set"
-      },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }

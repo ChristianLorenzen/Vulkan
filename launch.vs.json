@@ -1,0 +1,20 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "faye_app.exe",
+      "name": "faye_app (Debug)",
+      "currentDir": "${cmake.projectDir}"
+    },
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "faye_app.exe",
+      "name": "faye_app (Release)",
+      "currentDir": "${cmake.projectDir}"
+    }
+  ]
+}

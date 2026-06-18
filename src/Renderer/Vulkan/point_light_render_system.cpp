@@ -5,6 +5,7 @@
 
 #include "Vulkan.hpp"
 #include "point_light_render_system.hpp"
+#include "Core/Path/Paths.hpp"
 
 #include "quill/LogMacros.h"
 
@@ -71,8 +72,8 @@ void Faye::PointLightRenderSystem::createPipeline(VkFormat colorFormat, VkFormat
 
     vk_pipeline = std::make_unique<VulkanPipeline>(
         vk_device,
-        "./src/shaders/compiled/point_light.vert.spv",
-        "./src/shaders/compiled/point_light.frag.spv",
+        Paths::compiledShader("point_light.vert").string(),
+        Paths::compiledShader("point_light.frag").string(),
         pipelineConfig);
 }
 

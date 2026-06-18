@@ -1,4 +1,5 @@
 #include "vk_device.hpp"
+#include "Core/Path/Paths.hpp"
 #include <algorithm>
 #include <vector>
 #include <stdio.h>
@@ -243,7 +244,7 @@ void VulkanDevice::savePipelineCache()
         {
             std::vector<char> data(dataSize);
             vkGetPipelineCacheData(device, pipelineCache, &dataSize, data.data());
-            if (std::ofstream file{"pipeline_cache.bin", std::ios::binary})
+            if (std::ofstream file{Paths::resolve("pipeline_cache.bin"), std::ios::binary})
             {
                 file.write(data.data(), static_cast<std::streamsize>(dataSize));
             }
@@ -698,16 +699,9 @@ void VulkanDevice::createLogicalDevice()
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-    // Back-compat with older implementations of vulkan. Now, enabledLayerCount and ppEnabledLayerNames are ignored.
-    if (validationLayersEnabled)
-    {
-        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-        createInfo.ppEnabledLayerNames = validationLayers.data();
-    }
-    else
-    {
-        createInfo.enabledLayerCount = 0;
-    }
+    // Device layers were removed in Vulkan 1.0. enabledLayerCount must be 0.
+    createInfo.enabledLayerCount = 0;
+    createInfo.ppEnabledLayerNames = nullptr;
 
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
     {
@@ -720,7 +714,7 @@ void VulkanDevice::createLogicalDevice()
 
 void VulkanDevice::createPipelineCache()
 {
-    constexpr const char *kCachePath = "pipeline_cache.bin";
+    const auto kCachePath = Paths::resolve("pipeline_cache.bin");
 
     std::vector<char> cacheData;
     if (std::ifstream file{kCachePath, std::ios::binary | std::ios::ate})

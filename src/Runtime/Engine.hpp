@@ -29,6 +29,7 @@
 #include "Scripting/BuiltinScripts/WaterSubdivisionScript.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 #include "quill/LogMacros.h"
+#include "Core/Path/Paths.hpp"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -149,13 +150,13 @@ private:
         hotReloadManager.clearWatches();
         hotReloadManager.addWatch({
             .id = "post-process-effects",
-            .rootPath = "./src/Assets/PostProcessEffects",
+            .rootPath = Paths::assets() / "PostProcessEffects",
             .fileExtensions = {".ppfx"},
             .recursive = true,
         });
         hotReloadManager.addWatch({
             .id = "shader-sources",
-            .rootPath = "./src/shaders",
+            .rootPath = Paths::shaderSources(),
             .fileExtensions = {".vert", ".frag", ".comp"},
             .recursive = true,
         });

@@ -6,6 +6,7 @@
 
 #include "Vulkan.hpp"
 #include "vk_render_system.hpp"
+#include "Core/Path/Paths.hpp"
 
 #include "quill/LogMacros.h"
 
@@ -30,7 +31,7 @@ namespace
 {
     constexpr std::string_view kDefaultVertexShader = "shader.vert";
     constexpr std::string_view kDefaultFragmentShader = "shader.frag";
-    const std::filesystem::path kCompiledShaderDirectory{"./src/shaders/compiled"};
+    const std::filesystem::path kCompiledShaderDirectory = Paths::compiledShaders();
 }
 
 size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const MaterialPipelineKey &key) const
