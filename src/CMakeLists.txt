@@ -111,6 +111,7 @@ target_link_libraries(faye_app
     Faye::ImGui
     Faye::GLFW
     Faye::Vulkan
+    glm::glm
     assimp::assimp
     quill::quill
     spirv-reflect-static

@@ -41,9 +41,31 @@ function(faye_configure_dependencies)
     endif()
 
     if(NOT _glfw_resolved)
-        message(FATAL_ERROR
-            "GLFW was not found. Install glfw3 and make it discoverable via CMAKE_PREFIX_PATH, a package manager integration, or pkg-config.")
+        message(STATUS "GLFW not found via find_package/pkg-config — fetching from source.")
+        FetchContent_Declare(
+            glfw
+            GIT_REPOSITORY https://github.com/glfw/glfw.git
+            GIT_TAG        3.4
+            GIT_SHALLOW    TRUE
+        )
+        set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(glfw)
+        add_library(Faye::GLFW ALIAS glfw)
+        set(_glfw_resolved TRUE)
     endif()
+
+    # GLM — header-only; available as a system package on Linux but not on Windows.
+    # Always fetch so the build is self-contained across platforms.
+    FetchContent_Declare(
+        glm
+        GIT_REPOSITORY https://github.com/g-truc/glm.git
+        GIT_TAG        1.0.1
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(glm)
 
     FetchContent_Declare(
         imgui
