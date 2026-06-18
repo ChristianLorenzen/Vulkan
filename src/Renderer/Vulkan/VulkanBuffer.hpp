@@ -40,6 +40,7 @@ namespace Faye
         VkDeviceSize getAlignmentSize() const { return instanceSize; }
         VkBufferUsageFlags getUsageFlags() const { return usageFlags; }
         VkDeviceSize getBufferSize() const { return bufferSize; }
+        VkDeviceAddress getDeviceAddress() const;
 
     private:
         static VkDeviceSize getAlignment(VkDeviceSize instanceSize, VkDeviceSize minOffsetAlignment);

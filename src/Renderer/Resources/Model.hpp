@@ -103,6 +103,7 @@ namespace Faye
         const Bounds &getLocalBounds() const { return localBounds; }
         const std::vector<MaterialData> &getImportedMaterials() const { return importedMaterials; }
         const std::vector<Submesh> &getSubmeshes() const { return submeshes; }
+        VkDeviceAddress getVertexBufferAddress() const { return vertexBuffer->getDeviceAddress(); }
         const std::vector<MeshNode> &getMeshNodes() const { return meshNodes; }
         uint32_t getRootNodeIndex() const { return rootNodeIndex; }
 

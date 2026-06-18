@@ -190,6 +190,7 @@ void VulkanDevice::createAllocator()
     allocatorInfo.physicalDevice = physicalDevice;
     allocatorInfo.device = device;
     allocatorInfo.instance = instance;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 
     if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS)
     {
@@ -634,6 +635,7 @@ void VulkanDevice::createPhysicalDevice()
     {
         physicalDevice = selected->device;
         properties = selected->properties;
+        cachedQueueFamilies = findQueueFamilies(physicalDevice);
     }
 
     if (physicalDevice == VK_NULL_HANDLE)
@@ -655,8 +657,7 @@ void VulkanDevice::createPhysicalDevice()
 
 void VulkanDevice::createLogicalDevice()
 {
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-    graphicsQueueFamilyIndex = indices.graphicsFamily.value();
+    QueueFamilyIndices indices = cachedQueueFamilies;
 
     // Specifying the queue to use
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
@@ -749,7 +750,7 @@ void VulkanDevice::createPipelineCache()
 
 void VulkanDevice::createCommandPools()
 {
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices queueFamilyIndices = cachedQueueFamilies;
 
     VkCommandPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;

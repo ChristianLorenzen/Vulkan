@@ -183,8 +183,8 @@ namespace Faye
             Builder builder{};
             Mesh mesh{};
 
-            const float half  = 0.5f;
-            const float step  = 1.0f / static_cast<float>(divisions);
+            const float half = 0.5f;
+            const float step = 1.0f / static_cast<float>(divisions);
             const uint32_t verts = divisions + 1;
 
             mesh.vertices.reserve(verts * verts);
@@ -496,7 +496,7 @@ namespace Faye
             vk_device,
             vertexSize,
             vertexCount,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         vk_device.copyBuffer(stagingBuffer.getBuffer(), vertexBuffer->getBuffer(), bufferSize);
@@ -531,7 +531,7 @@ namespace Faye
             vk_device,
             indexSize,
             indexCount,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         vk_device.copyBuffer(stagingBuffer.getBuffer(), indexBuffer->getBuffer(), bufferSize);
     }
@@ -581,9 +581,6 @@ namespace Faye
 
     void Model::bind(VkCommandBuffer commandBuffer)
     {
-        VkBuffer buffers[] = {vertexBuffer->getBuffer()};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, buffers, offsets);
         if (hasIndexBuffer)
         {
             vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
@@ -676,13 +673,13 @@ namespace Faye
             if (mesh->HasTangentsAndBitangents())
             {
                 const glm::vec3 tangent = glm::normalize(normalMatrix * glm::vec3{
-                    mesh->mTangents[vertexIndex].x,
-                    mesh->mTangents[vertexIndex].y,
-                    mesh->mTangents[vertexIndex].z});
+                                                                            mesh->mTangents[vertexIndex].x,
+                                                                            mesh->mTangents[vertexIndex].y,
+                                                                            mesh->mTangents[vertexIndex].z});
                 const glm::vec3 bitangent = glm::normalize(normalMatrix * glm::vec3{
-                    mesh->mBitangents[vertexIndex].x,
-                    mesh->mBitangents[vertexIndex].y,
-                    mesh->mBitangents[vertexIndex].z});
+                                                                              mesh->mBitangents[vertexIndex].x,
+                                                                              mesh->mBitangents[vertexIndex].y,
+                                                                              mesh->mBitangents[vertexIndex].z});
                 const float handedness = glm::dot(glm::cross(vertex.normal, tangent), bitangent) < 0.0f ? -1.0f : 1.0f;
                 vertex.tangent = glm::vec4(glm::normalize(tangent), handedness);
             }

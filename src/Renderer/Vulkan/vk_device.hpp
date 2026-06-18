@@ -35,7 +35,7 @@ namespace Faye
         VkPipelineCache getPipelineCache() { return pipelineCache; }
 
         SwapChainSupportDetails getSwapchainSupport() { return querySwapChainSupport(physicalDevice); }
-        QueueFamilyIndices findPhysicalQueueFamilies() { return findQueueFamilies(physicalDevice); }
+        QueueFamilyIndices findPhysicalQueueFamilies() { return cachedQueueFamilies; }
         VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
         uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
@@ -91,6 +91,7 @@ namespace Faye
         VkQueue presentQueue;
         VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
         uint32_t graphicsQueueFamilyIndex = 0;
+        QueueFamilyIndices cachedQueueFamilies{};
         bool validationLayersEnabled = false;
 
         const std::vector<const char *> validationLayers = {

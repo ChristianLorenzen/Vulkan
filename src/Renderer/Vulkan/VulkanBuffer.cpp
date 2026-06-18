@@ -213,4 +213,12 @@ namespace Faye
     return invalidate(alignmentSize, index * alignmentSize);
   }
 
+  VkDeviceAddress VulkanBuffer::getDeviceAddress() const
+  {
+    VkBufferDeviceAddressInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    info.buffer = buffer;
+    return vkGetBufferDeviceAddress(vk_device.getDevice(), &info);
+  }
+
 } // namespace Faye

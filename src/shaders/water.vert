@@ -6,6 +6,11 @@
 // metres. The plane mesh spans [-0.5, 0.5] local XZ and is scaled 20x in Engine,
 // giving a 20x20m surface. Wavelengths of 3-10m produce clearly visible peaks.
 
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
 struct PointLight {
     vec4 position;
     vec4 color;
@@ -29,17 +34,20 @@ layout(set = 0, binding = 0) uniform GlobalUbo {
     mat4  inverseProjection;   // exact NDC-depth -> view-space unprojection
 } ubo;
 
+layout(buffer_reference, scalar) readonly buffer VertexBuffer {
+    vec3 pos;
+    vec3 color;
+    vec3 normal;
+    vec2 uv;
+    vec4 tangent;
+};
+
 layout(push_constant) uniform Push {
     mat4 modelMatrix;
     mat4 priorModelMatrix;
     vec4 baseColor;
+    uint64_t vertexBufferAddress;
 } push;
-
-layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inColor;
-layout(location = 2) in vec3 inNormal;
-layout(location = 3) in vec2 inUV;
-layout(location = 4) in vec4 inTangent;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec3 fragPosWorld;
@@ -94,6 +102,9 @@ vec3 gerstnerWave(WaveParams w, vec3 worldPos, float t,
 
 void main()
 {
+    // Stride = scalar layout: 3*vec3(12) + vec2(8) + vec4(16) = 60 bytes
+    VertexBuffer vtx = VertexBuffer(push.vertexBufferAddress + uint64_t(gl_VertexIndex) * uint64_t(60));
+
     // World-space wave parameters for a 20x20m surface.
     // Amplitudes 0.1-0.4m, wavelengths 2-10m → multiple visible peaks.
     WaveParams waves[4];
@@ -103,7 +114,7 @@ void main()
     waves[3] = WaveParams(normalize(vec2(-0.7,  0.3)), 0.08, 2.0, 1.8, 0.14);
 
     // Transform to world space — Gerstner is evaluated here so wavelengths are metres.
-    vec3 worldBase = (push.modelMatrix * vec4(inPosition, 1.0)).xyz;
+    vec3 worldBase = (push.modelMatrix * vec4(vtx.pos, 1.0)).xyz;
 
     vec3 pos     = worldBase;
     vec3 tangent = vec3(1.0, 0.0, 0.0);
@@ -121,7 +132,7 @@ void main()
     // frame's time using the previous model matrix, so motion vectors capture
     // wave movement (not just camera/object movement).
     float priorTime      = ubo.time - ubo.deltaTime;
-    vec3  priorWorldBase = (push.priorModelMatrix * vec4(inPosition, 1.0)).xyz;
+    vec3  priorWorldBase = (push.priorModelMatrix * vec4(vtx.pos, 1.0)).xyz;
     vec3  priorPos       = priorWorldBase;
     vec3  priorTangent   = vec3(1.0, 0.0, 0.0);   // derivatives unused for position
     vec3  priorBinormal  = vec3(0.0, 0.0, 1.0);
@@ -141,7 +152,7 @@ void main()
     fragBitangentWorld = normalize(cross(waveNormal, fragTangentWorld));
 
     fragPosWorld  = pos;
-    fragTexCoord  = inUV;
+    fragTexCoord  = vtx.uv;
     fragColor     = push.baseColor.xyz;
 
     // Pass raw wave height (metres above rest plane) to the fragment shader.

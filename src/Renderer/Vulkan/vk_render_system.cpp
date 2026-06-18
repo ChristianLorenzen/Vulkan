@@ -18,6 +18,7 @@ struct SimplePushConstantData
     glm::mat4 modelMatrix{1.0f};
     glm::mat4 priorModelMatrix{1.0f};
     glm::vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+    VkDeviceAddress vertexBufferAddress{0};
 };
 
 namespace
@@ -258,6 +259,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             push.modelMatrix = renderable.modelMatrix;
             push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(renderable.material->getColor(), 1.0f);
+            push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
 
             vkCmdPushConstants(
                 frameContext.commandBuffer,
@@ -316,6 +318,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             push.modelMatrix = renderable.modelMatrix;
             push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(resolvedMaterial->getColor(), 1.0f);
+            push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
 
             vkCmdPushConstants(
                 frameContext.commandBuffer,
@@ -416,6 +419,7 @@ void Faye::SimpleRenderSystem::renderDepthPrepass(
         push.modelMatrix = renderable.modelMatrix;
         push.priorModelMatrix = renderable.priorModelMatrix;
         push.baseColor = glm::vec4(1.0f);
+        push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
 
         vkCmdPushConstants(
             frameContext.commandBuffer,

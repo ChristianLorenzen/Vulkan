@@ -28,7 +28,8 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule{VK_NULL_HANDLE};
 
-    try {
+    try
+    {
         fragShaderModule = createShaderModule(fragShaderCode);
     }
     catch (const std::exception &e)
@@ -105,7 +106,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
 
     VkResult result = vkCreateGraphicsPipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &graphicsPipeline);
-    
+
     vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
     vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
 
@@ -205,8 +206,10 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo)
     configInfo.dynamicStateInfo.pDynamicStates = configInfo.dynamicStateEnables.data();
     configInfo.dynamicStateInfo.flags = 0;
 
-    configInfo.bindingDescriptions = Vertex::getBindingDescription();
-    configInfo.attributeDescriptions = Vertex::getAttributeDescriptions();
+    // configInfo.bindingDescriptions = Vertex::getBindingDescription();
+    // configInfo.attributeDescriptions = Vertex::getAttributeDescriptions();
+    configInfo.bindingDescriptions = {};
+    configInfo.attributeDescriptions = {};
 }
 
 void VulkanPipeline::bind(VkCommandBuffer commandBuffer)
