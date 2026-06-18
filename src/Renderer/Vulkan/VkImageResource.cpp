@@ -237,10 +237,18 @@ void Faye::VkImageResource::recordTransition(VkCommandBuffer commandBuffer,
                                              uint32_t baseArrayLayer,
                                              uint32_t layerCount)
 {
+    // Resolve 0 → sentinel so callers that pass 0 explicitly still produce valid barriers.
+    const uint32_t resolvedLevelCount = (levelCount == 0)
+        ? (mipLevels > baseMipLevel ? mipLevels - baseMipLevel : 1)
+        : levelCount;
+    const uint32_t resolvedLayerCount = (layerCount == 0)
+        ? (arrayLayers > baseArrayLayer ? arrayLayers - baseArrayLayer : 1)
+        : layerCount;
+
     VkImageMemoryBarrier2 barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    barrier.srcStageMask = srcStageMask;   // now VK_PIPELINE_STAGE_2_* flags
-    barrier.srcAccessMask = srcAccessMask; // now VK_ACCESS_2_* flags
+    barrier.srcStageMask = srcStageMask;
+    barrier.srcAccessMask = srcAccessMask;
     barrier.dstStageMask = dstStageMask;
     barrier.dstAccessMask = dstAccessMask;
     barrier.oldLayout = layout;
@@ -250,9 +258,9 @@ void Faye::VkImageResource::recordTransition(VkCommandBuffer commandBuffer,
     barrier.image = image;
     barrier.subresourceRange.aspectMask = aspectFlags;
     barrier.subresourceRange.baseMipLevel = baseMipLevel;
-    barrier.subresourceRange.levelCount = levelCount;
+    barrier.subresourceRange.levelCount = resolvedLevelCount;
     barrier.subresourceRange.baseArrayLayer = baseArrayLayer;
-    barrier.subresourceRange.layerCount = layerCount;
+    barrier.subresourceRange.layerCount = resolvedLayerCount;
 
     VkDependencyInfo depInfo{};
     depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;

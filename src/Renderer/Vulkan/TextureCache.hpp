@@ -32,9 +32,18 @@ namespace Faye
         void initBindless(VkDescriptorSet bindlessSet);
 
         // Returns the bindless slot index for the given texture.
-        // getOrCreateTexture must have been called for this texture first.
+        // Prefer getOrCreateTextureAndSlot to avoid computing the cache key twice.
         uint32_t getTextureSlot(const Texture &texture) const;
         uint32_t getFallbackSlot(TextureType type) const;
+
+        // Loads (or retrieves from cache) the texture and returns both the resource
+        // and its bindless slot in a single key computation.
+        struct TextureAndSlot { std::shared_ptr<VkTextureResource> resource; uint32_t slot; };
+        TextureAndSlot getOrCreateTextureAndSlot(const Texture &texture);
+
+        // O(1) reverse lookup: slot index → resource pointer. No hashing.
+        // Returns nullptr if the slot has not been assigned.
+        const VkTextureResource *getResourceForSlot(uint32_t slot) const;
 
     private:
         struct TextureCacheKey
@@ -64,8 +73,10 @@ namespace Faye
         uint32_t nextFreeSlot{0};
         std::unordered_map<TextureCacheKey, uint32_t, TextureCacheKeyHasher> textureSlots;
         std::unordered_map<TextureType, uint32_t, TextureTypeHasher> fallbackSlots;
+        // Slot → resource reverse map for O(1) lookup without rehashing pixel data.
+        std::vector<VkTextureResource *> slotToResource;
 
-        uint32_t assignSlot(const TextureCacheKey &key, const VkTextureResource &resource);
+        uint32_t assignSlot(const TextureCacheKey &key, VkTextureResource &resource);
 
         void ensureFallbackResources();
         static TextureCacheKey makeKey(const Texture &texture);

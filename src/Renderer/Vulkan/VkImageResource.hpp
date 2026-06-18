@@ -86,9 +86,9 @@ namespace Faye
                               VkAccessFlags2 srcAccessMask,
                               VkAccessFlags2 dstAccessMask,
                               uint32_t baseMipLevel = 0,
-                              uint32_t levelCount = 0,
+                              uint32_t levelCount = VK_REMAINING_MIP_LEVELS,
                               uint32_t baseArrayLayer = 0,
-                              uint32_t layerCount = 0);
+                              uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS);
         static void imageBarrier(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect,
                           VkImageLayout oldLayout, VkImageLayout newLayout,
                           VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage,

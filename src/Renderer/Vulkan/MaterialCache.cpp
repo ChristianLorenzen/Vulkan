@@ -135,8 +135,8 @@ namespace Faye
 
             try
             {
-                textureCache.getOrCreateTexture(texture); // ensures texture is in bindless set
-                uint32_t slot = textureCache.getTextureSlot(texture);
+                auto [resource, slot] = textureCache.getOrCreateTextureAndSlot(texture);
+                (void)resource;
                 switch (texture.type)
                 {
                 case TextureType::Albedo:           state.albedoSlot    = slot; break;

@@ -278,19 +278,23 @@ VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle,
         return VK_NULL_HANDLE;
     }
 
-    materialCache->getOrCreateState(handle, material); // ensure slots are resolved
+    const MaterialState &state = materialCache->getOrCreateState(handle, material);
 
-    // Find the texture of the requested type in the material's raw data and look it
-    // up in TextureCache (textures are no longer stored on MaterialState directly).
-    const VkTextureResource *texture = nullptr;
-    for (const Texture &tex : material.getMaterialData().textures)
+    // Look up the texture resource directly from the bindless slot stored on the
+    // material state — no pixel-data hashing, just an index into the slot→resource
+    // reverse map built by TextureCache.
+    uint32_t slot = UINT32_MAX;
+    switch (type)
     {
-        if (tex.type == type && tex.hasPixelData() && tex.width > 0 && tex.height > 0)
-        {
-            texture = textureCache->getOrCreateTexture(tex).get();
-            break;
-        }
+    case TextureType::Albedo:           slot = state.albedoSlot;    break;
+    case TextureType::Normal:           slot = state.normalSlot;    break;
+    case TextureType::Metallic:         slot = state.metallicSlot;  break;
+    case TextureType::Roughness:        slot = state.roughnessSlot; break;
+    case TextureType::AmbientOcclusion: slot = state.aoSlot;        break;
+    default: break;
     }
+
+    const VkTextureResource *texture = textureCache->getResourceForSlot(slot);
     if (texture == nullptr || !texture->isValid())
     {
         return VK_NULL_HANDLE;

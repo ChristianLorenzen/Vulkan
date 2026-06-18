@@ -72,7 +72,7 @@ namespace Faye
         }
     }
 
-    uint32_t TextureCache::assignSlot(const TextureCacheKey &key, const VkTextureResource &resource)
+    uint32_t TextureCache::assignSlot(const TextureCacheKey &key, VkTextureResource &resource)
     {
         auto it = textureSlots.find(key);
         if (it != textureSlots.end())
@@ -82,6 +82,10 @@ namespace Faye
 
         uint32_t slot = nextFreeSlot++;
         textureSlots[key] = slot;
+        resource.bindlessSlot = slot;
+        if (slotToResource.size() <= slot)
+            slotToResource.resize(slot + 1, nullptr);
+        slotToResource[slot] = &resource;
 
         VkDescriptorImageInfo imageInfo = resource.descriptorInfo();
 
@@ -96,6 +100,22 @@ namespace Faye
 
         vkUpdateDescriptorSets(vk_device.getDevice(), 1, &write, 0, nullptr);
         return slot;
+    }
+
+    TextureCache::TextureAndSlot TextureCache::getOrCreateTextureAndSlot(const Texture &texture)
+    {
+        auto resource = getOrCreateTexture(texture);
+        // Slot was stamped onto the resource during assignSlot — no rehash needed.
+        return {resource, resource->bindlessSlot != UINT32_MAX
+                              ? resource->bindlessSlot
+                              : getFallbackSlot(texture.type)};
+    }
+
+    const VkTextureResource *TextureCache::getResourceForSlot(uint32_t slot) const
+    {
+        if (slot == UINT32_MAX || slot >= slotToResource.size())
+            return nullptr;
+        return slotToResource[slot];
     }
 
     uint32_t TextureCache::getTextureSlot(const Texture &texture) const
