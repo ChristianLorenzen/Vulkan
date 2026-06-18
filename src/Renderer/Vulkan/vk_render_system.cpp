@@ -15,11 +15,16 @@ using namespace Faye;
 
 struct SimplePushConstantData
 {
-    glm::mat4 modelMatrix{1.0f};
-    glm::mat4 priorModelMatrix{1.0f};
-    glm::vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
-    VkDeviceAddress vertexBufferAddress{0};
-};
+    glm::mat4 modelMatrix{1.0f};           // offset   0 — 64 bytes
+    glm::mat4 priorModelMatrix{1.0f};      // offset  64 — 64 bytes
+    glm::vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f}; // offset 128 — 16 bytes
+    VkDeviceAddress vertexBufferAddress{0}; // offset 144 —  8 bytes (vertex shader only)
+    uint32_t albedoSlot{0};                // offset 152
+    uint32_t normalSlot{0};               // offset 156
+    uint32_t metallicSlot{0};             // offset 160
+    uint32_t roughnessSlot{0};            // offset 164
+    uint32_t aoSlot{0};                   // offset 168
+};  // total: 172 bytes
 
 namespace
 {
@@ -36,11 +41,11 @@ size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const Mat
     return combined ^ (key.alphaBlend ? size_t{0x9e3779b97f4a7c15ULL} : size_t{0});
 }
 
-Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
-    : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache)
+Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout)
+    : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache), globalDescriptorSetLayout(globalSetLayout)
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
-    createPipelineLayout(globalSetLayout, materialSetLayout);
+    createPipelineLayout(globalSetLayout.getDescriptorSetLayout(), materialSetLayout, bindlessSetLayout);
 }
 
 Faye::SimpleRenderSystem::~SimpleRenderSystem()
@@ -53,14 +58,14 @@ Faye::SimpleRenderSystem::~SimpleRenderSystem()
 }
 
 // ------------------------------------- Conversion Functions ------------------------------------- //
-void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout)
+void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout)
 {
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(SimplePushConstantData);
 
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts{globalSetLayout, materialSetLayout};
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts{globalSetLayout, materialSetLayout, bindlessSetLayout};
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -207,15 +212,12 @@ void Faye::SimpleRenderSystem::invalidatePipelines(const std::string &compiledSh
 
 void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene)
 {
-    vkCmdBindDescriptorSets(
-        frameContext.commandBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelineLayout,
-        0,
-        1,
-        &frameContext.globalDescriptorSet,
-        0,
-        nullptr);
+    // Push global UBO + prepass depth directly into the command buffer (no pool allocation).
+    auto bufferInfo = frameContext.globalBuffer->descriptorInfo();
+    VulkanDescriptorWriter(globalDescriptorSetLayout)
+        .writeBuffer(0, &bufferInfo)
+        .writeImage(1, &frameContext.prepassDepthInfo)
+        .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 0);
 
     for (const auto &renderable : renderScene.renderables)
     {
@@ -245,6 +247,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
                                      materialState.pipelineConfig.enableAlphaBlending ? VK_FALSE : VK_TRUE);
             vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
+            // Bind material params UBO (set 1).
             vkCmdBindDescriptorSets(
                 frameContext.commandBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -260,6 +263,11 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(renderable.material->getColor(), 1.0f);
             push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
+            push.albedoSlot    = materialState.albedoSlot;
+            push.normalSlot    = materialState.normalSlot;
+            push.metallicSlot  = materialState.metallicSlot;
+            push.roughnessSlot = materialState.roughnessSlot;
+            push.aoSlot        = materialState.aoSlot;
 
             vkCmdPushConstants(
                 frameContext.commandBuffer,
@@ -304,6 +312,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
                                      materialState.pipelineConfig.enableAlphaBlending ? VK_FALSE : VK_TRUE);
             vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
+            // Bind material params UBO (set 1).
             vkCmdBindDescriptorSets(
                 frameContext.commandBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -319,6 +328,11 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(resolvedMaterial->getColor(), 1.0f);
             push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
+            push.albedoSlot    = materialState.albedoSlot;
+            push.normalSlot    = materialState.normalSlot;
+            push.metallicSlot  = materialState.metallicSlot;
+            push.roughnessSlot = materialState.roughnessSlot;
+            push.aoSlot        = materialState.aoSlot;
 
             vkCmdPushConstants(
                 frameContext.commandBuffer,
@@ -390,13 +404,12 @@ void Faye::SimpleRenderSystem::renderDepthPrepass(
     vkCmdSetDepthWriteEnable(frameContext.commandBuffer, VK_TRUE);
     vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
-    vkCmdBindDescriptorSets(
-        frameContext.commandBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        depthPrepassPipelineLayout,
-        0, 1,
-        &frameContext.globalDescriptorSet,
-        0, nullptr);
+    // Push global UBO + prepass depth into the depth prepass pipeline.
+    auto bufferInfo = frameContext.globalBuffer->descriptorInfo();
+    VulkanDescriptorWriter(globalDescriptorSetLayout)
+        .writeBuffer(0, &bufferInfo)
+        .writeImage(1, &frameContext.prepassDepthInfo)
+        .pushDescriptors(frameContext.commandBuffer, depthPrepassPipelineLayout, 0);
 
     for (const auto &renderable : renderScene.renderables)
     {

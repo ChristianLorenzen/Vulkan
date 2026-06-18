@@ -3,14 +3,7 @@
 // macro system.  Properties declared with FAYE_PROPERTIES_BEGIN/END are
 // reflected by ShaderReflection at load time and can be overridden at runtime
 // via MaterialPropertyBlock.
-//
-// Current limitation: fayeProps is a zero-initialised global struct (GLSL
-// struct members have no initialisers).  Until per-material UBO allocation is
-// wired up in MaterialCache, actual parameter values come from the standard
-// MaterialParams UBO at set=1, binding=5.  The macro declarations here are
-// the authoritative source for reflection and future runtime binding.
-// TODO: Allocate a per-material GPU buffer for fayeProps once
-//       MaterialTemplate/MaterialTemplateRegistry drives pipeline creation.
+#extension GL_EXT_nonuniform_qualifier : require
 
 #include "FayeShader.glsl"
 
@@ -22,14 +15,6 @@ FAYE_PROPERTIES_BEGIN
     FAYE_VEC4(baseColor,  vec4(1.0))
     FAYE_VEC3(emissive,   vec3(0.0))
 FAYE_PROPERTIES_END
-
-// ---- Sampler declarations via FayeShader macros ----------------------------
-// Compatible with the descriptor set layout written by MaterialCache.
-FAYE_SAMPLER2D(albedoMap,    1, 0)
-FAYE_SAMPLER2D(normalMap,    1, 1)
-FAYE_SAMPLER2D(metallicMap,  1, 2)
-FAYE_SAMPLER2D(roughnessMap, 1, 3)
-FAYE_SAMPLER2D(aoMap,        1, 4)
 
 // ---- Standard descriptors --------------------------------------------------
 struct PointLight {
@@ -49,9 +34,8 @@ layout(set = 0, binding = 0) uniform GlobalUbo {
     int _pad[3];
 } ubo;
 
-// Standard material parameters (provides real GPU-backed values until
-// per-material FayeProperties UBO allocation is implemented).
-layout(set = 1, binding = 5) uniform MaterialParams {
+// Material parameter UBO — now at binding 0 (textures moved to bindless set 2).
+layout(set = 1, binding = 0) uniform MaterialParams {
     vec4 baseColorFactor;
     vec4 surfaceFactors;   // x=metallic, y=roughness, z=normalScale, w=occlusion
     vec4 specularShininess;
@@ -59,10 +43,19 @@ layout(set = 1, binding = 5) uniform MaterialParams {
     vec4 alphaModeCutoff;
 } materialParams;
 
+// Bindless texture array (set 2). Indexed by slot indices in push constants.
+layout(set = 2, binding = 0) uniform sampler2D allTextures[];
+
 layout(push_constant) uniform Push {
     mat4 modelMatrix;
     mat4 priorModelMatrix;
     vec4 baseColor;
+    uvec2 _vertexPad;   // padding for vertexBufferAddress (vertex shader only)
+    uint albedoSlot;
+    uint normalSlot;
+    uint metallicSlot;
+    uint roughnessSlot;
+    uint aoSlot;
 } push;
 
 // ---- Fragment inputs --------------------------------------------------------
@@ -80,19 +73,19 @@ layout(location = 1) out vec2 outMotion;
 
 void main()
 {
-    // Sample textures using FayeShader macros.
-    vec3 albedo   = SAMPLE(albedoMap,   fragTexCoord).rgb
+    // Sample textures via bindless array (indexed by push constant slots).
+    vec3 albedo   = texture(allTextures[nonuniformEXT(push.albedoSlot)],   fragTexCoord).rgb
                   * materialParams.baseColorFactor.rgb
                   * fragColor;
-    float metallic  = clamp(SAMPLE(metallicMap,  fragTexCoord).r * materialParams.surfaceFactors.x, 0.0, 1.0);
-    float roughness = clamp(SAMPLE(roughnessMap, fragTexCoord).r * materialParams.surfaceFactors.y, 0.04, 1.0);
-    float occlusion = clamp(mix(1.0, SAMPLE(aoMap, fragTexCoord).r, materialParams.surfaceFactors.w), 0.0, 1.0);
+    float metallic  = clamp(texture(allTextures[nonuniformEXT(push.metallicSlot)],  fragTexCoord).r * materialParams.surfaceFactors.x, 0.0, 1.0);
+    float roughness = clamp(texture(allTextures[nonuniformEXT(push.roughnessSlot)], fragTexCoord).r * materialParams.surfaceFactors.y, 0.04, 1.0);
+    float occlusion = clamp(mix(1.0, texture(allTextures[nonuniformEXT(push.aoSlot)], fragTexCoord).r, materialParams.surfaceFactors.w), 0.0, 1.0);
 
     // Normal mapping.
     vec3 surfaceNormal = normalize(fragNormalWorld);
     if (length(fragTangentWorld) > 0.001 && length(fragBitangentWorld) > 0.001)
     {
-        vec3 tangentNormal = SAMPLE(normalMap, fragTexCoord).xyz * 2.0 - 1.0;
+        vec3 tangentNormal = texture(allTextures[nonuniformEXT(push.normalSlot)], fragTexCoord).xyz * 2.0 - 1.0;
         tangentNormal.xy  *= materialParams.surfaceFactors.z;
         mat3 tbn           = mat3(normalize(fragTangentWorld),
                                   normalize(fragBitangentWorld),

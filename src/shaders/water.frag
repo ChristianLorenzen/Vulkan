@@ -1,23 +1,19 @@
 #version 450
 // water.frag -- PBR-lite water surface shading.
 //
-// Descriptor layout (fixed by MaterialCache):
+// Descriptor layout:
 //   set=0 binding=0 : GlobalUBO (ubo.time, camera matrices, lights)
 //   set=0 binding=1 : prepassDepth -- opaque-only depth from the depth prepass
-//                     (separate from scene depth, no water self-contamination)
-//   set=1 binding=0 : normalMap1 (Albedo slot)   -> waternormal1.jpg
-//   set=1 binding=1 : normalMap2 (Normal slot)   -> waternormal2.jpg
-//   set=1 binding=2 : foamMap   (Metallic slot)  -> waterfoam1.jpg
-//   set=1 binding=5 : MaterialParams UBO         -> editor-adjustable properties
-//                       baseColorFactor.rgb -> shallow water tint
-//                       surfaceFactors.z    -> ripple normal scale
-//                       specularShininess.w -> specular power
+//   set=1 binding=0 : MaterialParams UBO (editor-adjustable properties)
+//   set=2 binding=0 : allTextures[] bindless array
+//
+// Texture slot mapping via push constants (reuses standard PBR slots):
+//   push.albedoSlot    -> normalMap1 (water normal scroll 1)
+//   push.normalSlot    -> normalMap2 (water normal scroll 2)
+//   push.metallicSlot  -> foamMap    (foam texture)
+#extension GL_EXT_nonuniform_qualifier : require
 
 #include "FayeShader.glsl"
-
-FAYE_SAMPLER2D(normalMap1, 1, 0)
-FAYE_SAMPLER2D(normalMap2, 1, 1)
-FAYE_SAMPLER2D(foamMap,    1, 2)
 
 // Opaque-only depth from the depth prepass (set=0 binding=1).
 layout(set = 0, binding = 1) uniform sampler2D prepassDepth;
@@ -45,11 +41,11 @@ layout(set = 0, binding = 0) uniform GlobalUbo {
     mat4  inverseProjection;   // exact NDC-depth -> view-space unprojection
 } ubo;
 
-// Material parameters -- bound at set=1 binding=5, updated by the editor.
+// Material parameters -- now at set=1 binding=0 (textures moved to bindless set=2).
 //   baseColorFactor.rgb : shallow water colour tint
 //   surfaceFactors.z    : ripple normal intensity  (editor: "Normal Scale")
 //   specularShininess.w : Blinn-Phong specular power (editor: "Shininess")
-layout(set = 1, binding = 5) uniform MaterialParams {
+layout(set = 1, binding = 0) uniform MaterialParams {
     vec4 baseColorFactor;
     vec4 surfaceFactors;
     vec4 specularShininess;
@@ -57,10 +53,22 @@ layout(set = 1, binding = 5) uniform MaterialParams {
     vec4 alphaModeCutoff;
 } materialParams;
 
+// Bindless texture array. Water texture slot mapping (by MaterialCache convention):
+//   albedoSlot   -> normalMap1 (water normal scroll 1)
+//   normalSlot   -> normalMap2 (water normal scroll 2)
+//   metallicSlot -> foamMap    (foam texture)
+layout(set = 2, binding = 0) uniform sampler2D allTextures[];
+
 layout(push_constant) uniform Push {
     mat4 modelMatrix;
     mat4 priorModelMatrix;
     vec4 baseColor;
+    uvec2 _vertexPad;   // padding for vertexBufferAddress (vertex shader only)
+    uint albedoSlot;    // normalMap1
+    uint normalSlot;    // normalMap2
+    uint metallicSlot;  // foamMap
+    uint roughnessSlot;
+    uint aoSlot;
 } push;
 
 layout(location = 0) in vec3 fragColor;
@@ -113,8 +121,8 @@ void main()
     vec2 uv1 = fragTexCoord * 8.0 + vec2( 0.06,  0.04) * t;
     vec2 uv2 = fragTexCoord * 5.0 + vec2(-0.03,  0.07) * t;
 
-    vec3 n1 = unpackNormal(SAMPLE(normalMap1, uv1).xyz);
-    vec3 n2 = unpackNormal(SAMPLE(normalMap2, uv2).xyz);
+    vec3 n1 = unpackNormal(texture(allTextures[nonuniformEXT(push.albedoSlot)],  uv1).xyz);
+    vec3 n2 = unpackNormal(texture(allTextures[nonuniformEXT(push.normalSlot)],  uv2).xyz);
     n1.xy *= normalScale;
     n2.xy *= normalScale;
     vec3 rippleNormal = blendNormalsRNM(normalize(n1), normalize(n2));
@@ -205,9 +213,9 @@ void main()
     // approaches 1, and the breakup fades out instead of exploding.
     vec2  foamUV   = fragTexCoord * 12.0 + vec2(0.02, 0.01) * t;
     vec2  foamUV2  = fragTexCoord *  3.0 - vec2(0.011, 0.017) * t;
-    vec4  foamSamp = SAMPLE(foamMap, foamUV);
+    vec4  foamSamp = texture(allTextures[nonuniformEXT(push.metallicSlot)], foamUV);
     float foamFine   = foamSamp.r;
-    float foamCoarse = SAMPLE(foamMap, foamUV2).r;
+    float foamCoarse = texture(allTextures[nonuniformEXT(push.metallicSlot)], foamUV2).r;
 
     float ratio   = foamFine / max(foamCoarse, 0.05);
     float breakup = smoothstep(1.0, 1.25, ratio);

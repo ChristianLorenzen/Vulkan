@@ -92,6 +92,7 @@ namespace Faye
 		std::unique_ptr<VulkanRenderer> vk_renderer;
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> materialSetLayout{};
+		std::unique_ptr<VulkanDescriptorSetLayout> bindlessSetLayout{};
 		std::unique_ptr<TextureCache> textureCache{};
 		std::unique_ptr<MaterialCache> materialCache{};
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
@@ -100,10 +101,11 @@ namespace Faye
 
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
 		std::unique_ptr<VulkanDescriptorPool> materialPool{};
+		std::unique_ptr<VulkanDescriptorPool> bindlessPool{};
 		// Descriptor pool passed to the ImGui initialization function.
 		std::unique_ptr<VulkanDescriptorPool> imGUIPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;
-		std::vector<VkDescriptorSet> globalDescriptorSets;
+		VkDescriptorSet bindlessDescriptorSet{VK_NULL_HANDLE};
 
 		struct TextureThumbnailCacheKey
 		{

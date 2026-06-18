@@ -37,7 +37,7 @@ namespace Faye
 	class SimpleRenderSystem
 	{
 	public:
-		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
+		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout);
 		~SimpleRenderSystem();
 
 		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -47,6 +47,7 @@ namespace Faye
 
 		void invalidatePipelines(const std::string &compiledShader);
 		void renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
+		VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
 
                 // Prepares the cached depth-prepass pipeline (call once after construction).
                 void prepareDepthPrepassPipeline(VkFormat depthFormat,
@@ -72,13 +73,14 @@ namespace Faye
                 VulkanDevice &vk_device;
                 VkFormat sceneColorFormat, sceneMotionFormat, sceneDepthFormat;
                 MaterialCache &materialCache;
+                VulkanDescriptorSetLayout &globalDescriptorSetLayout;
                 std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
 
                 VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
                 VkPipelineLayout depthPrepassPipelineLayout{VK_NULL_HANDLE};
                 std::unique_ptr<VulkanPipeline> depthPrepassPipeline;
 
-                void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
+                void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout);
                 VulkanPipeline &getOrCreatePipeline(const MaterialState &materialState);
                 std::unique_ptr<VulkanPipeline> createPipeline(const MaterialPipelineKey &key) const;
                 static MaterialPipelineKey makePipelineKey(const MaterialState &materialState);

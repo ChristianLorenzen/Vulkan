@@ -4,6 +4,8 @@
 
 #include "Scene/Camera/Camera.hpp"
 
+namespace Faye { class VulkanBuffer; }
+
 namespace Faye
 {
 #define MAX_LIGHTS 10
@@ -48,7 +50,11 @@ namespace Faye
         float frameTime;
         VkCommandBuffer commandBuffer;
         const Camera &camera;
-        VkDescriptorSet globalDescriptorSet;
+        // Push-descriptor data for set 0 (global UBO + prepass depth).
+        // Render systems push these directly into the command buffer rather than
+        // binding a pre-allocated VkDescriptorSet.
+        VulkanBuffer *globalBuffer{nullptr};
+        VkDescriptorImageInfo prepassDepthInfo{};
     };
 
     using FrameInfo = FrameContext;

@@ -14,15 +14,9 @@ namespace Faye
         materialRevision = 0;
         pipelineConfig = {};
         descriptorSet = VK_NULL_HANDLE;
-        textures.clear();
         parameterBuffer.reset();
         uniformData = {};
-    }
-
-    const VkTextureResource *MaterialState::findTexture(TextureType type) const
-    {
-        const auto iterator = textures.find(type);
-        return iterator != textures.end() ? iterator->second.get() : nullptr;
+        albedoSlot = normalSlot = metallicSlot = roughnessSlot = aoSlot = 0;
     }
 
     MaterialCache::MaterialCache(VulkanDevice &device,
@@ -124,7 +118,14 @@ namespace Faye
         }
         state.parameterBuffer->writeToBuffer(&state.uniformData);
 
-        state.textures.clear();
+        // Upload all textures into the bindless set and record slot indices.
+        // Pre-populate with fallback slots so any missing texture uses the default.
+        state.albedoSlot    = textureCache.getFallbackSlot(TextureType::Albedo);
+        state.normalSlot    = textureCache.getFallbackSlot(TextureType::Normal);
+        state.metallicSlot  = textureCache.getFallbackSlot(TextureType::Metallic);
+        state.roughnessSlot = textureCache.getFallbackSlot(TextureType::Roughness);
+        state.aoSlot        = textureCache.getFallbackSlot(TextureType::AmbientOcclusion);
+
         for (const Texture &texture : materialData.textures)
         {
             if (!texture.hasPixelData() || texture.width <= 0 || texture.height <= 0)
@@ -134,7 +135,17 @@ namespace Faye
 
             try
             {
-                state.textures.insert_or_assign(texture.type, textureCache.getOrCreateTexture(texture));
+                textureCache.getOrCreateTexture(texture); // ensures texture is in bindless set
+                uint32_t slot = textureCache.getTextureSlot(texture);
+                switch (texture.type)
+                {
+                case TextureType::Albedo:           state.albedoSlot    = slot; break;
+                case TextureType::Normal:           state.normalSlot    = slot; break;
+                case TextureType::Metallic:         state.metallicSlot  = slot; break;
+                case TextureType::Roughness:        state.roughnessSlot = slot; break;
+                case TextureType::AmbientOcclusion: state.aoSlot        = slot; break;
+                default: break;
+                }
             }
             catch (const std::exception &exception)
             {
@@ -147,25 +158,15 @@ namespace Faye
             }
         }
 
-        writeDescriptorSet(state);
+        writeParamDescriptorSet(state);
     }
 
-    void MaterialCache::writeDescriptorSet(MaterialState &state)
+    void MaterialCache::writeParamDescriptorSet(MaterialState &state)
     {
-        VkDescriptorImageInfo albedoInfo = resolveBoundTexture(state, TextureType::Albedo).descriptorInfo();
-        VkDescriptorImageInfo normalInfo = resolveBoundTexture(state, TextureType::Normal).descriptorInfo();
-        VkDescriptorImageInfo metallicInfo = resolveBoundTexture(state, TextureType::Metallic).descriptorInfo();
-        VkDescriptorImageInfo roughnessInfo = resolveBoundTexture(state, TextureType::Roughness).descriptorInfo();
-        VkDescriptorImageInfo aoInfo = resolveBoundTexture(state, TextureType::AmbientOcclusion).descriptorInfo();
         VkDescriptorBufferInfo parameterInfo = state.parameterBuffer->descriptorInfo();
 
         VulkanDescriptorWriter writer(materialSetLayout, materialPool);
-        writer.writeImage(0, &albedoInfo)
-            .writeImage(1, &normalInfo)
-            .writeImage(2, &metallicInfo)
-            .writeImage(3, &roughnessInfo)
-            .writeImage(4, &aoInfo)
-            .writeBuffer(5, &parameterInfo);
+        writer.writeBuffer(0, &parameterInfo);
 
         if (state.descriptorSet == VK_NULL_HANDLE)
         {
@@ -191,13 +192,4 @@ namespace Faye
         state.reset();
     }
 
-    const VkTextureResource &MaterialCache::resolveBoundTexture(const MaterialState &state, TextureType type) const
-    {
-        if (const VkTextureResource *texture = state.findTexture(type))
-        {
-            return *texture;
-        }
-
-        return textureCache.getFallbackTexture(type);
-    }
 }

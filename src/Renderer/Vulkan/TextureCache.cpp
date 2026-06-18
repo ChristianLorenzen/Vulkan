@@ -49,7 +49,76 @@ namespace Faye
 
         auto resource = createTextureResource(texture);
         textureResources.emplace(key, resource);
+
+        if (bindlessDescriptorSet != VK_NULL_HANDLE)
+        {
+            assignSlot(key, *resource);
+        }
+
         return resource;
+    }
+
+    void TextureCache::initBindless(VkDescriptorSet bindlessSet)
+    {
+        bindlessDescriptorSet = bindlessSet;
+
+        // Ensure fallbacks exist and register them into the bindless set.
+        ensureFallbackResources();
+        for (auto &[type, resource] : fallbackTextures)
+        {
+            TextureCacheKey fallbackKey{type, "__fallback__", 1, 1, 4, 4, 0};
+            uint32_t slot = assignSlot(fallbackKey, *resource);
+            fallbackSlots[type] = slot;
+        }
+    }
+
+    uint32_t TextureCache::assignSlot(const TextureCacheKey &key, const VkTextureResource &resource)
+    {
+        auto it = textureSlots.find(key);
+        if (it != textureSlots.end())
+        {
+            return it->second;
+        }
+
+        uint32_t slot = nextFreeSlot++;
+        textureSlots[key] = slot;
+
+        VkDescriptorImageInfo imageInfo = resource.descriptorInfo();
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = bindlessDescriptorSet;
+        write.dstBinding = 0;
+        write.dstArrayElement = slot;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.descriptorCount = 1;
+        write.pImageInfo = &imageInfo;
+
+        vkUpdateDescriptorSets(vk_device.getDevice(), 1, &write, 0, nullptr);
+        return slot;
+    }
+
+    uint32_t TextureCache::getTextureSlot(const Texture &texture) const
+    {
+        const TextureCacheKey key = makeKey(texture);
+        const auto it = textureSlots.find(key);
+        if (it != textureSlots.end())
+        {
+            return it->second;
+        }
+        // Fall back to the albedo fallback slot if texture not registered.
+        return getFallbackSlot(texture.type);
+    }
+
+    uint32_t TextureCache::getFallbackSlot(TextureType type) const
+    {
+        const auto it = fallbackSlots.find(type);
+        if (it != fallbackSlots.end())
+        {
+            return it->second;
+        }
+        // Return slot 0 as last resort (albedo fallback is always the first registered).
+        return 0;
     }
 
     const VkTextureResource &TextureCache::getFallbackTexture(TextureType type) const

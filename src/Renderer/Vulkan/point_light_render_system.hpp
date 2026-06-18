@@ -22,6 +22,7 @@
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/Resources/Vertex.hpp"
 #include "vk_device.hpp"
+#include "vk_descriptors.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_types.hpp"
 
@@ -33,7 +34,7 @@ namespace Faye
 	class PointLightRenderSystem
 	{
 	public:
-		PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VkDescriptorSetLayout globalSetLayout);
+		PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VulkanDescriptorSetLayout &globalSetLayout);
 		~PointLightRenderSystem();
 
 		PointLightRenderSystem(const PointLightRenderSystem &) = delete;
@@ -46,6 +47,7 @@ namespace Faye
 
 	private:
 		VulkanDevice &vk_device;
+		VulkanDescriptorSetLayout &globalDescriptorSetLayout;
 		std::unique_ptr<VulkanPipeline> vk_pipeline;
 
 		VkPipelineLayout pipelineLayout;

@@ -12,7 +12,8 @@ VulkanDescriptorSetLayout::Builder &VulkanDescriptorSetLayout::Builder::addBindi
     uint32_t binding,
     VkDescriptorType descriptorType,
     VkShaderStageFlags stageFlags,
-    uint32_t count) {
+    uint32_t count,
+    VkDescriptorBindingFlags bindingFlags) {
   assert(bindings.count(binding) == 0 && "Binding already in use");
   VkDescriptorSetLayoutBinding layoutBinding{};
   layoutBinding.binding = binding;
@@ -20,28 +21,52 @@ VulkanDescriptorSetLayout::Builder &VulkanDescriptorSetLayout::Builder::addBindi
   layoutBinding.descriptorCount = count;
   layoutBinding.stageFlags = stageFlags;
   bindings[binding] = layoutBinding;
+  bindingFlagsMap[binding] = bindingFlags;
   return *this;
 }
- 
+
+VulkanDescriptorSetLayout::Builder &VulkanDescriptorSetLayout::Builder::setFlags(
+    VkDescriptorSetLayoutCreateFlags flags) {
+  layoutFlags = flags;
+  return *this;
+}
+
 std::unique_ptr<VulkanDescriptorSetLayout> VulkanDescriptorSetLayout::Builder::build() const {
-  return std::make_unique<VulkanDescriptorSetLayout>(vk_device, bindings);
+  return std::make_unique<VulkanDescriptorSetLayout>(vk_device, bindings, bindingFlagsMap, layoutFlags);
 }
  
 // *************** Descriptor Set Layout *********************
  
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(
-    VulkanDevice &vk_device, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings)
+    VulkanDevice &vk_device,
+    std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings,
+    std::unordered_map<uint32_t, VkDescriptorBindingFlags> bindingFlagsMap,
+    VkDescriptorSetLayoutCreateFlags flags)
     : vk_device{vk_device}, bindings{bindings} {
   std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings{};
   for (auto kv : bindings) {
     setLayoutBindings.push_back(kv.second);
   }
- 
+
+  std::vector<VkDescriptorBindingFlags> bindingFlagsList;
+  bindingFlagsList.reserve(setLayoutBindings.size());
+  for (const auto &kv : bindings) {
+    auto it = bindingFlagsMap.find(kv.first);
+    bindingFlagsList.push_back(it != bindingFlagsMap.end() ? it->second : 0);
+  }
+
+  VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{};
+  bindingFlagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+  bindingFlagsInfo.bindingCount = static_cast<uint32_t>(bindingFlagsList.size());
+  bindingFlagsInfo.pBindingFlags = bindingFlagsList.data();
+
   VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo{};
   descriptorSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
   descriptorSetLayoutInfo.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
   descriptorSetLayoutInfo.pBindings = setLayoutBindings.data();
- 
+  descriptorSetLayoutInfo.flags = flags;
+  descriptorSetLayoutInfo.pNext = &bindingFlagsInfo;
+
   if (vkCreateDescriptorSetLayout(
           vk_device.getDevice(),
           &descriptorSetLayoutInfo,
@@ -133,7 +158,10 @@ void VulkanDescriptorPool::resetPool() {
 // *************** Descriptor Writer *********************
  
 VulkanDescriptorWriter::VulkanDescriptorWriter(VulkanDescriptorSetLayout &setLayout, VulkanDescriptorPool &pool)
-    : setLayout{setLayout}, pool{pool} {}
+    : setLayout{setLayout}, pool{&pool} {}
+
+VulkanDescriptorWriter::VulkanDescriptorWriter(VulkanDescriptorSetLayout &setLayout)
+    : setLayout{setLayout}, pool{nullptr} {}
  
 VulkanDescriptorWriter &VulkanDescriptorWriter::writeBuffer(
     uint32_t binding, VkDescriptorBufferInfo *bufferInfo) {
@@ -178,19 +206,46 @@ VulkanDescriptorWriter &VulkanDescriptorWriter::writeImage(
 }
  
 bool VulkanDescriptorWriter::build(VkDescriptorSet &set) {
-  bool success = pool.allocateDescriptor(setLayout.getDescriptorSetLayout(), set);
+  assert(pool != nullptr && "build() requires a pool — use VulkanDescriptorWriter(layout, pool)");
+  bool success = pool->allocateDescriptor(setLayout.getDescriptorSetLayout(), set);
   if (!success) {
     return false;
   }
   overwrite(set);
   return true;
 }
- 
+
 void VulkanDescriptorWriter::overwrite(VkDescriptorSet &set) {
+  assert(pool != nullptr && "overwrite() requires a pool — use VulkanDescriptorWriter(layout, pool)");
   for (auto &write : writes) {
     write.dstSet = set;
   }
-  vkUpdateDescriptorSets(pool.vk_device.getDevice(), writes.size(), writes.data(), 0, nullptr);
+  vkUpdateDescriptorSets(pool->vk_device.getDevice(), writes.size(), writes.data(), 0, nullptr);
+}
+
+void VulkanDescriptorWriter::pushDescriptors(
+    VkCommandBuffer commandBuffer,
+    VkPipelineLayout pipelineLayout,
+    uint32_t setIndex)
+{
+  // VK_KHR_push_descriptor is not core in Vulkan 1.3 — load the function pointer at
+  // call time. VulkanDescriptorWriter is a friend of VulkanDescriptorSetLayout, so
+  // we can reach the device through setLayout.vk_device.
+  // Cache the function pointer — vkGetDeviceProcAddr is a string lookup and
+  // should not be called per draw call.
+  static PFN_vkCmdPushDescriptorSetKHR pfn = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(
+      vkGetDeviceProcAddr(setLayout.vk_device.getDevice(), "vkCmdPushDescriptorSetKHR"));
+  assert(pfn && "VK_KHR_push_descriptor extension not available or not enabled");
+
+  for (auto &write : writes) {
+    write.dstSet = VK_NULL_HANDLE;
+  }
+  pfn(commandBuffer,
+      VK_PIPELINE_BIND_POINT_GRAPHICS,
+      pipelineLayout,
+      setIndex,
+      static_cast<uint32_t>(writes.size()),
+      writes.data());
 }
  
 }  // namespace Faye

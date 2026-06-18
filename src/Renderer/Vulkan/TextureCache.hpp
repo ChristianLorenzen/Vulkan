@@ -26,6 +26,16 @@ namespace Faye
         const VkTextureResource &getFallbackTexture(TextureType type) const;
         void clear();
 
+        // Bindless texture registry. Must be called once after the bindless descriptor set
+        // is allocated. All subsequent getOrCreateTexture calls will register new textures
+        // into the bindless array automatically.
+        void initBindless(VkDescriptorSet bindlessSet);
+
+        // Returns the bindless slot index for the given texture.
+        // getOrCreateTexture must have been called for this texture first.
+        uint32_t getTextureSlot(const Texture &texture) const;
+        uint32_t getFallbackSlot(TextureType type) const;
+
     private:
         struct TextureCacheKey
         {
@@ -48,6 +58,14 @@ namespace Faye
         VulkanDevice &vk_device;
         std::unordered_map<TextureCacheKey, std::shared_ptr<VkTextureResource>, TextureCacheKeyHasher> textureResources;
         std::unordered_map<TextureType, std::shared_ptr<VkTextureResource>, TextureTypeHasher> fallbackTextures;
+
+        // Bindless slot tracking
+        VkDescriptorSet bindlessDescriptorSet{VK_NULL_HANDLE};
+        uint32_t nextFreeSlot{0};
+        std::unordered_map<TextureCacheKey, uint32_t, TextureCacheKeyHasher> textureSlots;
+        std::unordered_map<TextureType, uint32_t, TextureTypeHasher> fallbackSlots;
+
+        uint32_t assignSlot(const TextureCacheKey &key, const VkTextureResource &resource);
 
         void ensureFallbackResources();
         static TextureCacheKey makeKey(const Texture &texture);

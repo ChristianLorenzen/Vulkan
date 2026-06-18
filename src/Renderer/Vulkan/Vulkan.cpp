@@ -41,11 +41,18 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                      .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                      .build();
 
+    // Material pool: one UBO per material only (textures now live in the bindless set).
     materialPool = VulkanDescriptorPool::Builder(*vk_device)
                        .setMaxSets(1000)
-                       .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 * 5)
                        .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000)
                        .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
+                       .build();
+
+    constexpr uint32_t kMaxBindlessTextures = 4096;
+    bindlessPool = VulkanDescriptorPool::Builder(*vk_device)
+                       .setMaxSets(1)
+                       .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxBindlessTextures)
+                       .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT)
                        .build();
 
     imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
@@ -96,18 +103,28 @@ void Faye::Vulkan::initializeFrameResources()
         uboBuffers[i]->map();
     }
 
+    // Global set (set 0): push descriptor — written directly into the command buffer each frame.
     globalSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
+                          .setFlags(VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR)
                           .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
                           .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .build();
 
+    // Material set (set 1): parameter UBO only — textures are now in the bindless set.
     materialSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
-                            .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .addBinding(5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                            .build();
+
+    // Bindless texture set (set 2): runtime-sized array of all scene textures.
+    constexpr uint32_t kMaxBindlessTextures = 4096;
+    constexpr VkDescriptorBindingFlags kBindlessFlags =
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+    bindlessSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
+                            .setFlags(VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT)
+                            .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                        VK_SHADER_STAGE_FRAGMENT_BIT, kMaxBindlessTextures, kBindlessFlags)
                             .build();
 
     textureCache = std::make_unique<TextureCache>(*vk_device);
@@ -142,30 +159,32 @@ void Faye::Vulkan::initializeFrameResources()
         }
     }
 
-    // Bind the depth PREPASS image for the same frame index.
-    // The prepass runs before the scene pass each frame, writing opaque-only
-    // depth to depthPrepassResources[i]. The scene pass then reads it via
-    // set=0 binding=1. Using the same-frame index is safe because:
-    //   1. The prepass render pass has an outgoing dependency that makes depth
-    //      writes visible to subsequent fragment shader reads.
-    //   2. The prepass image (depthPrepassResources) is separate from the
-    //      scene depth (sceneDepthResources) so there is no read-write hazard.
-    const auto prepassViews = vk_renderer->getDepthPrepassImageViews();
-    globalDescriptorSets.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < static_cast<int>(globalDescriptorSets.size()); i++)
+    // Allocate the single bindless descriptor set for all scene textures.
+    // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT allows specifying the
+    // actual count at allocation time (up to kMaxBindlessTextures).
     {
-        auto bufferInfo = uboBuffers[i]->descriptorInfo();
+        VkDescriptorSetVariableDescriptorCountAllocateInfo varCountInfo{};
+        varCountInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+        uint32_t varCount = kMaxBindlessTextures;
+        varCountInfo.descriptorSetCount = 1;
+        varCountInfo.pDescriptorCounts = &varCount;
 
-        VkDescriptorImageInfo depthInfo{};
-        depthInfo.sampler = sceneDepthSampler;
-        depthInfo.imageView = prepassViews[i];
-        depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = bindlessPool->getPool();
+        allocInfo.descriptorSetCount = 1;
+        VkDescriptorSetLayout bindlessLayout = bindlessSetLayout->getDescriptorSetLayout();
+        allocInfo.pSetLayouts = &bindlessLayout;
+        allocInfo.pNext = &varCountInfo;
 
-        VulkanDescriptorWriter(*globalSetLayout, *globalPool)
-            .writeBuffer(0, &bufferInfo)
-            .writeImage(1, &depthInfo)
-            .build(globalDescriptorSets[i]);
+        if (vkAllocateDescriptorSets(vk_device->getDevice(), &allocInfo, &bindlessDescriptorSet) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to allocate bindless descriptor set");
+        }
     }
+
+    // Tell TextureCache about the bindless set so new textures get registered automatically.
+    textureCache->initBindless(bindlessDescriptorSet);
 
     simpleRenderSystem = std::make_unique<SimpleRenderSystem>(
         *vk_device,
@@ -173,8 +192,9 @@ void Faye::Vulkan::initializeFrameResources()
         vk_renderer->getSceneMotionFormat(),
         vk_renderer->getSceneDepthFormat(),
         *materialCache,
-        globalSetLayout->getDescriptorSetLayout(),
-        materialSetLayout->getDescriptorSetLayout());
+        *globalSetLayout,
+        materialSetLayout->getDescriptorSetLayout(),
+        bindlessSetLayout->getDescriptorSetLayout());
 
     simpleRenderSystem->prepareDepthPrepassPipeline(
         vk_renderer->getSceneDepthFormat(),
@@ -185,7 +205,7 @@ void Faye::Vulkan::initializeFrameResources()
         vk_renderer->getSceneColorFormat(),
         vk_renderer->getSceneMotionFormat(),
         vk_renderer->getSceneDepthFormat(),
-        globalSetLayout->getDescriptorSetLayout());
+        *globalSetLayout);
 
     postProcessChain = std::make_unique<PostProcessChain>(
         *vk_device,
@@ -225,10 +245,11 @@ Faye::Vulkan::~Vulkan()
     vk_renderer.reset();
     globalSetLayout.reset();
     materialSetLayout.reset();
+    bindlessSetLayout.reset();
     uboBuffers.clear();
-    globalDescriptorSets.clear();
     imGUIPool.reset();
     materialPool.reset();
+    bindlessPool.reset();
     globalPool.reset();
     vk_device.reset();
 }
@@ -257,8 +278,19 @@ VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle,
         return VK_NULL_HANDLE;
     }
 
-    const MaterialState &materialState = materialCache->getOrCreateState(handle, material);
-    const VkTextureResource *texture = materialState.findTexture(type);
+    materialCache->getOrCreateState(handle, material); // ensure slots are resolved
+
+    // Find the texture of the requested type in the material's raw data and look it
+    // up in TextureCache (textures are no longer stored on MaterialState directly).
+    const VkTextureResource *texture = nullptr;
+    for (const Texture &tex : material.getMaterialData().textures)
+    {
+        if (tex.type == type && tex.hasPixelData() && tex.width > 0 && tex.height > 0)
+        {
+            texture = textureCache->getOrCreateTexture(tex).get();
+            break;
+        }
+    }
     if (texture == nullptr || !texture->isValid())
     {
         return VK_NULL_HANDLE;
@@ -335,18 +367,8 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
         if (vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight))
         {
             imGuiRenderer->registerViewportTextures(*vk_renderer);
-            // Depth prepass images are recreated on resize -- update binding=1 descriptors.
-            const auto prepassViews = vk_renderer->getDepthPrepassImageViews();
-            for (int i = 0; i < static_cast<int>(globalDescriptorSets.size()); i++)
-            {
-                VkDescriptorImageInfo depthInfo{};
-                depthInfo.sampler = sceneDepthSampler;
-                depthInfo.imageView = prepassViews[i];
-                depthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                VulkanDescriptorWriter(*globalSetLayout, *globalPool)
-                    .writeImage(1, &depthInfo)
-                    .overwrite(globalDescriptorSets[i]);
-            }
+            // Depth prepass views are now fetched fresh each frame via push descriptors —
+            // no pre-allocated sets to update here.
         }
         pendingViewportWidth = 0;
         pendingViewportHeight = 0;
@@ -380,12 +402,19 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
             lastImGuiSwapchainGeneration = currentSwapGen;
         }
 
+        // Build prepass depth info for push descriptors (queried fresh — handles resize automatically).
+        VkDescriptorImageInfo prepassDepthInfo{};
+        prepassDepthInfo.sampler = sceneDepthSampler;
+        prepassDepthInfo.imageView = vk_renderer->getDepthPrepassImageViews()[frameIndex];
+        prepassDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
         FrameContext frameContext{
             frameIndex,
             static_cast<float>(frameInput.frameTimeMs),
             commandBuffer,
             *primaryCamera,
-            globalDescriptorSets[frameIndex]};
+            uboBuffers[frameIndex].get(),
+            prepassDepthInfo};
 
         totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
 
@@ -410,6 +439,15 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
         vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
         simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
         vk_renderer->endDepthPrepassRenderPass(commandBuffer);
+
+        // Bind the bindless texture set (set 2) with the scene pipeline layout AFTER
+        // the depth prepass. The depth prepass uses a separate pipeline layout (set 0
+        // only), which disturbs previously-bound sets at higher indices. Binding here
+        // ensures set 2 is valid for all subsequent scene draw calls.
+        VkDescriptorSet bindlessSets[] = {bindlessDescriptorSet};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                simpleRenderSystem->getPipelineLayout(),
+                                2, 1, bindlessSets, 0, nullptr);
 
         vk_renderer->beginSceneRenderPass(commandBuffer);
 

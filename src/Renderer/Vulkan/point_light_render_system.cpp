@@ -19,10 +19,10 @@ struct PointLightPushConstantData
     float radius;
 };
 
-Faye::PointLightRenderSystem::PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VkDescriptorSetLayout globalSetLayout) : vk_device(device)
+Faye::PointLightRenderSystem::PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VulkanDescriptorSetLayout &globalSetLayout) : vk_device(device), globalDescriptorSetLayout(globalSetLayout)
 {
     LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
-    createPipelineLayout(globalSetLayout);
+    createPipelineLayout(globalSetLayout.getDescriptorSetLayout());
     createPipeline(colorFormat, motionFormat, depthFormat);
 }
 
@@ -99,15 +99,11 @@ void Faye::PointLightRenderSystem::render(FrameContext &frameContext, const Rend
     vkCmdSetDepthWriteEnable(frameContext.commandBuffer, VK_TRUE);
     vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
-    vkCmdBindDescriptorSets(
-        frameContext.commandBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelineLayout,
-        0,
-        1,
-        &frameContext.globalDescriptorSet,
-        0,
-        nullptr);
+    auto bufferInfo = frameContext.globalBuffer->descriptorInfo();
+    VulkanDescriptorWriter(globalDescriptorSetLayout)
+        .writeBuffer(0, &bufferInfo)
+        .writeImage(1, &frameContext.prepassDepthInfo)
+        .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 0);
 
     for (auto &obj : renderScene.pointLights)
     {

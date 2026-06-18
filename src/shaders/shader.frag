@@ -1,8 +1,5 @@
 #version 450
-
-// layout(binding = 1) uniform sampler2D texSampler;
-
-// layout(location = 1) in vec2 fragTexCoord;
+#extension GL_EXT_nonuniform_qualifier : require
 
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec3 fragPosWorld;
@@ -20,28 +17,18 @@ layout(push_constant) uniform Push {
     mat4 modelMatrix;
     mat4 priorModelMatrix;
     vec4 baseColor;
+    uvec2 _vertexPad;   // padding for vertexBufferAddress (vertex shader only)
+    uint albedoSlot;
+    uint normalSlot;
+    uint metallicSlot;
+    uint roughnessSlot;
+    uint aoSlot;
 } push;
 
-// This is not available to the fragment shader as when we 
-// initialized the ubo, we only made it available to the vertex stage.
 struct PointLight {
     vec4 position;
     vec4 color;
 };
-
-layout(set = 1, binding = 0) uniform sampler2D albedoSampler;
-layout(set = 1, binding = 1) uniform sampler2D normalSampler;
-layout(set = 1, binding = 2) uniform sampler2D metallicSampler;
-layout(set = 1, binding = 3) uniform sampler2D roughnessSampler;
-layout(set = 1, binding = 4) uniform sampler2D ambientOcclusionSampler;
-
-layout(set = 1, binding = 5) uniform MaterialParams {
-    vec4 baseColorFactor;
-    vec4 surfaceFactors;
-    vec4 specularShininess;
-    vec4 emissiveFactors;
-    vec4 alphaModeCutoff;
-} materialParams;
 
 layout(set = 0, binding = 0) uniform GlobalUbo {
     mat4 projection;
@@ -55,18 +42,29 @@ layout(set = 0, binding = 0) uniform GlobalUbo {
     int _pad[3];
 } ubo;
 
+layout(set = 1, binding = 0) uniform MaterialParams {
+    vec4 baseColorFactor;
+    vec4 surfaceFactors;
+    vec4 specularShininess;
+    vec4 emissiveFactors;
+    vec4 alphaModeCutoff;
+} materialParams;
+
+layout(set = 2, binding = 0) uniform sampler2D allTextures[];
+
 void main() {
-    vec3 albedo = texture(albedoSampler, fragTexCoord).rgb * materialParams.baseColorFactor.rgb * fragColor;
-    float metallic = clamp(texture(metallicSampler, fragTexCoord).r * materialParams.surfaceFactors.x, 0.0, 1.0);
-    float roughness = clamp(texture(roughnessSampler, fragTexCoord).r * materialParams.surfaceFactors.y, 0.04, 1.0);
-    float occlusion = clamp(mix(1.0, texture(ambientOcclusionSampler, fragTexCoord).r, materialParams.surfaceFactors.w), 0.0, 1.0);
+    vec3 albedo = texture(allTextures[nonuniformEXT(push.albedoSlot)],   fragTexCoord).rgb
+                * materialParams.baseColorFactor.rgb * fragColor;
+    float metallic  = clamp(texture(allTextures[nonuniformEXT(push.metallicSlot)],  fragTexCoord).r * materialParams.surfaceFactors.x, 0.0, 1.0);
+    float roughness = clamp(texture(allTextures[nonuniformEXT(push.roughnessSlot)], fragTexCoord).r * materialParams.surfaceFactors.y, 0.04, 1.0);
+    float occlusion = clamp(mix(1.0, texture(allTextures[nonuniformEXT(push.aoSlot)], fragTexCoord).r, materialParams.surfaceFactors.w), 0.0, 1.0);
 
     vec3 diffuseLight = ubo.ambientLightColor.xyz * ubo.ambientLightColor.w;
     vec3 specularLight = vec3(0.0);
     vec3 surfaceNormal = normalize(fragNormalWorld);
 
     if (length(fragTangentWorld) > 0.001 && length(fragBitangentWorld) > 0.001) {
-        vec3 tangentNormal = texture(normalSampler, fragTexCoord).xyz * 2.0 - 1.0;
+        vec3 tangentNormal = texture(allTextures[nonuniformEXT(push.normalSlot)], fragTexCoord).xyz * 2.0 - 1.0;
         tangentNormal.xy *= materialParams.surfaceFactors.z;
         mat3 tbn = mat3(normalize(fragTangentWorld), normalize(fragBitangentWorld), normalize(fragNormalWorld));
         surfaceNormal = normalize(tbn * tangentNormal);
