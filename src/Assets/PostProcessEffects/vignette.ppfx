@@ -1,7 +1,7 @@
 id=vignette
 displayName=Vignette
-vertexShader=./src/shaders/compiled/post_process.vert.spv
-fragmentShader=./src/shaders/compiled/post_process_vignette.frag.spv
+vertexShader=post_process.vert.spv
+fragmentShader=post_process_vignette.frag.spv
 showInEditor=true
 input=sourceColor,0
 parameter=intensity,Intensity,Float,ParamZ,0.0,1.0,0.01

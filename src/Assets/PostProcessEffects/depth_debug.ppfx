@@ -1,7 +1,7 @@
 id=depthDebug
 displayName=Depth Debug
-vertexShader=./src/shaders/compiled/post_process.vert.spv
-fragmentShader=./src/shaders/compiled/post_process_depth_debug.frag.spv
+vertexShader=post_process.vert.spv
+fragmentShader=post_process_depth_debug.frag.spv
 showInEditor=false
 input=sceneDepth,0
 defaultColor=1.0,1.0,1.0,1.0

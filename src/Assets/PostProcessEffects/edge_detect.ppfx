@@ -1,7 +1,7 @@
 id=edgeDetect
 displayName=Edge Detect
-vertexShader=./src/shaders/compiled/post_process.vert.spv
-fragmentShader=./src/shaders/compiled/post_process_edge_detect.frag.spv
+vertexShader=post_process.vert.spv
+fragmentShader=post_process_edge_detect.frag.spv
 showInEditor=true
 input=sourceColor,0
 input=sceneDepth,1
