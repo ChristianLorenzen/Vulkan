@@ -2,6 +2,7 @@ set(FAYE_ENGINE_SOURCES
     Assets/ModelRegistry.cpp
     Core/HotReload/HotReloadManager.cpp
     Core/IO/FileSystem.cpp
+    Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
     Editor/ImGui/EditorPanels.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp

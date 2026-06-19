@@ -10,6 +10,7 @@
 #include "quill/LogMacros.h"
 
 #include <assimp/GltfMaterial.h>
+#include <filesystem>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 
@@ -423,7 +424,7 @@ namespace Faye
         calculateLocalBounds(meshVertices);
         createVertexBuffers(meshVertices);
         createIndexBuffers(meshIndices);
-        LOG_INFO(Logger::getInstance(), "Model created successfully {} {}.", vertexCount, indexCount);
+        LOG_INFO(Logger::get(), "Model created successfully {} {}.", vertexCount, indexCount);
     }
 
     Model::Model(VulkanDevice &device, const std::vector<Vertex> &vertices) : vk_device{device}
@@ -431,7 +432,7 @@ namespace Faye
         this->vertices = vertices;
         calculateLocalBounds(vertices);
         createVertexBuffers(vertices);
-        LOG_INFO(Logger::getInstance(), "Model created successfully {}.", vertexCount);
+        LOG_INFO(Logger::get(), "Model created successfully {}.", vertexCount);
     }
 
     Model::~Model()
@@ -441,7 +442,7 @@ namespace Faye
     std::unique_ptr<Model> Model::createModelFromFile(VulkanDevice &device, const std::string &modelPath)
     {
         std::string directory = modelPath.substr(0, modelPath.find_last_of('/'));
-        LOG_INFO(Logger::getInstance(), "Loading model from file at directory {}.", directory);
+        LOG_INFO(Logger::get(), "Loading model from file at directory {}.", directory);
         Builder builder{};
         builder.directory = directory;
         builder.loadModel(modelPath);
@@ -596,7 +597,7 @@ namespace Faye
 
         if (scene == nullptr)
         {
-            LOG_INFO(Logger::getInstance(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
+            LOG_INFO(Logger::get(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
             throw std::runtime_error("Failed to load model at path " + modelPath);
         }
 
@@ -799,7 +800,7 @@ namespace Faye
             else if (importedAlphaMode == "BLEND")
             {
                 LOG_WARNING(
-                    Logger::getInstance(),
+                    Logger::get(),
                     "Material '{}' requests alpha mode BLEND, which is not supported in the current v1 pipeline. Falling back to opaque rendering.",
                     result.name);
             }
@@ -822,7 +823,7 @@ namespace Faye
                 if (!resolvedTextureType.has_value())
                 {
                     LOG_INFO(
-                        Logger::getInstance(),
+                        Logger::get(),
                         "Skipping unsupported Assimp texture type {} for material {}.",
                         textureType,
                         result.name);
@@ -832,9 +833,9 @@ namespace Faye
                 material->GetTexture(static_cast<aiTextureType>(textureType), textureIndex, &texturePath);
 
                 // Load the texture and add it to the material
-                LOG_INFO(Logger::getInstance(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.name);
+                LOG_INFO(Logger::get(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.name);
                 std::filesystem::path fullTexturePath = std::filesystem::path(directory) / texturePath.C_Str();
-                LOG_INFO(Logger::getInstance(), "Full texture path resolved to {}.", fullTexturePath.string());
+                LOG_INFO(Logger::get(), "Full texture path resolved to {}.", fullTexturePath.string());
                 result.textures.push_back(loadTexture(
                     fullTexturePath.string(),
                     scene,
@@ -850,7 +851,7 @@ namespace Faye
         const std::string cacheKey = texturePath + "#" + std::to_string(static_cast<uint32_t>(textureType));
         if (const auto iterator = loadedTextures.find(cacheKey); iterator != loadedTextures.end())
         {
-            LOG_INFO(Logger::getInstance(), "Reusing cached texture at path {}.", texturePath);
+            LOG_INFO(Logger::get(), "Reusing cached texture at path {}.", texturePath);
             return iterator->second;
         }
 
@@ -858,18 +859,18 @@ namespace Faye
         if (aiTex != nullptr)
         {
             // Handle embedded texture
-            LOG_INFO(Logger::getInstance(), "Loading embedded texture at path {}.", texturePath);
+            LOG_INFO(Logger::get(), "Loading embedded texture at path {}.", texturePath);
         }
         else
         {
             // Handle external texture file
-            LOG_INFO(Logger::getInstance(), "Loading external texture at path {}.", texturePath);
+            LOG_INFO(Logger::get(), "Loading external texture at path {}.", texturePath);
             // Use stb_image or another library to load the texture from the file system
             int width, height, channels;
             unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
             if (data)
             {
-                LOG_INFO(Logger::getInstance(), "Successfully loaded texture at path {} with dimensions {}x{} and {} channels.", texturePath, width, height, channels);
+                LOG_INFO(Logger::get(), "Successfully loaded texture at path {} with dimensions {}x{} and {} channels.", texturePath, width, height, channels);
                 std::vector<unsigned char> textureData(data, data + (width * height * 4)); // forcing 4 channels.
                 stbi_image_free(data);
                 Texture texture = Texture::create(std::move(textureData), width, height, channels, texturePath, textureType);
@@ -878,7 +879,7 @@ namespace Faye
             }
             else
             {
-                LOG_ERROR(Logger::getInstance(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
+                LOG_ERROR(Logger::get(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
             }
         }
         return Texture{};

@@ -18,7 +18,7 @@ namespace Faye
 
     void VulkanSwapchain::init()
     {
-        LOG_INFO(Logger::getInstance(), "Creating Swapchain...");
+        LOG_INFO(Logger::get(), "Creating Swapchain...");
         createSwapChain();
         createImageViews();
         swapChainDepthFormat = findDepthFormat();

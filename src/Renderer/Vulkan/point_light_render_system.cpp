@@ -22,7 +22,7 @@ struct PointLightPushConstantData
 
 Faye::PointLightRenderSystem::PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VulkanDescriptorSetLayout &globalSetLayout) : vk_device(device), globalDescriptorSetLayout(globalSetLayout)
 {
-    LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
+    LOG_INFO(Logger::get(), "Creating Vulkan Pipeline Layout...");
     createPipelineLayout(globalSetLayout.getDescriptorSetLayout());
     createPipeline(colorFormat, motionFormat, depthFormat);
 }
@@ -49,7 +49,7 @@ void Faye::PointLightRenderSystem::createPipelineLayout(VkDescriptorSetLayout gl
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    LOG_INFO(Logger::getInstance(), "Created pipelinelayoutinfo struct...");
+    LOG_INFO(Logger::get(), "Created pipelinelayoutinfo struct...");
 
     if (vkCreatePipelineLayout(vk_device.getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
     {

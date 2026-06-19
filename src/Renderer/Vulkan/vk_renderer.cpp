@@ -22,11 +22,11 @@ const bool enableValidationLayers = true;
 
 Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window{win}, vk_device{device}
 {
-    LOG_INFO(Logger::getInstance(), "Creating Vulkan Device class instance...");
+    LOG_INFO(Logger::get(), "Creating Vulkan Device class instance...");
 
-    LOG_INFO(Logger::getInstance(), "Creating Vulkan Swapchain...");
+    LOG_INFO(Logger::get(), "Creating Vulkan Swapchain...");
     recreateSwapchain();
-    LOG_INFO(Logger::getInstance(), "Creating Vulkan CommandBuffers...");
+    LOG_INFO(Logger::get(), "Creating Vulkan CommandBuffers...");
     createCommandBuffers();
 }
 

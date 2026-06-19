@@ -18,7 +18,7 @@ Faye::FullscreenEffectPass::FullscreenEffectPass(
       descriptorPool(pool),
       colorFormat(colorFormat)
 {
-    LOG_INFO(Logger::getInstance(), "Creating FullscreenEffectPass...");
+    LOG_INFO(Logger::get(), "Creating FullscreenEffectPass...");
     createDescriptorSetLayout();
     createSceneColorSampler();
     createPipelineLayout();
@@ -152,7 +152,7 @@ void Faye::FullscreenEffectPass::createPipelineLayout()
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    LOG_INFO(Logger::getInstance(), "Created pipelinelayoutinfo struct...");
+    LOG_INFO(Logger::get(), "Created pipelinelayoutinfo struct...");
 
     if (vkCreatePipelineLayout(vk_device.getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
     {
@@ -184,7 +184,7 @@ void Faye::FullscreenEffectPass::invalidatePipelines(const std::string &compiled
     if (effectDefinition.vertexShaderPath == compiledShader || effectDefinition.fragmentShaderPath == compiledShader)
     {
         LOG_INFO(
-            Logger::getInstance(),
+            Logger::get(),
             "Invalidating pipeline for fullscreen effect with vertex shader '{}' and fragment shader '{}'",
             effectDefinition.vertexShaderPath,
             effectDefinition.fragmentShaderPath);

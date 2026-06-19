@@ -8,7 +8,7 @@ using namespace Faye;
 
 VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config) : device(device)
 {
-    LOG_INFO(Logger::getInstance(), "Creating Graphics Pipeline...");
+    LOG_INFO(Logger::get(), "Creating Graphics Pipeline...");
     createGraphicsPipeline(vertFilepath, fragFilepath, config);
 }
 
@@ -103,7 +103,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     renderingInfo.stencilAttachmentFormat = config.stencilAttachmentFormat;
     pipelineInfo.pNext = &renderingInfo;
 
-    LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
+    LOG_INFO(Logger::get(), "Initialized Pipeline Info...");
 
     VkResult result = vkCreateGraphicsPipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &graphicsPipeline);
 

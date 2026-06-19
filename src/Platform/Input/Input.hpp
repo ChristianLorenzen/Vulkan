@@ -182,9 +182,9 @@ namespace Faye
 
             if (isInputDebugLoggingEnabled())
             {
-                LOG_INFO(Logger::getInstance(), "Editor camera - move: {} {} {}, scroll: {}, mouseDelta: {} {}, orbitDistance: {}",
+                LOG_INFO(Logger::get(), "Editor camera - move: {} {} {}, scroll: {}, mouseDelta: {} {}, orbitDistance: {}",
                          move.x, move.y, move.z, scrollOffset, mouseDelta.x, mouseDelta.y, orbitDistance);
-                LOG_INFO(Logger::getInstance(), "Editor camera - translation: {} {} {}, pivot: {} {} {}",
+                LOG_INFO(Logger::get(), "Editor camera - translation: {} {} {}, pivot: {} {} {}",
                          transform.translation.x, transform.translation.y, transform.translation.z,
                          orbitPivot.x, orbitPivot.y, orbitPivot.z);
             }

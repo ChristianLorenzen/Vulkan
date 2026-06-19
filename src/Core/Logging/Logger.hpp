@@ -1,43 +1,63 @@
 #pragma once
 
-#include "quill/Backend.h"
-#include "quill/Frontend.h"
 #include "quill/LogMacros.h"
 #include "quill/Logger.h"
-#include "quill/sinks/ConsoleSink.h"
+#include "quill/sinks/Sink.h"
+
+#include <deque>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace Faye
 {
+    struct LogMessage
+    {
+        quill::MacroMetadata const *metadata;
+        uint64_t timestamp;
+        quill::LogLevel level;
+        std::string message;
+    };
+
+    class ConsoleSink : public quill::Sink
+    {
+    public:
+        ConsoleSink() = default;
+        ~ConsoleSink() override = default;
+
+        void write_log(quill::MacroMetadata const *log_metadata, uint64_t log_timestamp,
+                       std::string_view thread_id, std::string_view thread_name,
+                       std::string const &process_id, std::string_view logger_name,
+                       quill::LogLevel log_level, std::string_view log_level_description,
+                       std::string_view log_level_short_code,
+                       std::vector<std::pair<std::string, std::string>> const *named_args,
+                       std::string_view log_message, std::string_view log_statement) override;
+
+        void flush_sink() noexcept override;
+
+        bool has_pending_messages() const;
+        LogMessage pop_message();
+
+    private:
+        mutable std::mutex _mutex;
+        std::deque<LogMessage> _queue;
+    };
+
     class Logger
     {
     public:
-        static quill::Logger *getInstance()
-        {
-            static Logger instance;
-            return instance._logger;
-        }
-
-        // quill::Logger* getLogger() {
-        //     return _logger;
-        // }
-
-        const char *loggerName = "console_logger";
+        static quill::Logger *get();
+        static std::shared_ptr<ConsoleSink> getConsoleSink();
 
     private:
-        Logger()
-        {
-            auto sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink");
-            _logger = quill::Frontend::create_or_get_logger(
-                loggerName, std::move(sink));
-        }
-
-        ~Logger()
-        {
-        }
-
+        Logger();
         Logger(const Logger &) = delete;
         Logger &operator=(const Logger &) = delete;
 
-        quill::Logger *_logger;
+        static Logger &instance();
+
+        quill::Logger *_logger = nullptr;
+        std::shared_ptr<ConsoleSink> _consoleSink;
     };
-};
+}

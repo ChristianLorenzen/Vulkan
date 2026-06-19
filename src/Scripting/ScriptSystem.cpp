@@ -105,7 +105,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
 
     if (!std::filesystem::exists(soPath))
     {
-        LOG_WARNING(Logger::getInstance(), "ScriptSystem: .so not found, skipping: {}", soPath);
+        LOG_WARNING(Logger::get(), "ScriptSystem: .so not found, skipping: {}", soPath);
         return;
     }
 
@@ -120,7 +120,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
     void *handle = dlopen(soPath.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (handle == nullptr)
     {
-        LOG_ERROR(Logger::getInstance(), "ScriptSystem: dlopen failed for '{}': {}", soPath, dlerror());
+        LOG_ERROR(Logger::get(), "ScriptSystem: dlopen failed for '{}': {}", soPath, dlerror());
         return;
     }
 
@@ -130,7 +130,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
     const char *symErr = dlerror();
     if (symErr != nullptr || createFn == nullptr)
     {
-        LOG_ERROR(Logger::getInstance(), "ScriptSystem: 'createScript' not found in '{}': {}",
+        LOG_ERROR(Logger::get(), "ScriptSystem: 'createScript' not found in '{}': {}",
                   soPath, symErr != nullptr ? symErr : "null symbol");
         dlclose(handle);
         return;
@@ -139,7 +139,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
     IScript *instance = createFn();
     if (instance == nullptr)
     {
-        LOG_ERROR(Logger::getInstance(), "ScriptSystem: createScript() returned nullptr for '{}'", soPath);
+        LOG_ERROR(Logger::get(), "ScriptSystem: createScript() returned nullptr for '{}'", soPath);
         dlclose(handle);
         return;
     }
@@ -157,7 +157,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
         .component = ScriptComponent{soPath, scriptName},
     };
 
-    LOG_INFO(Logger::getInstance(), "ScriptSystem: loaded '{}' for entity {}", scriptName, entityId);
+    LOG_INFO(Logger::get(), "ScriptSystem: loaded '{}' for entity {}", scriptName, entityId);
 }
 
 void ScriptSystem::attachBuiltinScript(Entity entity, IScript *instance, const std::string &name)
@@ -186,7 +186,7 @@ void ScriptSystem::attachBuiltinScript(Entity entity, IScript *instance, const s
         .component = ScriptComponent{"<builtin>", name},
     };
 
-    LOG_INFO(Logger::getInstance(), "ScriptSystem: attached built-in '{}' for entity {}", name, entityId);
+    LOG_INFO(Logger::get(), "ScriptSystem: attached built-in '{}' for entity {}", name, entityId);
 }
 
 void ScriptSystem::unloadScript(Entity entity)
@@ -200,7 +200,7 @@ void ScriptSystem::unloadScript(Entity entity)
 
     doUnload(entityId, it->second);
     loadedScripts.erase(it);
-    LOG_INFO(Logger::getInstance(), "ScriptSystem: unloaded script for entity {}", entityId);
+    LOG_INFO(Logger::get(), "ScriptSystem: unloaded script for entity {}", entityId);
 }
 
 void ScriptSystem::reloadScript(Entity entity)
@@ -209,7 +209,7 @@ void ScriptSystem::reloadScript(Entity entity)
     auto it = loadedScripts.find(entityId);
     if (it == loadedScripts.end())
     {
-        LOG_WARNING(Logger::getInstance(),
+        LOG_WARNING(Logger::get(),
                     "ScriptSystem: reloadScript called for entity {} but no script loaded", entityId);
         return;
     }
@@ -284,7 +284,7 @@ void ScriptSystem::registerHotReload(HotReloadManager &hotReloadManager)
                 if (boundScene != nullptr)
                 {
                     Entity entity = boundScene->getEntity(entityId);
-                    LOG_INFO(Logger::getInstance(),
+                    LOG_INFO(Logger::get(),
                              "ScriptSystem: hot-reloading '{}' for entity {}",
                              changedPath, entityId);
                     reloadScript(entity);

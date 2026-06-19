@@ -29,7 +29,7 @@ namespace
 
 Faye::Vulkan::Vulkan(Window &win) : window{win}
 {
-    LOG_INFO(Logger::getInstance(), "Creating Vulkan Device class instance...");
+    LOG_INFO(Logger::get(), "Creating Vulkan Device class instance...");
 
     vk_device = std::make_unique<VulkanDevice>(window);
 

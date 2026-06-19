@@ -170,17 +170,17 @@ VulkanDevice::VulkanDevice(Window &window) : window{window}
 {
     validationLayersEnabled = shouldEnableValidationLayers();
 
-    LOG_INFO(Logger::getInstance(), "Creating Instance...");
+    LOG_INFO(Logger::get(), "Creating Instance...");
     createInstance();
     setupDebugMessenger();
-    LOG_INFO(Logger::getInstance(), "Creating Surface...");
+    LOG_INFO(Logger::get(), "Creating Surface...");
     createSurface();
-    LOG_INFO(Logger::getInstance(), "Creating Devices...");
+    LOG_INFO(Logger::get(), "Creating Devices...");
     createPhysicalDevice();
     createLogicalDevice();
     createAllocator();
     createPipelineCache();
-    LOG_INFO(Logger::getInstance(), "Creating Command Pools...");
+    LOG_INFO(Logger::get(), "Creating Command Pools...");
     createCommandPools();
 }
 
@@ -228,7 +228,7 @@ bool VulkanDevice::shouldEnableValidationLayers()
     }
 
     LOG_WARNING(
-        Logger::getInstance(),
+        Logger::get(),
         "Validation layer {} was requested but is not available in this environment. Continuing without validation layers.",
         validationLayers.front());
     return false;
@@ -274,7 +274,7 @@ void VulkanDevice::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateI
                              VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     createInfo.pfnUserCallback = debugCallback;
-    createInfo.pUserData = Logger::getInstance();
+    createInfo.pUserData = Logger::get();
 }
 
 void VulkanDevice::setupDebugMessenger()
@@ -312,7 +312,7 @@ bool VulkanDevice::isDeviceSuitable(VkPhysicalDevice device)
     if (extensionsSupported)
     {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-        LOG_INFO(Logger::getInstance(), "SwapChainSupportDetails: {} {}", swapChainSupport.formats.size(), swapChainSupport.presentModes.size());
+        LOG_INFO(Logger::get(), "SwapChainSupportDetails: {} {}", swapChainSupport.formats.size(), swapChainSupport.presentModes.size());
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
 
@@ -414,7 +414,7 @@ uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
             return i;
         }
     }
-    LOG_ERROR(Logger::getInstance(), "Failed to find suitable memory type");
+    LOG_ERROR(Logger::get(), "Failed to find suitable memory type");
     throw std::runtime_error("Failed to find suitable memory type...");
 }
 
@@ -607,7 +607,7 @@ void VulkanDevice::createPhysicalDevice()
         if (evaluation.suitable)
         {
             LOG_INFO(
-                Logger::getInstance(),
+                Logger::get(),
                 "GPU candidate: {} | type={} | suitable=yes | priority={} | score={} | device_local_memory={:.2f} GiB | max2D={} | swapchain_formats={} | present_modes={}",
                 evaluation.properties.deviceName,
                 physicalDeviceTypeToString(evaluation.properties.deviceType),
@@ -621,7 +621,7 @@ void VulkanDevice::createPhysicalDevice()
         else
         {
             LOG_WARNING(
-                Logger::getInstance(),
+                Logger::get(),
                 "GPU candidate: {} | type={} | suitable=no | reason={}",
                 evaluation.properties.deviceName,
                 physicalDeviceTypeToString(evaluation.properties.deviceType),
@@ -645,7 +645,7 @@ void VulkanDevice::createPhysicalDevice()
     }
 
     LOG_INFO(
-        Logger::getInstance(),
+        Logger::get(),
         "Selected physical device: {} | type={} | priority={} | score={}",
         properties.deviceName,
         physicalDeviceTypeToString(properties.deviceType),
@@ -723,11 +723,11 @@ void VulkanDevice::createPipelineCache()
         file.seekg(0, std::ios::beg);
         cacheData.resize(size);
         file.read(cacheData.data(), size);
-        LOG_INFO(Logger::getInstance(), "Loaded existing pipeline cache");
+        LOG_INFO(Logger::get(), "Loaded existing pipeline cache");
     }
     else
     {
-        LOG_INFO(Logger::getInstance(), "No existing pipeline cache found, starting with an empty cache");
+        LOG_INFO(Logger::get(), "No existing pipeline cache found, starting with an empty cache");
     }
 
     VkPipelineCacheCreateInfo cacheInfo{};
@@ -737,7 +737,7 @@ void VulkanDevice::createPipelineCache()
 
     if (vkCreatePipelineCache(device, &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS)
     {
-        LOG_WARNING(Logger::getInstance(), "Failed to create pipeline cache, continuing without it");
+        LOG_WARNING(Logger::get(), "Failed to create pipeline cache, continuing without it");
         pipelineCache = VK_NULL_HANDLE;
     }
 }

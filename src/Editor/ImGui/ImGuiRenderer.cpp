@@ -48,7 +48,7 @@ void ImGuiRenderer::init(GLFWwindow *window,
     else
     {
         LOG_WARNING(
-            Logger::getInstance(),
+            Logger::get(),
             "Could not load ImGui font file {}. Falling back to the default ImGui font.",
             defaultFontPath);
         io.FontDefault = io.Fonts->AddFontDefault();

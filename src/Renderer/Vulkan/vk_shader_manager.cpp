@@ -24,17 +24,17 @@ std::string Faye::VulkanShaderManager::resolveCompiledShaderPath(const std::file
 std::string Faye::VulkanShaderManager::compileShader(const std::filesystem::path &sourcePath)
 {
     const std::string resolvedOutputPath = resolveCompiledShaderPath(sourcePath);
-    LOG_INFO(Logger::getInstance(), "Compiling shader: {} -> {}", sourcePath.filename().string(), resolvedOutputPath);
+    LOG_INFO(Logger::get(), "Compiling shader: {} -> {}", sourcePath.filename().string(), resolvedOutputPath);
     const std::string command = "glslc " + sourcePath.string() + " -o " + resolvedOutputPath;
     int success = std::system(command.c_str());
     if (success == 0)
     {
-        LOG_INFO(Logger::getInstance(), "Shader compiled successfully: {}", sourcePath.filename().string());
+        LOG_INFO(Logger::get(), "Shader compiled successfully: {}", sourcePath.filename().string());
         return resolvedOutputPath;
     }
     else
     {
-        LOG_ERROR(Logger::getInstance(), "Failed to compile shader: {}", sourcePath.filename().string());
+        LOG_ERROR(Logger::get(), "Failed to compile shader: {}", sourcePath.filename().string());
         return "";
     }
 }

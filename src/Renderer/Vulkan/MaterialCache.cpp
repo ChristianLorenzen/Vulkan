@@ -150,7 +150,7 @@ namespace Faye
             catch (const std::exception &exception)
             {
                 LOG_WARNING(
-                    Logger::getInstance(),
+                    Logger::get(),
                     "Failed to upload texture '{}' for material '{}': {}. Falling back to default material texture.",
                     texture.path,
                     material.getName(),

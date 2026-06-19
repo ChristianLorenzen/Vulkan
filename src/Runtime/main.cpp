@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     }
     catch (const std::exception &e)
     {
-        LOG_ERROR(Logger::getInstance(), "Error in Engine.run(): {}", e.what());
+        LOG_ERROR(Logger::get(), "Error in Engine.run(): {}", e.what());
         return 1;
     }
 

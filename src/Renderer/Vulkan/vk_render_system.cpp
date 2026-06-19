@@ -45,7 +45,7 @@ size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const Mat
 Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout)
     : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache), globalDescriptorSetLayout(globalSetLayout)
 {
-    LOG_INFO(Logger::getInstance(), "Creating Vulkan Pipeline Layout...");
+    LOG_INFO(Logger::get(), "Creating Vulkan Pipeline Layout...");
     createPipelineLayout(globalSetLayout.getDescriptorSetLayout(), materialSetLayout, bindlessSetLayout);
 }
 
@@ -75,7 +75,7 @@ void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout global
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    LOG_INFO(Logger::getInstance(), "Created pipelinelayoutinfo struct...");
+    LOG_INFO(Logger::get(), "Created pipelinelayoutinfo struct...");
 
     if (vkCreatePipelineLayout(vk_device.getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
     {
@@ -166,7 +166,7 @@ VulkanPipeline &Faye::SimpleRenderSystem::getOrCreatePipeline(const MaterialStat
     if (iterator == pipelineCache.end())
     {
         LOG_INFO(
-            Logger::getInstance(),
+            Logger::get(),
             "Creating material pipeline for vertex shader '{}' and fragment shader '{}'",
             key.vertexShaderPath,
             key.fragmentShaderPath);
@@ -180,12 +180,12 @@ void Faye::SimpleRenderSystem::invalidatePipelines(const std::string &compiledSh
 {
     std::vector<Faye::SimpleRenderSystem::MaterialPipelineKey> keysToInvalidate = {};
 
-    LOG_INFO(Logger::getInstance(), "Checking pipelines for invalidation against compiled shader '{}'", compiledShader);
+    LOG_INFO(Logger::get(), "Checking pipelines for invalidation against compiled shader '{}'", compiledShader);
 
     for (const auto &[key, pipeline] : pipelineCache)
     {
         LOG_INFO(
-            Logger::getInstance(),
+            Logger::get(),
             "Checking pipeline with vertex shader '{}' and fragment shader '{}' for invalidation",
             key.vertexShaderPath,
             key.fragmentShaderPath);
@@ -193,7 +193,7 @@ void Faye::SimpleRenderSystem::invalidatePipelines(const std::string &compiledSh
         {
             keysToInvalidate.push_back(key);
             LOG_INFO(
-                Logger::getInstance(),
+                Logger::get(),
                 "Marked pipeline with vertex shader '{}' and fragment shader '{}' for invalidation",
                 key.vertexShaderPath,
                 key.fragmentShaderPath);
@@ -203,7 +203,7 @@ void Faye::SimpleRenderSystem::invalidatePipelines(const std::string &compiledSh
     for (const auto &key : keysToInvalidate)
     {
         LOG_INFO(
-            Logger::getInstance(),
+            Logger::get(),
             "Invalidating pipeline with vertex shader '{}' and fragment shader '{}'",
             key.vertexShaderPath,
             key.fragmentShaderPath);

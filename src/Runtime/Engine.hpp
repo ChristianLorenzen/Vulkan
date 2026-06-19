@@ -55,7 +55,7 @@ public:
     {
         glfwWindow = std::make_unique<Window>(WIDTH, HEIGHT, "[Faye] - Vulkan Renderer");
 
-        LOG_INFO(Logger::getInstance(), "Init Vulkan...");
+        LOG_INFO(Logger::get(), "Init Vulkan...");
 
         vkData = std::make_unique<Vulkan>(*glfwWindow);
         modelRegistry = std::make_unique<ModelRegistry>();
@@ -89,7 +89,7 @@ public:
         hotReloadShaderSubscriptionToken = hotReloadManager.subscribe([this](const HotReloadEvent &event)
                                                                       { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
         hotReloadShaderSubscriptionTokenTwo = hotReloadManager.subscribe([this](const HotReloadEvent &event)
-                                                                         { LOG_INFO(Logger::getInstance(), "Received hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string()); });
+                                                                         { LOG_INFO(Logger::get(), "Received hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string()); });
         scriptSystem.registerHotReload(hotReloadManager);
         hotReloadManager.start();
 
@@ -164,18 +164,18 @@ private:
 
     void HotReloadShaderCompilation(const HotReloadEvent &event)
     {
-        LOG_INFO(Logger::getInstance(), "Hot reload change detected: {}", event.path.filename().string());
+        LOG_INFO(Logger::get(), "Hot reload change detected: {}", event.path.filename().string());
 
         if (event.watchId != "shader-sources" || event.type != HotReloadEventType::Modified)
         {
-            LOG_INFO(Logger::getInstance(), "Ignoring hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string());
+            LOG_INFO(Logger::get(), "Ignoring hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string());
             return;
         }
 
         const std::filesystem::path &path = event.path;
         if (path.extension() == ".vert" || path.extension() == ".frag" || path.extension() == ".comp")
         {
-            LOG_INFO(Logger::getInstance(), "Recompiling shader: {}", path.filename().string());
+            LOG_INFO(Logger::get(), "Recompiling shader: {}", path.filename().string());
             std::string compileResult = shaderManager.shaderFileChange(path);
             if (!compileResult.empty())
             {
@@ -291,19 +291,19 @@ private:
         //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
         //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
         MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
-        waterMaterialData.shininess    = 64.0f;    // specularShininess.w  -- editor: Shininess
-        waterMaterialData.normalScale  = 0.4f;     // surfaceFactors.z     -- editor: Normal Scale
-        waterMaterialData.textures.push_back(loadTextureFromFile("src/textures/waternormal1.jpg", TextureType::Albedo));
-        waterMaterialData.textures.push_back(loadTextureFromFile("src/textures/waternormal2.jpg", TextureType::Normal));
-        waterMaterialData.textures.push_back(loadTextureFromFile("src/textures/waterfoam1.jpg",   TextureType::Metallic));
+        waterMaterialData.shininess = 64.0f;  // specularShininess.w  -- editor: Shininess
+        waterMaterialData.normalScale = 0.4f; // surfaceFactors.z     -- editor: Normal Scale
+        waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal1.jpg").string(), TextureType::Albedo));
+        waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
+        waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
         MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
-        waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
+        waterPipelineConfig.enableAlphaBlending = true; // water alpha is meaningful
         waterMaterialHandle = materialRegistry->registerMaterial(
             std::move(waterMaterialData),
             std::move(waterPipelineConfig));
 
         MaterialData spyBoxMaterial{"Spy Box Material", glm::vec3(1.0f, 1.0f, 1.0f)};
-        spyBoxMaterial.textures.push_back(loadTextureFromFile("src/textures/spy.jpg", TextureType::Albedo));
+        spyBoxMaterial.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/spy.jpg").string(), TextureType::Albedo));
         spyBoxMaterial.baseColorFactor = glm::vec4(1.0f);
         spyBoxMaterial.metallicFactor = 0.0f;
         spyBoxMaterial.roughnessFactor = 0.85f;
