@@ -5,7 +5,7 @@
 
 #include "Core/HotReload/HotReloadManager.hpp"
 #include "Scene/Entities/EntityManager.hpp"
-#include "Scripting/EngineContext.hpp"
+#include "Core/EngineContext.hpp"
 #include "Scripting/IScript.hpp"
 
 namespace Faye

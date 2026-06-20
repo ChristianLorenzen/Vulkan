@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "Scene/Entities/Entity.hpp"
-#include "Scripting/EngineContext.hpp"
+#include "Core/EngineContext.hpp"
 
 namespace Faye
 {

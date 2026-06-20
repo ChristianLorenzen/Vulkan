@@ -1,9 +1,11 @@
 set(FAYE_ENGINE_SOURCES
     Assets/ModelRegistry.cpp
     Core/HotReload/HotReloadManager.cpp
+    Core/HotReload/HotReloadSystem.cpp
     Core/IO/FileSystem.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
+    Core/Time/Timer.cpp
     Editor/ImGui/EditorPanels.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp
     Editor/ImGui/ImGuiRenderer.cpp
@@ -40,6 +42,7 @@ set(FAYE_ENGINE_SOURCES
     Runtime/main.cpp
     Scripting/ScriptSystem.cpp
     Scripting/LuaScriptSystem.cpp
+    Scripting/ScriptingSystem.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
@@ -47,6 +50,7 @@ set(FAYE_ENGINE_SOURCES
     Scene/Scene.cpp
     Scene/SceneQueries.cpp
     Scene/SceneManager.cpp
+    Scene/SceneBuilder.cpp
 )
 
 include(FetchContent)

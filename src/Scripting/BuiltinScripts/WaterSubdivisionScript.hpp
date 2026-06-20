@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <functional>
 
+#include "Core/EngineContext.hpp"
 #include "Scripting/IScript.hpp"
 #include "Scene/Entities/Entity.hpp"
 #include "Scene/Scene.hpp"
-#include "Scripting/EngineContext.hpp"
 
 namespace Faye
 {

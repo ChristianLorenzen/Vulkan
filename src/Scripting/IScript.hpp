@@ -3,7 +3,7 @@
 #include <string>
 
 #include "Scene/Entities/Entity.hpp"
-#include "Scripting/EngineContext.hpp"
+#include "Core/EngineContext.hpp"
 
 namespace Faye
 {
@@ -17,8 +17,7 @@ namespace Faye
         virtual ~IScript() = default;
 
         virtual void onStart(Entity entity, Scene *scene) { (void)entity; (void)scene; }
-        /// ctx.dt  — seconds since last frame (use for framerate-independent movement)
-        /// ctx.time — total elapsed seconds since engine start
+        /// ctx.dt — seconds since last frame (use for framerate-independent movement)
         virtual void onUpdate(Entity entity, Scene *scene, const EngineContext &ctx) { (void)entity; (void)scene; (void)ctx; }
         virtual void onDestroy(Entity entity, Scene *scene) { (void)entity; (void)scene; }
     };

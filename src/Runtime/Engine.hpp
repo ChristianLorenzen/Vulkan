@@ -1,35 +1,36 @@
 #pragma once
 
 #include <array>
+#include <concepts>
+#include <memory>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <exception>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
-#include <memory>
 
 #include "Assets/ModelRegistry.hpp"
+#include "Core/EngineContext.hpp"
+#include "Core/ITick.hpp"
 #include "Core/HotReload/HotReloadManager.hpp"
+#include "Core/HotReload/HotReloadSystem.hpp"
 #include "Core/Logging/Logger.hpp"
-#include "Core/Time/FrameTimer.hpp"
+#include "Core/Path/Paths.hpp"
+#include "Core/Time/Timer.hpp"
 #include "Editor/ImGui/EditorPanels.hpp"
 #include "Platform/Input/Input.hpp"
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Scene/RenderExtractionManager.hpp"
-#include "Renderer/Resources/Model.hpp"
 #include "Renderer/View/RenderView.hpp"
 #include "Renderer/Vulkan/Vulkan.hpp"
 #include "Renderer/Vulkan/vk_shader_manager.hpp"
+#include "Scene/SceneBuilder.hpp"
 #include "Scene/SceneManager.hpp"
 #include "Scene/SceneQueries.hpp"
-#include "Scripting/ScriptSystem.hpp"
-#include "Scripting/LuaScriptSystem.hpp"
-#include "Scripting/EngineContext.hpp"
-#include "Scripting/BuiltinScripts/WaterSubdivisionScript.hpp"
-#include "Renderer/Material/TextureLoader.hpp"
+#include "Scripting/ScriptingSystem.hpp"
 #include "quill/LogMacros.h"
-#include "Core/Path/Paths.hpp"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -43,33 +44,53 @@ const uint32_t HEIGHT = 1080;
 class Engine
 {
 public:
-    struct ImportedModelRegistration
-    {
-        ModelHandle handle{};
-        Model::Bounds bounds{};
-    };
-
     Engine() = default;
 
     void run()
     {
+        Time::StopWatch initRunTimer;
+
         glfwWindow = std::make_unique<Window>(WIDTH, HEIGHT, "[Faye] - Vulkan Renderer");
 
         LOG_INFO(Logger::get(), "Init Vulkan...");
 
         vkData = std::make_unique<Vulkan>(*glfwWindow);
-        modelRegistry = std::make_unique<ModelRegistry>();
+        modelRegistry = std::make_unique<ModelRegistry>(*vkData->getVkDevice());
         materialRegistry = std::make_unique<MaterialRegistry>();
-        // textureRegistry = std::make_unique<TextureRegistry>();
-        renderExtractionManager = std::make_unique<RenderExtractionManager>();
-        sceneManager = std::make_unique<SceneManager>();
-        initializeScene();
-        configureHotReload();
-        editorPanels.setPrimitiveCreateCallback([this](PrimitiveType primitiveType)
-                                                { return createPrimitiveEntity(primitiveType); });
+
+        // Adding systems
+        timer = &addSystem<Time::Timer>();
+        hotReloadSystem = &addSystem<HotReloadSystem>();
+        sceneManager = &addSystem<SceneManager>(*modelRegistry, *materialRegistry);
+        scriptingSystem = &addSystem<ScriptingSystem>(*sceneManager, hotReloadSystem->getHotReloadManager());
+
+        hotReloadSystem->getHotReloadManager().subscribe(
+            [this](const HotReloadEvent &event)
+            { HotReloadShaderCompilation(event); },
+            std::vector<std::string_view>{"shader-sources"});
+
+        init();
+
+
+        postInit();
+
+        sceneBuilder = std::make_unique<SceneBuilder>(
+            *modelRegistry, *materialRegistry,
+            scriptingSystem->getScriptSystem(), scriptingSystem->getLuaScriptSystem());
+        SceneBuilder::SceneSetup sceneSetup = sceneBuilder->populate(sceneManager->getActiveScene());
+        activeCameraEntity = sceneSetup.activeCamera;
+        postProcessSettingsEntity = sceneSetup.postProcessSettings;
+
+        Time::StopWatch editorPanelSetupTimer;
+
+        editorPanels.setPrimitiveCreateCallback([this](PrimitiveType primitiveType) -> Entity
+                                                {
+                                                    if (sceneManager == nullptr || !sceneManager->hasActiveScene())
+                                                        return {};
+                                                    return sceneBuilder->createPrimitiveEntity(sceneManager->getActiveScene(), primitiveType); });
         editorPanels.setMaterialRegistry(materialRegistry.get());
         editorPanels.setModelRegistry(modelRegistry.get());
-        editorPanels.setScriptSystem(&scriptSystem);
+        editorPanels.setScriptSystem(&scriptingSystem->getScriptSystem());
         editorPanels.setTextureThumbnailCallback([this](MaterialHandle handle, TextureType textureType) -> ImTextureID
                                                  {
                                                     if (vkData == nullptr || materialRegistry == nullptr)
@@ -86,81 +107,73 @@ public:
                                                     return reinterpret_cast<ImTextureID>(
                                                         vkData->getMaterialTextureThumbnail(handle, *material, textureType)); });
 
-        hotReloadShaderSubscriptionToken = hotReloadManager.subscribe([this](const HotReloadEvent &event)
-                                                                      { HotReloadShaderCompilation(event); }, std::vector<std::string_view>{"shader-sources"});
-        hotReloadShaderSubscriptionTokenTwo = hotReloadManager.subscribe([this](const HotReloadEvent &event)
-                                                                         { LOG_INFO(Logger::get(), "Received hot reload event for watchId '{}' and path '{}'", event.watchId, event.path.string()); });
-        scriptSystem.registerHotReload(hotReloadManager);
-        hotReloadManager.start();
+        LOG_INFO(Logger::get(), "Editor panels setup complete. Time taken: {} ms", editorPanelSetupTimer.elapsedMs());
 
-        LOG_INFO(Logger::getInstance(), "Starting main loop...");
+        LOG_INFO(Logger::get(), "Initialization complete. Time taken: {} ms", initRunTimer.elapsedMs());
+
+        LOG_INFO(Logger::get(), "Starting main loop...");
         mainLoop();
-
-        if (hotReloadShaderSubscriptionToken != 0)
-        {
-            hotReloadManager.unsubscribe(hotReloadShaderSubscriptionToken);
-            hotReloadShaderSubscriptionToken = 0;
-        }
-        if (hotReloadShaderSubscriptionTokenTwo != 0)
-        {
-            hotReloadManager.unsubscribe(hotReloadShaderSubscriptionTokenTwo);
-            hotReloadShaderSubscriptionTokenTwo = 0;
-        }
-
-        scriptSystem.unregisterHotReload();
-        hotReloadManager.stop();
     }
 
 private:
-    static constexpr size_t primitiveIndex(PrimitiveType primitiveType)
+    template <class T, class... Args>
+    T &addSystem(Args &&...args)
     {
-        return static_cast<size_t>(primitiveType);
+        static_assert(std::derived_from<T, ITick>, "T must derive from ITick");
+        systems.push_back(std::make_unique<T>(std::forward<Args>(args)...));
+        return static_cast<T &>(*systems.back());
     }
 
-    // Custom class for glfw window related functionality.
+    void init() { for (auto &system : systems) { system->OnInit(); } }
+    void postInit() { for (auto &system : systems) { system->OnPostInit(); } }
+    void update() { for (auto &system : systems) { system->OnUpdate(frameContext); } }
+    // Fixed update is a future addition; the contract is already in place.
+    // void fixedUpdate() { for (auto &system : systems) { system->OnFixedUpdate(frameContext); } }
+    void stop() { for (auto &system : systems) { system->OnStop(); } }
+
+    // ---------------------------------------------------------------------
+    //   destroy first  -> editorPanels (drop callbacks)
+    //                  -> systems      (scripts die before what they captured)
+    //                  -> sceneBuilder (captured by scripts; now safe)
+    //                  -> registries   (referenced by scripts/builder)
+    //   destroy last   -> vkData/glfwWindow (device alive through GPU teardown)
+    // ---------------------------------------------------------------------
+
+    // Window + renderer. Declared first -> destroyed last, so the Vulkan device
+    // outlives everything that releases GPU resources during teardown.
     std::unique_ptr<Window> glfwWindow;
-
-    // Custom class for Vulkan init/functionality.
     std::unique_ptr<Vulkan> vkData;
-    EditorPanels editorPanels;
 
+    // Asset registries.
     std::unique_ptr<ModelRegistry> modelRegistry;
     std::unique_ptr<MaterialRegistry> materialRegistry;
-    // std::unique_ptr<TextureRegistry> textureRegistry;
-    std::unique_ptr<RenderExtractionManager> renderExtractionManager;
-    std::unique_ptr<SceneManager> sceneManager;
-    HotReloadManager hotReloadManager;
-    HotReloadManager::CallbackToken hotReloadShaderSubscriptionToken = 0;
-    HotReloadManager::CallbackToken hotReloadShaderSubscriptionTokenTwo = 0;
-    ScriptSystem scriptSystem;
-    LuaScriptSystem luaScriptSystem;
-    EngineContext scriptEngineContext; // single source of truth for dt/time passed to all script types
+
+    // Scene content coordinator.
+    std::unique_ptr<SceneBuilder> sceneBuilder;
+
+    // ITick systems — registration order == execution order.
+    std::vector<std::unique_ptr<ITick>> systems;
+
+    // Non-owning views into `systems`.
+    Time::Timer *timer = nullptr;
+    HotReloadSystem *hotReloadSystem = nullptr;
+    SceneManager *sceneManager = nullptr;
+    ScriptingSystem *scriptingSystem = nullptr;
+
+    // Editor UI. 
+    EditorPanels editorPanels;
+
     VulkanShaderManager shaderManager;
-    FrameTimer timer;
-    std::array<ModelHandle, static_cast<size_t>(PrimitiveType::Count)> primitiveModelHandles{};
-    MaterialHandle waterMaterialHandle{};
+
+    // Per-tick context pushed to every system
+    EngineContext frameContext;
+
+    // Existing fields
     Entity activeCameraEntity;
     Entity postProcessSettingsEntity;
     bool editorViewportHovered = true;
     bool editorViewportFocused = true;
     RenderDebugMode editorViewportDebugMode = RenderDebugMode::Lit;
-
-    void configureHotReload()
-    {
-        hotReloadManager.clearWatches();
-        hotReloadManager.addWatch({
-            .id = "post-process-effects",
-            .rootPath = Paths::assets() / "PostProcessEffects",
-            .fileExtensions = {".ppfx"},
-            .recursive = true,
-        });
-        hotReloadManager.addWatch({
-            .id = "shader-sources",
-            .rootPath = Paths::shaderSources(),
-            .fileExtensions = {".vert", ".frag", ".comp"},
-            .recursive = true,
-        });
-    }
 
     void HotReloadShaderCompilation(const HotReloadEvent &event)
     {
@@ -184,246 +197,15 @@ private:
         }
     }
 
-    ModelHandle ensurePrimitiveHandle(PrimitiveType primitiveType)
-    {
-        ModelHandle &handle = primitiveModelHandles[primitiveIndex(primitiveType)];
-        if (!handle.isValid())
-        {
-            handle = modelRegistry->registerModel(Model::createPrimitive(*vkData->getVkDevice(), primitiveType));
-        }
-
-        return handle;
-    }
-
-    ModelHandle registerImportedModel(const std::string &modelPath, MaterialPipelineConfig pipelineConfig = {})
-    {
-        return registerImportedModelWithBounds(modelPath, std::move(pipelineConfig)).handle;
-    }
-
-    ImportedModelRegistration registerImportedModelWithBounds(const std::string &modelPath, MaterialPipelineConfig pipelineConfig = {})
-    {
-        std::unique_ptr<Model> model = Model::createModelFromFile(*vkData->getVkDevice(), modelPath);
-        const Model::Bounds bounds = model->getLocalBounds();
-
-        const auto &importedMaterials = model->getImportedMaterials();
-        if (!importedMaterials.empty())
-        {
-            std::vector<MaterialHandle> importedMaterialHandles;
-            importedMaterialHandles.reserve(importedMaterials.size());
-
-            for (const MaterialData &materialData : importedMaterials)
-            {
-                importedMaterialHandles.push_back(materialRegistry->registerMaterial(materialData, pipelineConfig));
-            }
-
-            model->assignImportedMaterialHandles(importedMaterialHandles);
-        }
-
-        return ImportedModelRegistration{
-            modelRegistry->registerModel(std::move(model)),
-            bounds};
-    }
-
-    Entity createPrimitiveEntity(PrimitiveType primitiveType)
-    {
-        if (sceneManager == nullptr || !sceneManager->hasActiveScene())
-        {
-            return {};
-        }
-
-        Scene &scene = sceneManager->getActiveScene();
-        Entity entity = scene.createEntity(std::string(primitiveTypeName(primitiveType)));
-        auto &transform = entity.addTransform();
-
-        auto &mesh = entity.addMesh(ensurePrimitiveHandle(primitiveType));
-
-        if (primitiveType == PrimitiveType::WaterPlane)
-        {
-            mesh.materialHandle = waterMaterialHandle;
-
-            // Scale up to a large world-space surface (20×20 metres by default).
-            transform.scale = {20.0f, 1.0f, 20.0f};
-
-            // Add WaterComponent so the subdivision count is inspectable.
-            auto &water = entity.addWater();
-            water.subdivisions = 64;
-
-            // Attach the subdivision script — it watches WaterComponent.subdivisions
-            // and rebuilds the mesh when the value changes.
-            scriptSystem.attachBuiltinScript(entity,
-                new WaterSubdivisionScript([this](uint32_t divs) -> ModelHandle {
-                    return modelRegistry->registerModel(
-                        Model::createPrimitive(*vkData->getVkDevice(),
-                            PrimitiveType::WaterPlane, divs));
-                }),
-                "WaterSubdivision");
-        }
-        else
-        {
-            mesh.materialHandle = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
-        }
-
-        return entity;
-    }
-
-    void initializeScene()
-    {
-        Scene &scene = sceneManager->createScene("Main Scene");
-
-        postProcessSettingsEntity = scene.createEntity("Post Processing");
-        postProcessSettingsEntity.addPostProcessStack() = makeDefaultPostProcessStack();
-
-        Entity editorCamera = scene.createEntity("Editor Camera");
-        activeCameraEntity = editorCamera;
-        editorCamera.addTransform();
-        editorCamera.addCamera(true);
-
-        MaterialHandle defaultMat = materialRegistry->registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
-        MaterialHandle redMat = materialRegistry->registerMaterial(MaterialData{"Red Material", glm::vec3(1.0f, 0.0f, 0.0f)});
-        MaterialHandle greenMat = materialRegistry->registerMaterial(MaterialData{"Green Material", glm::vec3(0.0f, 1.0f, 0.0f)});
-        MaterialHandle blueMat = materialRegistry->registerMaterial(MaterialData{"Blue Material", glm::vec3(0.0f, 0.0f, 1.0f)});
-        MaterialHandle shinyMat = materialRegistry->registerMaterial(MaterialData{"Shiny Material", glm::vec3(1.0f, 1.0f, 1.0f), {}, glm::vec4(1.0f), glm::vec4(0.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 32.0f)});
-
-        // Water material — uses water.vert/water.frag via MaterialPipelineConfig.
-        // The pipeline is selected per-material by SimpleRenderSystem at draw time.
-        // Texture slot mapping (fixed by MaterialCache::writeDescriptorSet):
-        //   Albedo   (binding 0) → normalMap1 in water.frag → waternormal1.jpg
-        //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
-        //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
-        MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
-        waterMaterialData.shininess = 64.0f;  // specularShininess.w  -- editor: Shininess
-        waterMaterialData.normalScale = 0.4f; // surfaceFactors.z     -- editor: Normal Scale
-        waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal1.jpg").string(), TextureType::Albedo));
-        waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
-        waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
-        MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
-        waterPipelineConfig.enableAlphaBlending = true; // water alpha is meaningful
-        waterMaterialHandle = materialRegistry->registerMaterial(
-            std::move(waterMaterialData),
-            std::move(waterPipelineConfig));
-
-        MaterialData spyBoxMaterial{"Spy Box Material", glm::vec3(1.0f, 1.0f, 1.0f)};
-        spyBoxMaterial.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/spy.jpg").string(), TextureType::Albedo));
-        spyBoxMaterial.baseColorFactor = glm::vec4(1.0f);
-        spyBoxMaterial.metallicFactor = 0.0f;
-        spyBoxMaterial.roughnessFactor = 0.85f;
-
-        MaterialHandle spyBoxMat = materialRegistry->registerMaterial(std::move(spyBoxMaterial));
-
-        Entity meshEntity = scene.createEntity("Cube A");
-        auto &meshTransform = meshEntity.addTransform();
-        auto meshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
-        auto &meshComponent = meshEntity.addMesh(meshHandle);
-        meshTransform.translation = {-1.f, 0.f, -1.f};
-        meshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
-        meshTransform.scale = {.5f, .5f, .5f};
-        meshComponent.materialHandle = redMat;
-
-        Entity secondMeshEntity = scene.createEntity("Cube B");
-        auto &secondMeshTransform = secondMeshEntity.addTransform();
-        auto secondMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
-        auto &secondMeshComponent = secondMeshEntity.addMesh(secondMeshHandle);
-        secondMeshTransform.translation = {2.f, 0.f, -1.f};
-        secondMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
-        secondMeshTransform.scale = {.5f, .5f, .5f};
-        secondMeshComponent.materialHandle = greenMat;
-
-        // Entity thirdMeshEntity = scene.createEntity("Cube C");
-        // auto &thirdMeshTransform = thirdMeshEntity.addTransform();
-        // auto thirdMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
-        // auto &thirdMeshComponent = thirdMeshEntity.addMesh(thirdMeshHandle);
-        // thirdMeshTransform.translation = {2.f, 0.f, 1.f};
-        // thirdMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
-        // thirdMeshTransform.scale = {.5f, .5f, .5f};
-        // thirdMeshComponent.materialHandle = spyBoxMat;
-
-        Entity floorEntity = scene.createEntity("Floor");
-        auto &floorTransform = floorEntity.addTransform();
-        auto floorHandle = ensurePrimitiveHandle(PrimitiveType::Plane);
-        auto &floorMeshComponent = floorEntity.addMesh(floorHandle);
-        floorTransform.translation = {0.f, -0.5f, 0.f};
-        floorTransform.scale = {3.f, 1.f, 3.f};
-        floorMeshComponent.materialHandle = defaultMat;
-
-        Entity pointLightEntity = scene.createEntity("Point Light");
-        auto &pointLightTransform = pointLightEntity.addTransform();
-        auto &pointLightComponent = pointLightEntity.addPointLight();
-        pointLightTransform.translation = {0.f, -1.0f, 1.25f};
-        pointLightComponent.color = {0.f, 0.f, 1.f};
-        pointLightComponent.intensity = 1.5f;
-        pointLightComponent.radius = 0.1f;
-
-        Entity pointLightEntity2 = scene.createEntity("Point Light Green");
-        auto &pointLightTransform2 = pointLightEntity2.addTransform();
-        auto &pointLightComponent2 = pointLightEntity2.addPointLight();
-        pointLightTransform2.translation = {0.f, 1.0f, 1.25f};
-        pointLightComponent2.color = {0.f, 1.f, 0.f};
-        pointLightComponent2.intensity = 1.5f;
-        pointLightComponent2.radius = 0.1f;
-
-        Entity pointLightEntity3 = scene.createEntity("Point Light Red");
-        auto &pointLightTransform3 = pointLightEntity3.addTransform();
-        auto &pointLightComponent3 = pointLightEntity3.addPointLight();
-        pointLightTransform3.translation = {0.f, 1.0f, -1.25f};
-        pointLightComponent3.color = {1.0f, 0.0f, 0.0f};
-        pointLightComponent3.intensity = 1.5f;
-        pointLightComponent3.radius = 0.1f;
-
-        // Entity model = scene.createEntity("Viking Room");
-        // auto &modelTransform = model.addTransform();
-        // auto &modelMesh = model.addMesh(registerImportedModel("src/include/viking_room.obj"));
-        // modelTransform.translation = {0.f, -0.5f, 0.f};
-        // modelTransform.rotation = {0.f, 180.f, 0.f};
-        // modelTransform.scale = {1.0f, 1.0f, 1.0f};
-        // modelMesh.materialHandle = defaultMat;
-
-        // Entity modelgltf = scene.createEntity("Test gltf");
-        // auto &modelgltfTransform = modelgltf.addTransform();
-        // auto &modelgltfMesh = modelgltf.addMesh(registerImportedModel("src/include/assimp/test/models/glTF/BoxTextured-glTF/BoxTextured.gltf"));
-        // modelgltfTransform.translation = {0.f, -0.5f, 2.f};
-        // modelgltfTransform.rotation = {0.f, 180.f, 0.f};
-        // modelgltfTransform.scale = {1.0f, 1.0f, 1.0f};
-        // modelgltfMesh.materialHandle = defaultMat;
-
-        Entity modelAdam = scene.createEntity("Adam Model");
-        auto &modelAdamTransform = modelAdam.addTransform();
-        const ImportedModelRegistration adamRegistration = registerImportedModelWithBounds("src/include/models/adamHead/adamHead.gltf");
-        modelAdam.addMesh(adamRegistration.handle);
-        modelAdamTransform.translation = {0.f, 0.f, 0.f};
-        modelAdamTransform.rotation = {0.f, 0.f, 0.f};
-        modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
-
-        // Scripting system wiring.
-        scriptSystem.bindScene(&scene);
-
-        // Lua scripting system wiring.
-        luaScriptSystem.bindEngineAPI();
-
-        // Demo: attach the RotatorScript to Cube A if the .so is present.
-        // The .so is absent on a fresh build until faye_rotator_script is compiled.
-        scriptSystem.loadScript(meshEntity, "bin/libfaye_rotator_script.so");
-
-        // Demo: attach the Lua rotator to Cube B if the script file is present.
-        if (std::filesystem::exists("src/Scripting/ExampleScripts/rotator.lua"))
-        {
-            luaScriptSystem.loadScript(secondMeshEntity, "src/Scripting/ExampleScripts/rotator.lua", &scene);
-        }
-    }
-
     void mainLoop()
     {
         Input &input = Input::getInstance();
         Scene &scene = sceneManager->getActiveScene();
         editorPanels.bindScene(&scene);
 
-        timer.frameStart();
-
         while (!glfwWindow->shouldClose())
         {
             glfwPollEvents();
-            hotReloadManager.dispatchPendingEvents();
-
-            timer.frameEnd();
 
             auto *cameraTransform = activeCameraEntity.tryGetTransform();
             auto *cameraComponent = activeCameraEntity.tryGetCamera();
@@ -449,7 +231,7 @@ private:
             input.updateEditorCamera(
                 glfwWindow->getWindow(),
                 *cameraTransform,
-                static_cast<float>(timer.getDelta()),
+                static_cast<float>(timer->getDeltaTimeS()),
                 {editorViewportHovered, editorViewportFocused});
             cameraComponent->camera.setViewYXZ(cameraTransform->translation, cameraTransform->rotation);
             cameraComponent->camera.setPerspectiveProjection(glm::radians(50.f), renderView.viewport.aspectRatio(), 0.1f, 100.f);
@@ -459,37 +241,42 @@ private:
                 glfwSetWindowShouldClose(glfwWindow->getWindow(), true);
             }
 
-            scriptEngineContext.dt = static_cast<float>(timer.getDelta());
-            scriptEngineContext.time += scriptEngineContext.dt;
-            scriptSystem.update(scriptEngineContext, &scene);
-            luaScriptSystem.update(scriptEngineContext, &scene);
+            // Publish this frame's dt, then tick every system
+            frameContext.dt = static_cast<float>(timer->getDeltaTimeS());
+            update();
 
-            RenderSceneSnapshot renderScene = renderExtractionManager->extract(scene, *modelRegistry, *materialRegistry);
+            RenderSceneSnapshot renderScene = sceneManager->buildRenderSnapshot();
+
+            const double frameDeltaS = timer->getDeltaTimeS();
+            const int framesPerSecond = frameDeltaS > 0.0 ? static_cast<int>(1.0 / frameDeltaS) : 0;
 
             VulkanFrameInput frameInput{
                 renderView,
                 renderScene,
                 postProcessSettingsEntity.tryGetPostProcessStack(),
-                static_cast<int>(timer.getFrameTime(1)),
-                static_cast<int>(timer.getAverageFPS())};
+                static_cast<int>(timer->getDeltaTimeMS()),
+                framesPerSecond};
 
             vkData->renderFrame(frameInput, [this, &scene, cameraComponent](ImGuiFrameData &frameData)
                                 {
-                                    editorPanels.draw(frameData);
+                    editorPanels.draw(frameData);
 
-                                    if (frameData.viewportClicked)
-                                    {
-                                        const auto hit = raycastScene(
-                                            scene,
-                                            *modelRegistry,
-                                            cameraComponent->camera,
-                                            {frameData.viewportClickUv.x, frameData.viewportClickUv.y});
-                                        editorPanels.setSelectedEntity(hit.has_value() ? scene.getEntity(hit->entity) : Entity{});
-                                    }
+                    if (frameData.viewportClicked)
+                    {
+                        const auto hit = raycastScene(
+                            scene,
+                            *modelRegistry,
+                            cameraComponent->camera,
+                            {frameData.viewportClickUv.x, frameData.viewportClickUv.y});
+                        editorPanels.setSelectedEntity(hit.has_value() ? scene.getEntity(hit->entity) : Entity{});
+                    }
 
-                                    editorViewportHovered = frameData.viewportHovered;
-                                    editorViewportFocused = frameData.viewportFocused;
-                                    editorViewportDebugMode = frameData.viewportDebugMode; });
+                    editorViewportHovered = frameData.viewportHovered;
+                    editorViewportFocused = frameData.viewportFocused;
+                    editorViewportDebugMode = frameData.viewportDebugMode; });
         }
+
+        // Tear systems down once the main loop ends.
+        stop();
     }
 };

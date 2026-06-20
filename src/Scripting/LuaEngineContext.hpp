@@ -1,4 +1,4 @@
 #pragma once
-// Kept for backward compatibility. Include EngineContext.hpp directly.
-#include "Scripting/EngineContext.hpp"
+// Kept for backward compatibility. Include Core/EngineContext.hpp directly.
+#include "Core/EngineContext.hpp"
 namespace Faye { using LuaEngineContext = EngineContext; }
