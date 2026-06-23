@@ -286,12 +286,23 @@ VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle,
     uint32_t slot = UINT32_MAX;
     switch (type)
     {
-    case TextureType::Albedo:           slot = state.albedoSlot;    break;
-    case TextureType::Normal:           slot = state.normalSlot;    break;
-    case TextureType::Metallic:         slot = state.metallicSlot;  break;
-    case TextureType::Roughness:        slot = state.roughnessSlot; break;
-    case TextureType::AmbientOcclusion: slot = state.aoSlot;        break;
-    default: break;
+    case TextureType::Albedo:
+        slot = state.albedoSlot;
+        break;
+    case TextureType::Normal:
+        slot = state.normalSlot;
+        break;
+    case TextureType::Metallic:
+        slot = state.metallicSlot;
+        break;
+    case TextureType::Roughness:
+        slot = state.roughnessSlot;
+        break;
+    case TextureType::AmbientOcclusion:
+        slot = state.aoSlot;
+        break;
+    default:
+        break;
     }
 
     const VkTextureResource *texture = textureCache->getResourceForSlot(slot);

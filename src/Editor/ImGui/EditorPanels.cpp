@@ -905,7 +905,7 @@ namespace Faye
                     {
                         for (const auto &desc : activeTemplate->properties)
                         {
-                            if (desc.field == "baseColorFactor" && desc.type == ShaderProperty::Type::Vec4)
+                            if (desc.field == "baseColorFactor" && desc.type == ShaderMember::Type::Vec4)
                             {
                                 if (ImGui::ColorEdit4(desc.label.c_str(), &materialData.baseColorFactor.x))
                                 {
@@ -913,26 +913,26 @@ namespace Faye
                                     materialChanged = true;
                                 }
                             }
-                            else if (desc.field == "metallicFactor" && desc.type == ShaderProperty::Type::Float)
+                            else if (desc.field == "metallicFactor" && desc.type == ShaderMember::Type::Float)
                             {
                                 materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.metallicFactor,
                                                                     0.01f, desc.minVal, desc.maxVal);
                             }
-                            else if (desc.field == "roughnessFactor" && desc.type == ShaderProperty::Type::Float)
+                            else if (desc.field == "roughnessFactor" && desc.type == ShaderMember::Type::Float)
                             {
                                 materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.roughnessFactor,
                                                                     0.01f, desc.minVal, desc.maxVal);
                             }
-                            else if (desc.field == "emissive" && desc.type == ShaderProperty::Type::Vec3)
+                            else if (desc.field == "emissive" && desc.type == ShaderMember::Type::Vec3)
                             {
                                 materialChanged |= ImGui::ColorEdit3(desc.label.c_str(), &materialData.emissive.x);
                             }
-                            else if (desc.field == "emissiveIntensity" && desc.type == ShaderProperty::Type::Float)
+                            else if (desc.field == "emissiveIntensity" && desc.type == ShaderMember::Type::Float)
                             {
                                 materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.emissiveIntensity,
                                                                     0.1f, desc.minVal, desc.maxVal);
                             }
-                            else if (desc.field == "shininess" && desc.type == ShaderProperty::Type::Float)
+                            else if (desc.field == "shininess" && desc.type == ShaderMember::Type::Float)
                             {
                                 materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.shininess,
                                                                     1.0f, desc.minVal, desc.maxVal);

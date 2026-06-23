@@ -120,11 +120,11 @@ namespace Faye
 
         // Upload all textures into the bindless set and record slot indices.
         // Pre-populate with fallback slots so any missing texture uses the default.
-        state.albedoSlot    = textureCache.getFallbackSlot(TextureType::Albedo);
-        state.normalSlot    = textureCache.getFallbackSlot(TextureType::Normal);
-        state.metallicSlot  = textureCache.getFallbackSlot(TextureType::Metallic);
+        state.albedoSlot = textureCache.getFallbackSlot(TextureType::Albedo);
+        state.normalSlot = textureCache.getFallbackSlot(TextureType::Normal);
+        state.metallicSlot = textureCache.getFallbackSlot(TextureType::Metallic);
         state.roughnessSlot = textureCache.getFallbackSlot(TextureType::Roughness);
-        state.aoSlot        = textureCache.getFallbackSlot(TextureType::AmbientOcclusion);
+        state.aoSlot = textureCache.getFallbackSlot(TextureType::AmbientOcclusion);
 
         for (const Texture &texture : materialData.textures)
         {
@@ -139,12 +139,23 @@ namespace Faye
                 (void)resource;
                 switch (texture.type)
                 {
-                case TextureType::Albedo:           state.albedoSlot    = slot; break;
-                case TextureType::Normal:           state.normalSlot    = slot; break;
-                case TextureType::Metallic:         state.metallicSlot  = slot; break;
-                case TextureType::Roughness:        state.roughnessSlot = slot; break;
-                case TextureType::AmbientOcclusion: state.aoSlot        = slot; break;
-                default: break;
+                case TextureType::Albedo:
+                    state.albedoSlot = slot;
+                    break;
+                case TextureType::Normal:
+                    state.normalSlot = slot;
+                    break;
+                case TextureType::Metallic:
+                    state.metallicSlot = slot;
+                    break;
+                case TextureType::Roughness:
+                    state.roughnessSlot = slot;
+                    break;
+                case TextureType::AmbientOcclusion:
+                    state.aoSlot = slot;
+                    break;
+                default:
+                    break;
                 }
             }
             catch (const std::exception &exception)
