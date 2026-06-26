@@ -6,7 +6,7 @@
 
 #include "Assets/ModelRegistry.hpp"
 #include "Renderer/Resources/PrimitiveType.hpp"
-#include "Renderer/Frame/ImGuiFrameData.hpp"
+#include "Editor/ImGui/ImGuiFrameData.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Material/MaterialTemplate.hpp"
 #include "Scene/Scene.hpp"

@@ -40,7 +40,6 @@ namespace Faye
         float getAspectRatio() const { return vk_swapchain->extentAspectRatio(); }
         VkSampler getSceneViewportSampler() const override { return sceneViewportSampler; }
         VkExtent2D getSceneExtent() const override { return sceneRenderExtent; }
-        VkExtent2D getSceneRenderExtent() const { return sceneRenderExtent; }
         VkFormat getSceneColorFormat() const { return sceneColorFormat; }
         VkFormat getSceneMotionFormat() const { return sceneMotionFormat; }
         VkFormat getSceneDepthFormat() const { return sceneDepthFormat; }
@@ -51,7 +50,8 @@ namespace Faye
         std::vector<VkImageView> getDepthPrepassImageViews() const;
         std::vector<VkImageView> getPostProcessTargetImageViews(uint32_t targetIndex) const override { return postProcessTargets.at(targetIndex).imageViews; }
         VkImageView getSceneColorImageView(uint32_t index) const override;
-        uint64_t getSwapchainGeneration() const { return swapchainGeneration; }
+        RenderBackendHandles getBackendHandles() const override;
+        uint64_t getSwapchainGeneration() const override { return swapchainGeneration; }
         bool isFrameInProgress() const { return isFrameStarted; }
         uint32_t getMaxFramesInFlight() const override { return VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; }
         uint32_t getPostProcessTargetCount() const override { return kPostProcessTargetCount; }

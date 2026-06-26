@@ -4,7 +4,7 @@
 #include <iostream>
 #include <fstream>
 
-#include "Runtime/Engine.hpp"
+#include "Editor/Editor.hpp"
 
 #include "quill/Backend.h"
 #include "quill/Frontend.h"
@@ -18,11 +18,11 @@ int main(int argc, char **argv)
 {
     quill::Backend::start();
 
-    Engine app;
+    Faye::Editor editor;
 
     try
     {
-        app.run();
+        editor.run();
     }
     catch (const std::exception &e)
     {

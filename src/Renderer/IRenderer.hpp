@@ -8,6 +8,18 @@
 #include <cstdint>
 
 namespace Faye {
+    // Everything an external UI layer needs to initialize its own GPU backend
+    // (e.g. a UI library's Vulkan init) without depending on renderer internals.
+    struct RenderBackendHandles {
+        VkInstance instance = VK_NULL_HANDLE;
+        VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+        VkDevice device = VK_NULL_HANDLE;
+        uint32_t queueFamily = 0;
+        VkQueue queue = VK_NULL_HANDLE;
+        VkFormat swapchainColorFormat = VK_FORMAT_UNDEFINED;
+        uint32_t minImageCount = 0;
+        uint32_t imageCount = 0;
+    };
 
     class IRenderer {
     public:
@@ -32,7 +44,13 @@ namespace Faye {
         virtual VkImageView getSceneColorImageView(uint32_t frameIndex) const = 0;
         virtual uint32_t getMaxFramesInFlight() const = 0;
 
-        // Multi-image accessors used by ImGuiRenderer to register viewport textures
+        // Handles an external UI backend needs for one-time init.
+        virtual RenderBackendHandles getBackendHandles() const = 0;
+        // Monotonically increasing counter bumped on every swapchain recreation,
+        // so an external UI layer can detect when it must reinitialize.
+        virtual uint64_t getSwapchainGeneration() const = 0;
+
+        // Multi-image accessors used to register external viewport textures
         virtual std::vector<VkImageView> getSceneImageViews() const = 0;
         virtual std::vector<VkImageView> getSceneMotionImageViews() const = 0;
         virtual std::vector<VkImageView> getSceneDepthImageViews() const = 0;

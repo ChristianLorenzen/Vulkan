@@ -54,6 +54,20 @@ VkImageView Faye::VulkanRenderer::getSceneColorImageView(uint32_t index) const
     return sceneColorResources.at(index).imageView;
 }
 
+Faye::RenderBackendHandles Faye::VulkanRenderer::getBackendHandles() const
+{
+    RenderBackendHandles handles{};
+    handles.instance = vk_device.getInstance();
+    handles.physicalDevice = vk_device.getPhysicalDevice();
+    handles.device = vk_device.getDevice();
+    handles.queueFamily = vk_device.getGraphicsQueueFamilyIndex();
+    handles.queue = vk_device.getGraphicsQueue();
+    handles.swapchainColorFormat = getSwapchainColorFormat();
+    handles.minImageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
+    handles.imageCount = VulkanSwapchain::MAX_FRAMES_IN_FLIGHT;
+    return handles;
+}
+
 std::vector<VkImageView> Faye::VulkanRenderer::getSceneMotionImageViews() const
 {
     std::vector<VkImageView> views;

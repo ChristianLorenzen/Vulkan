@@ -82,8 +82,8 @@ void ImGuiRenderer::init(GLFWwindow *window,
     style.FrameBorderSize = 0.0f;
     style.TabBorderSize = 0.0f;
 
-    // ImGui::StyleColorsCustom();
-    ImGui::SetColourThemePabloDark();
+    ImGui::StyleColorsCustom();
+    // ImGui::SetColourThemePabloDark();
     ImGui_ImplGlfw_InitForVulkan(window, true);
 
     ImGui_ImplVulkan_InitInfo info = {};

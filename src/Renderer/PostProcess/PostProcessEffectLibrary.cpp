@@ -143,11 +143,15 @@ namespace Faye
                 }
                 else if (key == "vertexShader")
                 {
-                    definition.vertexShaderPath = value;
+                    // Extract filename only — handles both legacy full paths
+                    // ("./src/shaders/compiled/X.spv") and portable names ("X.spv").
+                    definition.vertexShaderPath =
+                        Paths::compiledShader(std::filesystem::path{value}.filename().string()).string();
                 }
                 else if (key == "fragmentShader")
                 {
-                    definition.fragmentShaderPath = value;
+                    definition.fragmentShaderPath =
+                        Paths::compiledShader(std::filesystem::path{value}.filename().string()).string();
                 }
                 else if (key == "showInEditor")
                 {

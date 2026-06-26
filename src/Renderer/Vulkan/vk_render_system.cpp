@@ -16,16 +16,16 @@ using namespace Faye;
 
 struct SimplePushConstantData
 {
-    glm::mat4 modelMatrix{1.0f};           // offset   0 — 64 bytes
-    glm::mat4 priorModelMatrix{1.0f};      // offset  64 — 64 bytes
+    glm::mat4 modelMatrix{1.0f};                 // offset   0 — 64 bytes
+    glm::mat4 priorModelMatrix{1.0f};            // offset  64 — 64 bytes
     glm::vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f}; // offset 128 — 16 bytes
-    VkDeviceAddress vertexBufferAddress{0}; // offset 144 —  8 bytes (vertex shader only)
-    uint32_t albedoSlot{0};                // offset 152
-    uint32_t normalSlot{0};               // offset 156
-    uint32_t metallicSlot{0};             // offset 160
-    uint32_t roughnessSlot{0};            // offset 164
-    uint32_t aoSlot{0};                   // offset 168
-};  // total: 172 bytes
+    VkDeviceAddress vertexBufferAddress{0};      // offset 144 —  8 bytes (vertex shader only)
+    uint32_t albedoSlot{0};                      // offset 152
+    uint32_t normalSlot{0};                      // offset 156
+    uint32_t metallicSlot{0};                    // offset 160
+    uint32_t roughnessSlot{0};                   // offset 164
+    uint32_t aoSlot{0};                          // offset 168
+}; // total: 172 bytes
 
 namespace
 {
@@ -264,11 +264,11 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(renderable.material->getColor(), 1.0f);
             push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
-            push.albedoSlot    = materialState.albedoSlot;
-            push.normalSlot    = materialState.normalSlot;
-            push.metallicSlot  = materialState.metallicSlot;
+            push.albedoSlot = materialState.albedoSlot;
+            push.normalSlot = materialState.normalSlot;
+            push.metallicSlot = materialState.metallicSlot;
             push.roughnessSlot = materialState.roughnessSlot;
-            push.aoSlot        = materialState.aoSlot;
+            push.aoSlot = materialState.aoSlot;
 
             vkCmdPushConstants(
                 frameContext.commandBuffer,
@@ -329,11 +329,11 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
             push.priorModelMatrix = renderable.priorModelMatrix;
             push.baseColor = glm::vec4(resolvedMaterial->getColor(), 1.0f);
             push.vertexBufferAddress = renderable.model->getVertexBufferAddress();
-            push.albedoSlot    = materialState.albedoSlot;
-            push.normalSlot    = materialState.normalSlot;
-            push.metallicSlot  = materialState.metallicSlot;
+            push.albedoSlot = materialState.albedoSlot;
+            push.normalSlot = materialState.normalSlot;
+            push.metallicSlot = materialState.metallicSlot;
             push.roughnessSlot = materialState.roughnessSlot;
-            push.aoSlot        = materialState.aoSlot;
+            push.aoSlot = materialState.aoSlot;
 
             vkCmdPushConstants(
                 frameContext.commandBuffer,

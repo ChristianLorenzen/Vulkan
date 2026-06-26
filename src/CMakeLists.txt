@@ -6,7 +6,9 @@ set(FAYE_ENGINE_SOURCES
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
     Core/Time/Timer.cpp
+    Editor/Editor.cpp
     Editor/ImGui/EditorPanels.cpp
+    Editor/ImGui/EditorRenderLayer.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp
     Editor/ImGui/ImGuiRenderer.cpp
     Platform/GLFW/VKGLFW.cpp
@@ -40,6 +42,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/VkSamplerResource.cpp
     Renderer/Vulkan/VkTextureResource.cpp
     Runtime/main.cpp
+    Runtime/Engine.cpp
     Scripting/ScriptSystem.cpp
     Scripting/LuaScriptSystem.cpp
     Scripting/ScriptingSystem.cpp

@@ -5,27 +5,15 @@
 #include <vector>
 
 #include "Vulkan.hpp"
-#include "Renderer/Frame/ImGuiFrameData.hpp"
 #include "Renderer/Resources/Vertex.hpp"
-// ImGuiRenderer lives in the Editor layer; included here (the orchestration
-// implementation) rather than in the Vulkan.hpp header to keep the public
-// header free of Editor dependencies.
-#include "Editor/ImGui/ImGuiRenderer.hpp"
 
 #include "quill/LogMacros.h"
+
+#include <cassert>
 
 using namespace Faye;
 
 const std::string MODEL_PATH = "src/include/viking_room.obj";
-namespace
-{
-    constexpr uint32_t kImGuiDescriptorBudget = 256;
-
-    size_t hashCombine(size_t seed, size_t value)
-    {
-        return seed ^ (value + 0x9e3779b9 + (seed << 6) + (seed >> 2));
-    }
-}
 
 Faye::Vulkan::Vulkan(Window &win) : window{win}
 {
@@ -55,38 +43,9 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                        .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT)
                        .build();
 
-    imGUIPool = VulkanDescriptorPool::Builder(*vk_device)
-                    .setMaxSets(kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kImGuiDescriptorBudget)
-                    .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, kImGuiDescriptorBudget)
-                    .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
-                    .build();
-
     initializeFrameResources();
 
-    imGuiRenderer = std::make_unique<ImGuiRenderer>();
-    imGuiRenderer->init(
-        window.getWindow(),
-        vk_device->getInstance(),
-        vk_device->getPhysicalDevice(),
-        vk_device->getDevice(),
-        vk_device->getGraphicsQueueFamilyIndex(),
-        vk_device->getGraphicsQueue(),
-        imGUIPool->getPool(),
-        vk_renderer->getSwapchainColorFormat(),
-        VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
-        VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    imGuiRenderer->registerViewportTextures(*vk_renderer);
-    lastImGuiSwapchainGeneration = vk_renderer->getSwapchainGeneration();
+    lastReportedSwapchainGeneration = vk_renderer->getSwapchainGeneration();
 }
 
 void Faye::Vulkan::initializeFrameResources()
@@ -220,18 +179,6 @@ Faye::Vulkan::~Vulkan()
         vkDeviceWaitIdle(vk_device->getDevice());
     }
 
-    for (const auto &[key, descriptorSet] : textureThumbnailDescriptors)
-    {
-        (void)key;
-        if (descriptorSet != VK_NULL_HANDLE)
-        {
-            imGuiRenderer->unregisterTexture(descriptorSet);
-        }
-    }
-    textureThumbnailDescriptors.clear();
-
-    imGuiRenderer->shutdown();
-
     simpleRenderSystem.reset();
     pointLightRenderSystem.reset();
     postProcessChain.reset();
@@ -247,7 +194,6 @@ Faye::Vulkan::~Vulkan()
     materialSetLayout.reset();
     bindlessSetLayout.reset();
     uboBuffers.clear();
-    imGUIPool.reset();
     materialPool.reset();
     bindlessPool.reset();
     globalPool.reset();
@@ -261,21 +207,14 @@ float Faye::Vulkan::getAspectRatio() const
 
 VkExtent2D Faye::Vulkan::getSceneRenderExtent() const
 {
-    return vk_renderer->getSceneRenderExtent();
+    return vk_renderer->getSceneExtent();
 }
 
-size_t Faye::Vulkan::TextureThumbnailCacheKeyHasher::operator()(const TextureThumbnailCacheKey &key) const
-{
-    size_t hash = std::hash<VkImageView>{}(key.imageView);
-    hash = hashCombine(hash, std::hash<VkSampler>{}(key.sampler));
-    return hash;
-}
-
-VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle, const Material &material, TextureType type)
+MaterialTextureView Faye::Vulkan::getMaterialTexture(MaterialHandle handle, const Material &material, TextureType type)
 {
     if (!handle.isValid() || materialCache == nullptr)
     {
-        return VK_NULL_HANDLE;
+        return {};
     }
 
     const MaterialState &state = materialCache->getOrCreateState(handle, material);
@@ -308,24 +247,22 @@ VkDescriptorSet Faye::Vulkan::getMaterialTextureThumbnail(MaterialHandle handle,
     const VkTextureResource *texture = textureCache->getResourceForSlot(slot);
     if (texture == nullptr || !texture->isValid())
     {
-        return VK_NULL_HANDLE;
+        return {};
     }
 
-    const TextureThumbnailCacheKey cacheKey{
+    return MaterialTextureView{
         texture->imageResource.imageView,
         texture->samplerResource.sampler};
+}
 
-    if (const auto iterator = textureThumbnailDescriptors.find(cacheKey);
-        iterator != textureThumbnailDescriptors.end())
+std::optional<uint32_t> Faye::Vulkan::finalPostProcessTarget(const PostProcessStackComponent *stack) const
+{
+    const uint32_t target = postProcessChain->getFinalTargetIndex(stack);
+    if (target == VulkanRenderer::kPostProcessTargetCount)
     {
-        return iterator->second;
+        return std::nullopt; // no enabled effects → display the raw scene color
     }
-
-    const VkDescriptorSet descriptorSet = imGuiRenderer->registerTexture(
-        texture->samplerResource.sampler,
-        texture->imageResource.imageView);
-    textureThumbnailDescriptors.emplace(cacheKey, descriptorSet);
-    return descriptorSet;
+    return target;
 }
 
 void Faye::Vulkan::notifyShaderRecompilation(const std::string &compiledShader)
@@ -334,34 +271,48 @@ void Faye::Vulkan::notifyShaderRecompilation(const std::string &compiledShader)
     postProcessChain->invalidatePipelines(compiledShader);
 }
 
-void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFrameCallback &drawImGui)
+bool Faye::Vulkan::setSceneRenderSize(uint32_t width, uint32_t height)
 {
-    auto getViewportDescriptorSet = [&](int frameIndex) -> VkDescriptorSet
+    if (width == 0 || height == 0)
     {
-        const auto fi = static_cast<uint32_t>(frameIndex);
-        switch (frameInput.renderView.debugMode)
-        {
-        case RenderDebugMode::Lit:
-        {
-            const uint32_t finalTarget = postProcessChain->getFinalTargetIndex(frameInput.postProcessStack);
-            if (finalTarget == VulkanRenderer::kPostProcessTargetCount)
-                return imGuiRenderer->getSceneColorDS(fi);
-            return imGuiRenderer->getPostProcessDS(finalTarget, fi);
-        }
-        case RenderDebugMode::SceneColor:
-            return imGuiRenderer->getSceneColorDS(fi);
-        case RenderDebugMode::SceneDepth:
-            return imGuiRenderer->getSceneDepthDS(fi);
-        case RenderDebugMode::SceneMotion:
-            return imGuiRenderer->getSceneMotionDS(fi);
-        }
+        return false;
+    }
+    return vk_renderer->resizeSceneIfNeeded(width, height);
+}
 
-        const uint32_t finalTarget = postProcessChain->getFinalTargetIndex(frameInput.postProcessStack);
-        if (finalTarget == VulkanRenderer::kPostProcessTargetCount)
-            return imGuiRenderer->getSceneColorDS(fi);
-        return imGuiRenderer->getPostProcessDS(finalTarget, fi);
-    };
+std::optional<Faye::Vulkan::FrameToken> Faye::Vulkan::beginFrame()
+{
+    assert(framePhase == FramePhase::Idle && "beginFrame called while a frame is already in progress");
+    postProcessChain->syncResources();
 
+    auto commandBuffer = vk_renderer->beginFrame();
+    if (!commandBuffer)
+    {
+        // Swapchain was out-of-date at acquire; it has been recreated and this
+        // frame is skipped. The generation change is reported on the next
+        // successful frame so the caller can reinitialize backend state then.
+        return std::nullopt;
+    }
+
+    FrameToken token{};
+    token.cmd = commandBuffer;
+    token.frameIndex = vk_renderer->getFrameIndex();
+    // Report a swapchain recreation relative to the last frame we handed out.
+    // Recreation usually happens in the previous frame's endFrame (window
+    // resize/present out-of-date), so we track the generation persistently
+    // rather than diffing across a single beginFrame call. vkDeviceWaitIdle was
+    // already issued inside recreateSwapchain, so it is safe for the caller to
+    // tear down/recreate external backend state for the new swapchain now.
+    const uint64_t currentGeneration = vk_renderer->getSwapchainGeneration();
+    token.swapchainRecreated = currentGeneration != lastReportedSwapchainGeneration;
+    lastReportedSwapchainGeneration = currentGeneration;
+    framePhase = FramePhase::Acquired;
+    return token;
+}
+
+void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &frameInput)
+{
+    assert(framePhase == FramePhase::Acquired && "renderScene must be called once, right after beginFrame");
     const auto *primaryCamera = frameInput.renderView.camera;
     if (primaryCamera == nullptr)
     {
@@ -376,140 +327,103 @@ void Faye::Vulkan::renderFrame(const VulkanFrameInput &frameInput, const ImGuiFr
         }
     }
 
-    // Resize offscreen scene targets to whatever the viewport panel requested last frame.
-    if (pendingViewportWidth > 0 && pendingViewportHeight > 0)
+    const VkCommandBuffer commandBuffer = token.cmd;
+    const int frameIndex = token.frameIndex;
+
+    // Build prepass depth info for push descriptors (queried fresh — handles resize automatically).
+    VkDescriptorImageInfo prepassDepthInfo{};
+    prepassDepthInfo.sampler = sceneDepthSampler;
+    prepassDepthInfo.imageView = vk_renderer->getDepthPrepassImageViews()[frameIndex];
+    prepassDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+    // Built here and retained for compositeSceneToSwapchain (present pass).
+    currentFrame.emplace(FrameContext{
+        frameIndex,
+        static_cast<float>(frameInput.frameTimeMs),
+        commandBuffer,
+        *primaryCamera,
+        uboBuffers[frameIndex].get(),
+        prepassDepthInfo});
+    FrameContext &frameContext = *currentFrame;
+
+    totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
+
+    GlobalUBO ubo{};
+    ubo.priorViewProjection = primaryCamera->getPriorViewProjection();
+    ubo.projection = primaryCamera->getProjection();
+    ubo.view = primaryCamera->getView();
+    ubo.inverseView = primaryCamera->getInverseView();
+    ubo.time = totalElapsedTime;
+    ubo.deltaTime = static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
+    ubo.inverseProjection = primaryCamera->getInverseProjection();
+
+    // Update point light system UBO with the point light data from this frame's render scene.
+    pointLightRenderSystem->update(frameContext, frameInput.renderScene, ubo);
+
+    uboBuffers[frameIndex]->writeToBuffer(&ubo);
+    uboBuffers[frameIndex]->flush();
+
+    // Opaque depth prepass -- write depth for all non-water objects.
+    // water.frag samples this via set=0 binding=1 (prepassDepth) to
+    // compute contact/intersection foam without self-contamination.
+    vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
+    simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
+    vk_renderer->endDepthPrepassRenderPass(commandBuffer);
+
+    // Bind the bindless texture set (set 2) with the scene pipeline layout AFTER
+    // the depth prepass. The depth prepass uses a separate pipeline layout (set 0
+    // only), which disturbs previously-bound sets at higher indices. Binding here
+    // ensures set 2 is valid for all subsequent scene draw calls.
+    VkDescriptorSet bindlessSets[] = {bindlessDescriptorSet};
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            simpleRenderSystem->getPipelineLayout(),
+                            2, 1, bindlessSets, 0, nullptr);
+
+    vk_renderer->beginSceneRenderPass(commandBuffer);
+
+    simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
+
+    if (!frameInput.renderScene.pointLights.empty())
     {
-        if (vk_renderer->resizeSceneIfNeeded(pendingViewportWidth, pendingViewportHeight))
-        {
-            imGuiRenderer->registerViewportTextures(*vk_renderer);
-            // Depth prepass views are now fetched fresh each frame via push descriptors —
-            // no pre-allocated sets to update here.
-        }
-        pendingViewportWidth = 0;
-        pendingViewportHeight = 0;
+        pointLightRenderSystem->render(frameContext, frameInput.renderScene);
     }
 
-    postProcessChain->syncResources();
+    vk_renderer->endSceneRenderPass(commandBuffer);
 
-    if (auto commandBuffer = vk_renderer->beginFrame())
+    postProcessChain->renderEffects(frameContext, frameInput.postProcessStack);
+    framePhase = FramePhase::Scene;
+}
+
+void Faye::Vulkan::beginPresentPass(const FrameToken &token)
+{
+    assert(framePhase == FramePhase::Scene && "beginPresentPass must follow renderScene");
+    vk_renderer->beginSwapchainRenderPass(token.cmd);
+    framePhase = FramePhase::Present;
+}
+
+void Faye::Vulkan::compositeSceneToSwapchain(const FrameToken &token, const PostProcessStackComponent *stack)
+{
+    (void)token;
+    assert(framePhase == FramePhase::Present && "compositeSceneToSwapchain must be inside the present pass");
+    if (!currentFrame)
     {
-        int frameIndex = vk_renderer->getFrameIndex();
-
-        // Detect swapchain recreation (e.g. window resize) and reinit ImGui with
-        // the new render pass. vkDeviceWaitIdle was already called inside
-        // recreateSwapchain(), so it is safe to destroy/recreate backend state here.
-        const uint64_t currentSwapGen = vk_renderer->getSwapchainGeneration();
-        if (currentSwapGen != lastImGuiSwapchainGeneration)
-        {
-            imGuiRenderer->shutdown();
-            imGuiRenderer->init(
-                window.getWindow(),
-                vk_device->getInstance(),
-                vk_device->getPhysicalDevice(),
-                vk_device->getDevice(),
-                vk_device->getGraphicsQueueFamilyIndex(),
-                vk_device->getGraphicsQueue(),
-                imGUIPool->getPool(),
-                vk_renderer->getSwapchainColorFormat(),
-                VulkanSwapchain::MAX_FRAMES_IN_FLIGHT,
-                VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-            imGuiRenderer->registerViewportTextures(*vk_renderer);
-            lastImGuiSwapchainGeneration = currentSwapGen;
-        }
-
-        // Build prepass depth info for push descriptors (queried fresh — handles resize automatically).
-        VkDescriptorImageInfo prepassDepthInfo{};
-        prepassDepthInfo.sampler = sceneDepthSampler;
-        prepassDepthInfo.imageView = vk_renderer->getDepthPrepassImageViews()[frameIndex];
-        prepassDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-        FrameContext frameContext{
-            frameIndex,
-            static_cast<float>(frameInput.frameTimeMs),
-            commandBuffer,
-            *primaryCamera,
-            uboBuffers[frameIndex].get(),
-            prepassDepthInfo};
-
-        totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
-
-        GlobalUBO ubo{};
-        ubo.priorViewProjection = primaryCamera->getPriorViewProjection();
-        ubo.projection = primaryCamera->getProjection();
-        ubo.view = primaryCamera->getView();
-        ubo.inverseView = primaryCamera->getInverseView();
-        ubo.time = totalElapsedTime;
-        ubo.deltaTime = static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
-        ubo.inverseProjection = primaryCamera->getInverseProjection();
-
-        // Update point light system UBO with the point light data from this frame's render scene.
-        pointLightRenderSystem->update(frameContext, frameInput.renderScene, ubo);
-
-        uboBuffers[frameIndex]->writeToBuffer(&ubo);
-        uboBuffers[frameIndex]->flush();
-
-        // Opaque depth prepass -- write depth for all non-water objects.
-        // water.frag samples this via set=0 binding=1 (prepassDepth) to
-        // compute contact/intersection foam without self-contamination.
-        vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
-        simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
-        vk_renderer->endDepthPrepassRenderPass(commandBuffer);
-
-        // Bind the bindless texture set (set 2) with the scene pipeline layout AFTER
-        // the depth prepass. The depth prepass uses a separate pipeline layout (set 0
-        // only), which disturbs previously-bound sets at higher indices. Binding here
-        // ensures set 2 is valid for all subsequent scene draw calls.
-        VkDescriptorSet bindlessSets[] = {bindlessDescriptorSet};
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                simpleRenderSystem->getPipelineLayout(),
-                                2, 1, bindlessSets, 0, nullptr);
-
-        vk_renderer->beginSceneRenderPass(commandBuffer);
-
-        simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
-
-        if (!frameInput.renderScene.pointLights.empty())
-        {
-            pointLightRenderSystem->render(frameContext, frameInput.renderScene);
-        }
-
-        vk_renderer->endSceneRenderPass(commandBuffer);
-
-        postProcessChain->renderEffects(frameContext, frameInput.postProcessStack);
-
-        vk_renderer->beginSwapchainRenderPass(commandBuffer);
-
-        postProcessChain->renderComposite(frameContext, frameInput.postProcessStack);
-
-        imGuiRenderer->newFrame();
-
-        ImGuiFrameData frameData{};
-        frameData.frameTimeMs = frameInput.frameTimeMs;
-        frameData.averageFps = frameInput.averageFps;
-        frameData.viewportDebugMode = frameInput.renderView.debugMode;
-
-        VkExtent2D sceneRenderExtent = vk_renderer->getSceneRenderExtent();
-        frameData.viewportTexture = reinterpret_cast<ImTextureID>(
-            getViewportDescriptorSet(frameIndex));
-        frameData.viewportSize = ImVec2(
-            static_cast<float>(sceneRenderExtent.width),
-            static_cast<float>(sceneRenderExtent.height));
-
-        if (drawImGui)
-        {
-            drawImGui(frameData);
-        }
-
-        // Save the viewport size requested this frame; resize will happen at the next frame start.
-        if (frameData.requestedViewportSize.x > 0.0f && frameData.requestedViewportSize.y > 0.0f)
-        {
-            pendingViewportWidth = static_cast<uint32_t>(frameData.requestedViewportSize.x);
-            pendingViewportHeight = static_cast<uint32_t>(frameData.requestedViewportSize.y);
-        }
-
-        imGuiRenderer->render(commandBuffer);
-
-        vk_renderer->endSwapchainRenderPass(commandBuffer);
-        vk_renderer->endFrame();
+        throw std::runtime_error("compositeSceneToSwapchain called without an active frame");
     }
+    postProcessChain->renderComposite(*currentFrame, stack);
+}
+
+void Faye::Vulkan::endPresentPass(const FrameToken &token)
+{
+    assert(framePhase == FramePhase::Present && "endPresentPass must follow beginPresentPass");
+    vk_renderer->endSwapchainRenderPass(token.cmd);
+    framePhase = FramePhase::PresentEnded;
+}
+
+void Faye::Vulkan::endFrame(const FrameToken &token)
+{
+    (void)token;
+    assert(framePhase == FramePhase::PresentEnded && "endFrame must follow endPresentPass");
+    vk_renderer->endFrame();
+    currentFrame.reset();
+    framePhase = FramePhase::Idle;
 }
