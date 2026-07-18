@@ -31,4 +31,6 @@ include(FayeShaderCompilation)
 
 faye_configure_dependencies()
 
+enable_testing()
+
 add_subdirectory(src)

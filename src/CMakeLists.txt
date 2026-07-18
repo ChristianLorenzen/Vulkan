@@ -3,6 +3,7 @@ set(FAYE_ENGINE_SOURCES
     Core/HotReload/HotReloadManager.cpp
     Core/HotReload/HotReloadSystem.cpp
     Core/IO/FileSystem.cpp
+    Core/Jobs/JobSystem.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
     Core/Time/Timer.cpp
@@ -145,6 +146,36 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(faye_app PRIVATE dl pthread)
     target_link_options(faye_app PRIVATE -rdynamic)
 endif()
+
+# --- Unit tests ---
+# Test files live in a Tests/ directory next to the implementation they cover
+# (e.g. Core/Jobs/Tests/); TestMain.cpp provides the shared doctest entry point.
+add_executable(faye_tests
+    Tests/TestMain.cpp
+    Core/Jobs/JobSystem.cpp
+    Core/Jobs/Tests/JobSystemTests.cpp)
+
+target_include_directories(faye_tests
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(faye_tests
+    PRIVATE
+    doctest::doctest)
+
+target_compile_features(faye_tests PRIVATE cxx_std_20)
+
+if(MSVC)
+    target_compile_options(faye_tests PRIVATE /W4)
+else()
+    target_compile_options(faye_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(faye_tests PRIVATE pthread)
+endif()
+
+add_test(NAME faye_tests COMMAND faye_tests)
 
 # --- RotatorScript example plugin ---
 FetchContent_GetProperties(assimp SOURCE_DIR _assimp_script_src BINARY_DIR _assimp_script_bin)
