@@ -1,5 +1,10 @@
 #pragma once
 
+namespace Faye::Jobs
+{
+    class JobSystem;
+}
+
 namespace Faye
 {
     /// Per-tick context the engine pushes into every ITick system's OnUpdate
@@ -21,5 +26,10 @@ namespace Faye
     struct EngineContext
     {
         float dt = 0.0f;  ///< Integration step for the current tick (seconds).
+
+        /// Engine-owned job system, alive for the whole main loop. For C++
+        /// systems only — intentionally NOT bound to Lua (worker scheduling
+        /// from scripts is not supported; sol::state is not thread-safe).
+        Jobs::JobSystem *jobs = nullptr;
     };
 }

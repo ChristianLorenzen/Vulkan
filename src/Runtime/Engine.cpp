@@ -15,6 +15,13 @@ namespace Faye {
         modelRegistry = std::make_unique<ModelRegistry>(*vkData->getVkDevice());
         materialRegistry = std::make_unique<MaterialRegistry>();
 
+        // Constructed on the main thread: the JobSystem captures this thread's
+        // id as the main-thread affinity for scheduleMainThread/pumpMainThread.
+        jobSystem = std::make_unique<Jobs::JobSystem>();
+        frameContext.jobs = jobSystem.get();
+        LOG_INFO(Logger::get(), "Job system started with {} worker threads",
+                 Jobs::hardwareThreadsMinusOne());
+
         // Adding systems
         timer = &addSystem<Time::Timer>();
         hotReloadSystem = &addSystem<HotReloadSystem>();
@@ -45,6 +52,9 @@ namespace Faye {
     float Engine::tick() {
         frameContext.dt = static_cast<float>(timer->getDeltaTimeS());
         update();
+        // Drain jobs pinned to the main thread (Vulkan/GLFW/ImGui work
+        // scheduled from workers) once per frame.
+        jobSystem->pumpMainThread();
         return frameContext.dt;
     }
 

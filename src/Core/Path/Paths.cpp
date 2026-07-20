@@ -1,5 +1,8 @@
 #include "Core/Path/Paths.hpp"
 
+#include <algorithm>
+#include <cctype>
+
 // FAYE_ASSET_ROOT is injected by CMake as the absolute path to the repo root.
 // It is intentionally resolved here — this is the single place in the codebase
 // that knows about it.
@@ -46,6 +49,20 @@ namespace Faye
         if (p.extension() != ".spv")
             p += ".spv";
         return p;
+    }
+
+    std::string Paths::normalizeExtension(std::string extension)
+    {
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char character)
+                       { return static_cast<char>(std::tolower(character)); });
+
+        if (!extension.empty() && extension.front() != '.')
+        {
+            extension.insert(extension.begin(), '.');
+        }
+
+        return extension;
     }
 
 } // namespace Faye

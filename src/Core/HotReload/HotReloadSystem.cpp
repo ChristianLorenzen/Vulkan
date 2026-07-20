@@ -29,13 +29,17 @@ namespace Faye
     void HotReloadSystem::OnPostInit()
     {
         // Started in OnPostInit so every other system's OnInit has already had the
-        // chance to subscribe before the watcher thread begins delivering events.
+        // chance to subscribe before scan jobs begin delivering events.
         LOG_INFO(Logger::get(), "HotReloadSystem OnPostInit");
         hotReloadManager.start();
     }
 
-    void HotReloadSystem::OnUpdate(const EngineContext &)
+    void HotReloadSystem::OnUpdate(const EngineContext &ctx)
     {
+        if (ctx.jobs != nullptr)
+        {
+            hotReloadManager.tick(*ctx.jobs);
+        }
         hotReloadManager.dispatchPendingEvents();
     }
 

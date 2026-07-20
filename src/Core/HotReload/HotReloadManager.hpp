@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -10,11 +9,11 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "Core/Logging/Logger.hpp"
+#include "Core/Jobs/JobSystem.hpp"
 
 namespace Faye
 {
@@ -74,6 +73,8 @@ namespace Faye
         void setPollInterval(std::chrono::milliseconds pollInterval);
         std::chrono::milliseconds getPollInterval() const;
 
+        void tick(Jobs::JobSystem &jobs);
+
     private:
         struct FileState
         {
@@ -89,19 +90,22 @@ namespace Faye
 
         std::unordered_map<std::string, FileState> scanFiles(const HotReloadWatchSpec &watchSpec) const;
         bool shouldWatchFile(const HotReloadWatchSpec &watchSpec, const std::filesystem::path &path) const;
-        void workerLoop();
+        void runScan();   // one scan pass, executed as a job; tick() owns scheduling
 
         mutable std::mutex mutex;
         std::string defaultWatchId = "any";
-        std::condition_variable wakeCondition;
         std::unordered_map<std::string, WatchState> watches;
         std::unordered_map<CallbackToken, EventCallback> subscribers;
         std::unordered_map<std::string, std::vector<CallbackToken>> watchIdSubscribers;
         std::unordered_map<std::string, HotReloadEvent> pendingEvents;
         std::chrono::milliseconds pollInterval;
-        std::thread workerThread;
         std::atomic<bool> running{false};
-        bool stopRequested = false;
         CallbackToken nextCallbackToken = 1;
+
+        // Scan scheduling state; touched by tick() (main thread) and the scan
+        // job. `scanInFlight` guarantees at most one scan at a time — stop()
+        // relies on it to drain safely. `lastScanTime` is main-thread-only.
+        std::atomic<bool> scanInFlight{false};
+        std::chrono::steady_clock::time_point lastScanTime{};
     };
 }

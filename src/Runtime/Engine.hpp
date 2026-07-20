@@ -14,6 +14,7 @@
 #include "Core/Logging/Logger.hpp"
 #include "Core/Path/Paths.hpp"
 #include "Core/Time/Timer.hpp"
+#include "Core/Jobs/JobSystem.hpp"
 #include "Platform/Input/Input.hpp"
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Scene/RenderExtractionManager.hpp"
@@ -67,6 +68,7 @@ namespace Faye {
         ModelRegistry&      models()            { return *modelRegistry; }
         MaterialRegistry&   materials()         { return *materialRegistry; }
         ScriptSystem&       scripts()           { return scriptingSystem->getScriptSystem(); }
+        Jobs::JobSystem&    jobs()              { return *jobSystem; }
         Entity              createPrimitive(PrimitiveType t) { return sceneBuilder->createPrimitiveEntity(activeScene(), t); }
         VkExtent2D          sceneRenderExtent() const { return vkData->getSceneRenderExtent(); }
 
@@ -99,6 +101,11 @@ namespace Faye {
         std::unique_ptr<Window> glfwWindow;
         std::unique_ptr<Vulkan> vkData;
 
+        // Job system. Declared before the systems so it is destroyed after
+        // them: every system's teardown (e.g. HotReloadManager::stop draining
+        // its in-flight scan) can still rely on the worker pool being alive.
+        std::unique_ptr<Jobs::JobSystem> jobSystem;
+
         // Asset registries.
         std::unique_ptr<ModelRegistry> modelRegistry;
         std::unique_ptr<MaterialRegistry> materialRegistry;
@@ -114,7 +121,6 @@ namespace Faye {
         HotReloadSystem *hotReloadSystem = nullptr;
         SceneManager *sceneManager = nullptr;
         ScriptingSystem *scriptingSystem = nullptr;
-
 
         VulkanShaderManager shaderManager;
 

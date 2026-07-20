@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 namespace Faye
@@ -31,6 +32,10 @@ namespace Faye
 
         // Absolute path to a compiled shader. Appends .spv if not already present.
         static std::filesystem::path compiledShader(std::string_view name);
+
+        // Canonical form for file-extension comparisons: lowercase, with a
+        // leading dot ("PNG" -> ".png", ".Vert" -> ".vert"). Empty stays empty.
+        static std::string normalizeExtension(std::string extension);
     };
 
 } // namespace Faye
