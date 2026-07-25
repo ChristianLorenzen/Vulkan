@@ -77,18 +77,6 @@ void Faye::PointLightRenderSystem::createPipeline(VkFormat colorFormat, VkFormat
         pipelineConfig);
 }
 
-void Faye::PointLightRenderSystem::update(FrameContext &frameContext, const RenderSceneSnapshot &renderScene, GlobalUBO &ubo)
-{
-    int lightIndex = 0;
-    for (auto &obj : renderScene.pointLights)
-    {
-        ubo.pointLights[lightIndex].position = glm::vec4(obj.transform->translation, 1.f);
-        ubo.pointLights[lightIndex].color = glm::vec4(obj.color, obj.intensity);
-        lightIndex++;
-    }
-    ubo.numLights = lightIndex;
-}
-
 void Faye::PointLightRenderSystem::render(FrameContext &frameContext, const RenderSceneSnapshot &renderScene)
 {
     vk_pipeline->bind(frameContext.commandBuffer);

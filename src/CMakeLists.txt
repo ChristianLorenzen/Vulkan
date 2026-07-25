@@ -20,9 +20,10 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Material/TextureRegistry.cpp
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
-    Renderer/Scene/Extractors/CameraRenderExtractor.cpp
     Renderer/Scene/Extractors/MeshRenderExtractor.cpp
     Renderer/Scene/Extractors/PointLightRenderExtractor.cpp
+    Renderer/Scene/Extractors/DirectionalLightRenderExtractor.cpp
+    Renderer/Scene/LightingUniforms.cpp
     Renderer/Scene/RenderExtractionManager.cpp
     Renderer/Vulkan/vk_shader_manager.cpp
     Renderer/Vulkan/ShaderReflection.cpp

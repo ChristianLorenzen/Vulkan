@@ -25,12 +25,14 @@
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
 #include "point_light_render_system.hpp"
+#include "editor_grid_render_system.hpp"
 #include "vk_post_process.hpp"
 #include "vk_device.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_renderer.hpp"
 #include "vk_types.hpp"
 #include "vk_descriptors.hpp"
+#include "vk_compute_pipeline.hpp"
 
 #include "Core/Logging/Logger.hpp"
 
@@ -81,7 +83,8 @@ namespace Faye
 		bool setSceneRenderSize(uint32_t width, uint32_t height);
 		// Begin a frame; nullopt when the swapchain is unavailable this frame.
 		std::optional<FrameToken> beginFrame();
-		// Depth prepass + scene pass + point lights + post-process effects.
+		// Depth prepass + scene pass + point lights + editor grid overlay +
+		// post-process effects.
 		void renderScene(const FrameToken &token, const VulkanFrameInput &frameInput);
 		// Begin the swapchain (present) render pass.
 		void beginPresentPass(const FrameToken &token);
@@ -102,6 +105,9 @@ namespace Faye
 		float getAspectRatio() const;
 		VkExtent2D getSceneRenderExtent() const;
 		MaterialTextureView getMaterialTexture(MaterialHandle handle, const Material &material, TextureType type);
+		// Uploads (or fetches from the texture cache) a standalone texture — editor
+		// icons and other UI imagery that is not owned by a material.
+		MaterialTextureView getOrCreateTexture(const Texture &texture);
 
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
@@ -116,16 +122,23 @@ namespace Faye
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> materialSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> bindlessSetLayout{};
+		std::unique_ptr<VulkanDescriptorSetLayout> waterFieldSetLayout{};
 		std::unique_ptr<TextureCache> textureCache{};
 		std::unique_ptr<MaterialCache> materialCache{};
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
 		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
+		std::unique_ptr<VulkanComputePipeline> waterDebugGradient{};
+		VkImageResource waterFieldDebugImage;
+		// Editor-only overlay. Constructed unconditionally (one pipeline), but
+		// only recorded when the RenderView opts in — see renderScene.
+		std::unique_ptr<EditorGridRenderSystem> editorGridRenderSystem{};
 		std::unique_ptr<PostProcessChain> postProcessChain{};
 
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
 		std::unique_ptr<VulkanDescriptorPool> materialPool{};
 		std::unique_ptr<VulkanDescriptorPool> bindlessPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;
+		std::vector<std::unique_ptr<VulkanBuffer>> lightingBuffers;
 		VkDescriptorSet bindlessDescriptorSet{VK_NULL_HANDLE};
 
 		// Frame context for the in-flight frame: built in renderScene and reused

@@ -6,6 +6,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "FayeShader.glsl"
+#include "FayeLighting.glsl"
 
 // ---- Declare custom material properties via FayeShader macros --------------
 // The C++ ShaderReflection system walks these members from the compiled SPIRV.
@@ -17,22 +18,7 @@ FAYE_PROPERTIES_BEGIN
 FAYE_PROPERTIES_END
 
 // ---- Standard descriptors --------------------------------------------------
-struct PointLight {
-    vec4 position;
-    vec4 color;
-};
-
-layout(set = 0, binding = 0) uniform GlobalUbo {
-    mat4 projection;
-    mat4 view;
-    mat4 inverseView;
-    mat4 priorViewProjection;
-    vec4 ambientLightColor;
-    PointLight pointLights[10];
-    int numLights;
-    int time;
-    int _pad[3];
-} ubo;
+// GlobalUbo (set 0, b0) and SceneLighting (set 0, b2) come from FayeLighting.glsl.
 
 // Material parameter UBO — now at binding 0 (textures moved to bindless set 2).
 layout(set = 1, binding = 0) uniform MaterialParams {
@@ -93,29 +79,24 @@ void main()
         surfaceNormal = normalize(tbn * tangentNormal);
     }
 
-    // Lighting (same Blinn-Phong as built-in PBR shader).
-    vec3 cameraPosWorld = ubo.inverseView[3].xyz;
+    // Lighting (same Blinn-Phong as built-in PBR shader, via FayeLighting.glsl).
+    vec3 cameraPosWorld = fayeCameraPosWorld();
     vec3 viewDir        = normalize(cameraPosWorld - fragPosWorld);
     vec3 specularColor  = mix(materialParams.specularShininess.rgb, albedo, metallic);
     float specularPower = mix(max(materialParams.specularShininess.w, 1.0), 4.0, roughness);
 
-    vec3 diffuseLight  = ubo.ambientLightColor.xyz * ubo.ambientLightColor.w;
+    vec3 diffuseLight  = fayeAmbient();
     vec3 specularLight = vec3(0.0);
 
-    for (int i = 0; i < ubo.numLights; i++)
+    for (int i = 0; i < lights.numPointLights; i++)
     {
-        PointLight light       = ubo.pointLights[i];
-        vec3  dirToLight       = light.position.xyz - fragPosWorld;
-        float attenuation      = 1.0 / dot(dirToLight, dirToLight);
-        dirToLight             = normalize(dirToLight);
-        float cosAngIncidence  = max(dot(surfaceNormal, dirToLight), 0.0);
-        vec3  intensity        = light.color.xyz * light.color.w * attenuation;
-
-        diffuseLight  += intensity * cosAngIncidence;
-
-        vec3  halfAngle = normalize(dirToLight + viewDir);
-        float blinnTerm = pow(clamp(dot(surfaceNormal, halfAngle), 0.0, 1.0), specularPower);
-        specularLight  += intensity * blinnTerm * specularColor;
+        fayeAccumulatePointLight(lights.pointLights[i], fragPosWorld, surfaceNormal, viewDir,
+                                 specularColor, specularPower, diffuseLight, specularLight);
+    }
+    for (int i = 0; i < lights.numDirectionalLights; i++)
+    {
+        fayeAccumulateDirectionalLight(lights.directionalLights[i], surfaceNormal, viewDir,
+                                       specularColor, specularPower, diffuseLight, specularLight);
     }
 
     vec3 diffuseColor = albedo * (1.0 - metallic);

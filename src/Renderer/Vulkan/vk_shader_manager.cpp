@@ -25,7 +25,7 @@ std::string Faye::VulkanShaderManager::compileShader(const std::filesystem::path
 {
     const std::string resolvedOutputPath = resolveCompiledShaderPath(sourcePath);
     LOG_INFO(Logger::get(), "Compiling shader: {} -> {}", sourcePath.filename().string(), resolvedOutputPath);
-    const std::string command = "glslc " + sourcePath.string() + " -o " + resolvedOutputPath;
+    const std::string command = "glslc " + sourcePath.string() + " -I " + Paths::shaderSources().string() + " -o " + resolvedOutputPath;
     int success = std::system(command.c_str());
     if (success == 0)
     {

@@ -14,32 +14,13 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "FayeShader.glsl"
+#include "FayeLighting.glsl"
+
+// GlobalUbo (set 0, b0: camera/frame incl. time + inverseProjection) and
+// SceneLighting (set 0, b2) are declared in FayeLighting.glsl / FayeGlobal.glsl.
 
 // Opaque-only depth from the depth prepass (set=0 binding=1).
 layout(set = 0, binding = 1) uniform sampler2D prepassDepth;
-
-struct PointLight {
-    vec4 position;
-    vec4 color;
-};
-
-layout(set = 0, binding = 0) uniform GlobalUbo {
-    mat4 projection;
-    mat4 view;
-    mat4 inverseView;
-    mat4 priorViewProjection;
-    vec4 ambientLightColor;
-    PointLight pointLights[10];
-    int   numLights;
-    float time;
-    float deltaTime;   // seconds since previous frame
-    float _pad1;
-    float _pad2;
-    float _pad3;
-    float _pad4;
-    float _pad5;
-    mat4  inverseProjection;   // exact NDC-depth -> view-space unprojection
-} ubo;
 
 // Material parameters -- now at set=1 binding=0 (textures moved to bindless set=2).
 //   baseColorFactor.rgb : shallow water colour tint
@@ -152,20 +133,18 @@ void main()
     vec4 waterColor = mix(shallowCol, deepCol, fresnel);
 
     // ---- Lighting -----------------------------------------------------------
-    vec3 diffuseLight  = ubo.ambientLightColor.xyz * ubo.ambientLightColor.w;
+    // Untinted specular (vec3(1)) here; Fresnel scales the summed highlight below.
+    vec3 diffuseLight  = fayeAmbient();
     vec3 specularLight = vec3(0.0);
-    for (int i = 0; i < ubo.numLights; i++)
+    for (int i = 0; i < lights.numPointLights; i++)
     {
-        vec3  toLight     = ubo.pointLights[i].position.xyz - fragPosWorld;
-        float attenuation = 1.0 / max(dot(toLight, toLight), 0.0001);
-        vec3  dirToLight  = normalize(toLight);
-        vec3  lightContrib = ubo.pointLights[i].color.xyz
-                           * ubo.pointLights[i].color.w
-                           * attenuation;
-        diffuseLight  += lightContrib * max(dot(surfaceNormal, dirToLight), 0.0);
-        vec3  halfVec   = normalize(dirToLight + viewDir);
-        specularLight  += lightContrib
-                        * pow(clamp(dot(surfaceNormal, halfVec), 0.0, 1.0), specPower);
+        fayeAccumulatePointLight(lights.pointLights[i], fragPosWorld, surfaceNormal, viewDir,
+                                 vec3(1.0), specPower, diffuseLight, specularLight);
+    }
+    for (int i = 0; i < lights.numDirectionalLights; i++)
+    {
+        fayeAccumulateDirectionalLight(lights.directionalLights[i], surfaceNormal, viewDir,
+                                       vec3(1.0), specPower, diffuseLight, specularLight);
     }
 
     // ---- Foam masks ----------------------------------------------------------

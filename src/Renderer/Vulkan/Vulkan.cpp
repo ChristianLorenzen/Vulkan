@@ -6,14 +6,14 @@
 
 #include "Vulkan.hpp"
 #include "Renderer/Resources/Vertex.hpp"
+#include "Renderer/Scene/LightingUniforms.hpp"
+#include "Core/Path/Paths.hpp"
 
 #include "quill/LogMacros.h"
 
 #include <cassert>
 
 using namespace Faye;
-
-const std::string MODEL_PATH = "src/include/viking_room.obj";
 
 Faye::Vulkan::Vulkan(Window &win) : window{win}
 {
@@ -51,6 +51,7 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
 void Faye::Vulkan::initializeFrameResources()
 {
     uboBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+    lightingBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < uboBuffers.size(); i++)
     {
         uboBuffers[i] = std::make_unique<VulkanBuffer>(
@@ -60,13 +61,24 @@ void Faye::Vulkan::initializeFrameResources()
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
         uboBuffers[i]->map();
+
+        lightingBuffers[i] = std::make_unique<VulkanBuffer>(
+            *vk_device,
+            sizeof(SceneLightingUBO),
+            1,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        lightingBuffers[i]->map();
     }
 
     // Global set (set 0): push descriptor — written directly into the command buffer each frame.
+    //   binding 0: GlobalUBO (camera/frame)   binding 1: prepass depth
+    //   binding 2: SceneLightingUBO (ambient + point + directional lights)
     globalSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
                           .setFlags(VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR)
                           .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
                           .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                          .addBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .build();
 
     // Material set (set 1): parameter UBO only — textures are now in the bindless set.
@@ -85,6 +97,20 @@ void Faye::Vulkan::initializeFrameResources()
                             .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                         VK_SHADER_STAGE_FRAGMENT_BIT, kMaxBindlessTextures, kBindlessFlags)
                             .build();
+
+    // Water field set (set 3): per-frame data for the water system, consumed by
+    // TESE (cascade/Gerstner displacement sampling) and FRAG (shading), and by
+    // COMPUTE passes that read a lower cascade as input to a higher one (writers use
+    // their own separate push-descriptor set — see vk_compute_pipeline.hpp). Phase 1
+    // only creates the layout with a single placeholder params UBO; Phase 2 adds the
+    // cascade/derivative texture bindings once there's real content to bind.
+    waterFieldSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
+                              .setFlags(VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR)
+                              .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                          VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
+                                              VK_SHADER_STAGE_FRAGMENT_BIT |
+                                              VK_SHADER_STAGE_COMPUTE_BIT)
+                              .build();
 
     textureCache = std::make_unique<TextureCache>(*vk_device);
 
@@ -153,13 +179,31 @@ void Faye::Vulkan::initializeFrameResources()
         *materialCache,
         *globalSetLayout,
         materialSetLayout->getDescriptorSetLayout(),
-        bindlessSetLayout->getDescriptorSetLayout());
+        bindlessSetLayout->getDescriptorSetLayout(),
+        waterFieldSetLayout->getDescriptorSetLayout());
 
     simpleRenderSystem->prepareDepthPrepassPipeline(
         vk_renderer->getSceneDepthFormat(),
         globalSetLayout->getDescriptorSetLayout());
 
     pointLightRenderSystem = std::make_unique<PointLightRenderSystem>(
+        *vk_device,
+        vk_renderer->getSceneColorFormat(),
+        vk_renderer->getSceneMotionFormat(),
+        vk_renderer->getSceneDepthFormat(),
+        *globalSetLayout);
+
+    waterDebugGradient = std::make_unique<VulkanComputePipeline>(
+        *vk_device,
+        Paths::compiledShader("water_debug_gradient.comp").string());
+    VkImageResourceCreateInfo imgInfo{};
+    imgInfo.extent = {256, 256, 1};
+    imgInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    imgInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imgInfo.aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+    waterFieldDebugImage.createOwned(*vk_device, imgInfo); // starts in VK_IMAGE_LAYOUT_UNDEFINED
+
+    editorGridRenderSystem = std::make_unique<EditorGridRenderSystem>(
         *vk_device,
         vk_renderer->getSceneColorFormat(),
         vk_renderer->getSceneMotionFormat(),
@@ -181,6 +225,7 @@ Faye::Vulkan::~Vulkan()
 
     simpleRenderSystem.reset();
     pointLightRenderSystem.reset();
+    editorGridRenderSystem.reset();
     postProcessChain.reset();
     materialCache.reset();
     textureCache.reset();
@@ -194,6 +239,7 @@ Faye::Vulkan::~Vulkan()
     materialSetLayout.reset();
     bindlessSetLayout.reset();
     uboBuffers.clear();
+    lightingBuffers.clear();
     materialPool.reset();
     bindlessPool.reset();
     globalPool.reset();
@@ -253,6 +299,24 @@ MaterialTextureView Faye::Vulkan::getMaterialTexture(MaterialHandle handle, cons
     return MaterialTextureView{
         texture->imageResource.imageView,
         texture->samplerResource.sampler};
+}
+
+MaterialTextureView Faye::Vulkan::getOrCreateTexture(const Texture &texture)
+{
+    if (textureCache == nullptr)
+    {
+        return {};
+    }
+
+    const std::shared_ptr<VkTextureResource> resource = textureCache->getOrCreateTexture(texture);
+    if (resource == nullptr || !resource->isValid())
+    {
+        return {};
+    }
+
+    return MaterialTextureView{
+        resource->imageResource.imageView,
+        resource->samplerResource.sampler};
 }
 
 std::optional<uint32_t> Faye::Vulkan::finalPostProcessTarget(const PostProcessStackComponent *stack) const
@@ -343,6 +407,7 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
         commandBuffer,
         *primaryCamera,
         uboBuffers[frameIndex].get(),
+        lightingBuffers[frameIndex].get(),
         prepassDepthInfo});
     FrameContext &frameContext = *currentFrame;
 
@@ -357,11 +422,47 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     ubo.deltaTime = static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
     ubo.inverseProjection = primaryCamera->getInverseProjection();
 
-    // Update point light system UBO with the point light data from this frame's render scene.
-    pointLightRenderSystem->update(frameContext, frameInput.renderScene, ubo);
-
     uboBuffers[frameIndex]->writeToBuffer(&ubo);
     uboBuffers[frameIndex]->flush();
+
+    // Pack all scene lighting (ambient + point + directional) into the dedicated
+    // lighting UBO (set 0, binding 2). No render system owns this: directional
+    // lights have no geometry, and point-light billboards are drawn separately.
+    SceneLightingUBO lighting{};
+    packSceneLighting(frameInput.renderScene, lighting);
+    lightingBuffers[frameIndex]->writeToBuffer(&lighting);
+    lightingBuffers[frameIndex]->flush();
+
+    // Water compute dispatch and barrier
+    waterFieldDebugImage.recordTransition(commandBuffer, VK_IMAGE_LAYOUT_GENERAL,
+                                       VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                       VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                       VK_ACCESS_2_SHADER_READ_BIT,
+                                       VK_ACCESS_2_SHADER_WRITE_BIT);
+
+    VkDescriptorImageInfo storageInfo{};
+    storageInfo.imageView = waterFieldDebugImage.imageView;
+    storageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    // globalSetLayout binding 0 is VK_SHADER_STAGE_ALL_GRAPHICS, which excludes
+    // compute, so water_debug_gradient.comp cannot read the GlobalUBO. Frame time
+    // reaches it via a push constant instead.
+    struct WaterComputeTimePushConstants
+    {
+        float time;
+        float deltaTime;
+    } timePush{ubo.time, ubo.deltaTime};
+
+    waterDebugGradient->dispatch(commandBuffer, 256 / 16, 256 / 16, 1, {{0, &storageInfo}}, &timePush, sizeof(timePush));
+
+    // Make the write visible to whatever reads it next. Fragment stage for a debug view
+    // now; add TESSELLATION_EVALUATION_SHADER once TESE samples it in Phase 4.
+    waterFieldDebugImage.recordTransition(commandBuffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                                        VK_ACCESS_2_SHADER_WRITE_BIT,
+                                        VK_ACCESS_2_SHADER_READ_BIT);
+    
 
     // Opaque depth prepass -- write depth for all non-water objects.
     // water.frag samples this via set=0 binding=1 (prepassDepth) to
@@ -386,6 +487,15 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     if (!frameInput.renderScene.pointLights.empty())
     {
         pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+    }
+
+    // Editor reference grid. Last inside the scene pass so it tests against a
+    // complete depth buffer and alpha-blends over finished shading. The view
+    // owns the decision: runtime views leave `enabled` false and this is a
+    // predicted-not-taken branch, not a pipeline bind.
+    if (frameInput.renderView.grid.enabled)
+    {
+        editorGridRenderSystem->render(frameContext, frameInput.renderView.grid);
     }
 
     vk_renderer->endSceneRenderPass(commandBuffer);

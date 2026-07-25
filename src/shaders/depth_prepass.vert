@@ -9,21 +9,7 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-struct PointLight { vec4 position; vec4 color; };
-
-layout(set = 0, binding = 0) uniform GlobalUbo {
-    mat4 projection;
-    mat4 view;
-    mat4 inverseView;
-    mat4 priorViewProjection;
-    vec4 ambientLightColor;
-    PointLight pointLights[10];
-    int   numLights;
-    float time;
-    float _pad0;
-    float _pad1;
-    float _pad2;
-} ubo;
+#include "FayeGlobal.glsl"
 
 layout(buffer_reference, scalar) readonly buffer VertexBuffer {
     vec3 pos;

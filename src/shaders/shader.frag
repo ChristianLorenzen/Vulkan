@@ -1,6 +1,8 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "FayeLighting.glsl"
+
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec3 fragPosWorld;
 layout(location = 2) in vec3 fragNormalWorld;
@@ -25,23 +27,6 @@ layout(push_constant) uniform Push {
     uint aoSlot;
 } push;
 
-struct PointLight {
-    vec4 position;
-    vec4 color;
-};
-
-layout(set = 0, binding = 0) uniform GlobalUbo {
-    mat4 projection;
-    mat4 view;
-    mat4 inverseView;
-    mat4 priorViewProjection;
-    vec4 ambientLightColor;
-    PointLight pointLights[10];
-    int numLights;
-    int time;
-    int _pad[3];
-} ubo;
-
 layout(set = 1, binding = 0) uniform MaterialParams {
     vec4 baseColorFactor;
     vec4 surfaceFactors;
@@ -59,7 +44,7 @@ void main() {
     float roughness = clamp(texture(allTextures[nonuniformEXT(push.roughnessSlot)], fragTexCoord).r * materialParams.surfaceFactors.y, 0.04, 1.0);
     float occlusion = clamp(mix(1.0, texture(allTextures[nonuniformEXT(push.aoSlot)], fragTexCoord).r, materialParams.surfaceFactors.w), 0.0, 1.0);
 
-    vec3 diffuseLight = ubo.ambientLightColor.xyz * ubo.ambientLightColor.w;
+    vec3 diffuseLight = fayeAmbient();
     vec3 specularLight = vec3(0.0);
     vec3 surfaceNormal = normalize(fragNormalWorld);
 
@@ -70,28 +55,18 @@ void main() {
         surfaceNormal = normalize(tbn * tangentNormal);
     }
 
-    vec3 cameraPosWorld = ubo.inverseView[3].xyz; // Extract camera position from inverse view matrix
+    vec3 cameraPosWorld = fayeCameraPosWorld();
     vec3 viewDir = normalize(cameraPosWorld - fragPosWorld);
     vec3 specularColor = mix(materialParams.specularShininess.rgb, albedo, metallic);
     float specularPower = mix(max(materialParams.specularShininess.w, 1.0), 4.0, roughness);
 
-    for (int i = 0; i < ubo.numLights; i++) {
-        PointLight light = ubo.pointLights[i];
-        vec3 directionToLight = light.position.xyz - fragPosWorld;
-        float attenuation = 1.0 / dot(directionToLight, directionToLight); // Inverse square law
-        
-        directionToLight = normalize(directionToLight);
-    
-        float cosAngIncidence = max(dot(surfaceNormal, directionToLight), 0.0);
-        vec3 intensity = light.color.xyz * light.color.w * attenuation;
-
-        diffuseLight += intensity * cosAngIncidence;
-
-        vec3 halfAngle = normalize(directionToLight + viewDir);
-        float blinnTerm = dot(surfaceNormal, halfAngle);
-        blinnTerm = clamp(blinnTerm, 0.0, 1.0);
-        blinnTerm = pow(blinnTerm, specularPower);
-        specularLight += intensity * blinnTerm * specularColor;
+    for (int i = 0; i < lights.numPointLights; i++) {
+        fayeAccumulatePointLight(lights.pointLights[i], fragPosWorld, surfaceNormal, viewDir,
+                                 specularColor, specularPower, diffuseLight, specularLight);
+    }
+    for (int i = 0; i < lights.numDirectionalLights; i++) {
+        fayeAccumulateDirectionalLight(lights.directionalLights[i], surfaceNormal, viewDir,
+                                       specularColor, specularPower, diffuseLight, specularLight);
     }
 
     vec3 diffuseColor = albedo * (1.0 - metallic);

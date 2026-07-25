@@ -42,8 +42,9 @@ namespace Faye
 		PointLightRenderSystem(PointLightRenderSystem &&) = delete;
 		PointLightRenderSystem &operator=(PointLightRenderSystem &&) = delete;
 
+		// Draws camera-facing debug billboards for each point light. Lighting
+		// data (the UBO arrays) is packed separately by packSceneLighting().
 		void render(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
-		void update(FrameContext &frameContext, const RenderSceneSnapshot &renderScene, GlobalUBO &ubo);
 
 	private:
 		VulkanDevice &vk_device;

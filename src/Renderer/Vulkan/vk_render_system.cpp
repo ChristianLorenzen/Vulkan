@@ -246,11 +246,15 @@ void Faye::SimpleRenderSystem::invalidatePipelines(const std::string &compiledSh
 
 void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene)
 {
-    // Push global UBO + prepass depth directly into the command buffer (no pool allocation).
+    // Push global UBO + prepass depth + lighting UBO directly into the command
+    // buffer (no pool allocation). Lit fragment shaders read the lighting UBO at
+    // set 0, binding 2.
     auto bufferInfo = frameContext.globalBuffer->descriptorInfo();
+    auto lightingInfo = frameContext.lightingBuffer->descriptorInfo();
     VulkanDescriptorWriter(globalDescriptorSetLayout)
         .writeBuffer(0, &bufferInfo)
         .writeImage(1, &frameContext.prepassDepthInfo)
+        .writeBuffer(2, &lightingInfo)
         .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 0);
 
     for (const auto &renderable : renderScene.renderables)

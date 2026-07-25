@@ -5,10 +5,7 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-struct PointLight {
-    vec4 position;
-    vec4 color;
-};
+#include "FayeGlobal.glsl"
 
 // Matches the C++ Vertex struct layout exactly.
 // scalar layout uses 4-byte (component) alignment for all types,
@@ -20,18 +17,6 @@ layout(buffer_reference, scalar) readonly buffer VertexBuffer {
     vec2 uv;
     vec4 tangent;
 };
-
-layout(set = 0, binding = 0) uniform GlobalUbo {
-    mat4 projection;
-    mat4 view;
-    mat4 inverseView;
-    mat4 priorViewProjection;
-    vec4 ambientLightColor;
-    PointLight pointLights[10];
-    int numLights;
-    int time;
-    int _pad[3];
-} ubo;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec3 fragPosWorld;
