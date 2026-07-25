@@ -7,7 +7,8 @@
 using namespace Faye;
 
 Faye::SceneManager::SceneManager(ModelRegistry &modelRegistry, MaterialRegistry &materialRegistry)
-    : modelRegistry(modelRegistry), materialRegistry(materialRegistry) {}
+    : modelRegistry(modelRegistry), materialRegistry(materialRegistry),
+      renderExtractionManager(modelRegistry, materialRegistry) {}
 
 void Faye::SceneManager::OnInit()
 {

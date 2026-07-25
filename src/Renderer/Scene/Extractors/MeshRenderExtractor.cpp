@@ -1,49 +1,54 @@
 #include "Renderer/Scene/Extractors/MeshRenderExtractor.hpp"
 
+#include "Core/ECS/World.hpp"
+
 namespace Faye
 {
-    void MeshRenderExtractor::extract(const RenderExtractionContext &context) const
+    Ecs::SystemAccess MeshRenderExtractor::access() const
     {
-        auto renderables = context.scene.getRenderableViews();
-        context.snapshot.renderables.reserve(context.snapshot.renderables.size() + renderables.size());
+        return Ecs::SystemAccess{}
+            .read<TransformComponent>()
+            .read<MeshRendererComponent>()
+            .read<PreviousTransformComponent>();
+    }
 
-        for (const auto &renderable : renderables)
-        {
-            if (renderable.transform == nullptr || renderable.mesh == nullptr)
+    void MeshRenderExtractor::run(Ecs::World &world, const EngineContext &,
+                                  Jobs::JobSystem &, Ecs::CommandBuffer &)
+    {
+        world.view<TransformComponent, MeshRendererComponent>().each(
+            [&](Ecs::Entity entity, TransformComponent &transform, MeshRendererComponent &mesh)
             {
-                continue;
-            }
+                Model *model = models.getModel(mesh.modelHandle);
+                if (model == nullptr)
+                {
+                    return;
+                }
 
-            Model *model = context.modelRegistry.getModel(renderable.mesh->modelHandle);
-            if (model == nullptr)
-            {
-                continue;
-            }
+                Material *material = nullptr;
+                if (mesh.materialHandle.isValid())
+                {
+                    material = materials.getMaterial(mesh.materialHandle);
+                }
 
-            Material *material = nullptr;
-            if (renderable.mesh->materialHandle.isValid())
-            {
-                material = context.materialRegistry.getMaterial(renderable.mesh->materialHandle);
-            }
+                const glm::mat4 modelMatrix = transform.mat4();
+                glm::mat4 priorModelMatrix = modelMatrix;
 
-            const glm::mat4 modelMatrix = renderable.transform->mat4();
-            glm::mat4 priorModelMatrix = modelMatrix;
+                // Read last frame's transform (read-only: tryGet never creates a
+                // pool, so this stays safe inside the view iteration).
+                if (const auto *history = world.tryGet<PreviousTransformComponent>(entity);
+                    history != nullptr && history->lastSeenExtraction + 1 == extractionIndex)
+                {
+                    priorModelMatrix = history->modelMatrix;
+                }
 
-            if (const auto historyIt = context.previousModelTransforms.find(renderable.entity);
-                historyIt != context.previousModelTransforms.end() &&
-                historyIt->second.lastSeenExtraction + 1 == context.extractionIndex)
-            {
-                priorModelMatrix = historyIt->second.modelMatrix;
-            }
-
-            context.snapshot.renderables.push_back(RenderableInstance{
-                renderable.entity,
-                modelMatrix,
-                priorModelMatrix,
-                model,
-                &context.materialRegistry,
-                renderable.mesh->materialHandle,
-                material});
-        }
+                snapshot.renderables.push_back(RenderableInstance{
+                    entity,
+                    modelMatrix,
+                    priorModelMatrix,
+                    model,
+                    &materials,
+                    mesh.materialHandle,
+                    material});
+            });
     }
 }

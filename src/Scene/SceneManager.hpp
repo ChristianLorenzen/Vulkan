@@ -5,6 +5,7 @@
 
 #include "Core/ITick.hpp"
 #include "Assets/ModelRegistry.hpp"
+#include "Core/Jobs/JobSystem.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Scene/RenderExtractionManager.hpp"
 #include "Scene.hpp"
@@ -24,14 +25,16 @@ namespace Faye
         Scene &getActiveScene();
         const Scene &getActiveScene() const;
 
-        RenderSceneSnapshot buildRenderSnapshot() { return renderExtractionManager.extract(getActiveScene(), modelRegistry, materialRegistry); }
+        const RenderSceneSnapshot &buildRenderSnapshot(Jobs::JobSystem &jobs) { return renderExtractionManager.extract(getActiveScene(), jobs); }
 
     private:
         std::unique_ptr<Scene> activeScene;
 
-        RenderExtractionManager renderExtractionManager;
-
+        // Declared before the extraction manager so the references it captures
+        // are bound first.
         ModelRegistry &modelRegistry;
         MaterialRegistry &materialRegistry;
+
+        RenderExtractionManager renderExtractionManager;
     };
 }
