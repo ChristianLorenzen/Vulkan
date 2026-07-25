@@ -20,6 +20,16 @@ namespace Faye
         Mask = 1,
     };
 
+    // Which render paths a material participates in. Replaces matching on
+    // "does the shader path contain 'water'" (see renderDepthPrepass) with an
+    // explicit, pipeline-affecting property.
+    enum class MaterialDomain
+    {
+        Opaque,      // participates in the depth prepass, drawn as triangles
+        Transparent, // skips the depth prepass, drawn as triangles
+        Water,       // skips the depth prepass, drawn as tessellated patches
+    };
+
     // Handle to a MaterialTemplate (0 = built-in PBR).
     using MaterialTemplateHandle = uint32_t;
     static constexpr MaterialTemplateHandle kBuiltinPBRTemplateHandle = 0;
@@ -175,6 +185,15 @@ namespace Faye
         // (depth testing stays enabled). Used by translucent materials such
         // as water. Motion-vector attachment 1 is never blended.
         bool enableAlphaBlending = false;
+
+        // Which render paths this material participates in (see MaterialDomain).
+        MaterialDomain domain = MaterialDomain::Opaque;
+
+        // Optional tessellation control/evaluation shader paths. Non-empty only for
+        // domains that render as tessellated patches (currently just Water, once
+        // Phase 4's ring mesh lands). Empty means a standard vertex+fragment pipeline.
+        std::string tessControlShaderPath;
+        std::string tessEvalShaderPath;
 
         MaterialPipelineConfig() = default;
 

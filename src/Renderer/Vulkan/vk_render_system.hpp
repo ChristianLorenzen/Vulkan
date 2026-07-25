@@ -37,7 +37,7 @@ namespace Faye
 	class SimpleRenderSystem
 	{
 	public:
-		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout);
+		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout);
 		~SimpleRenderSystem();
 
 		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -61,6 +61,9 @@ namespace Faye
                         std::string vertexShaderPath;
                         std::string fragmentShaderPath;
                         bool alphaBlend = false;
+                        MaterialDomain domain = MaterialDomain::Opaque;
+                        std::string tessControlShaderPath;
+                        std::string tessEvalShaderPath;
 
                         friend bool operator==(const MaterialPipelineKey &left, const MaterialPipelineKey &right) = default;
                 };
@@ -80,7 +83,7 @@ namespace Faye
                 VkPipelineLayout depthPrepassPipelineLayout{VK_NULL_HANDLE};
                 std::unique_ptr<VulkanPipeline> depthPrepassPipeline;
 
-                void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout);
+                void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout);
                 VulkanPipeline &getOrCreatePipeline(const MaterialState &materialState);
                 std::unique_ptr<VulkanPipeline> createPipeline(const MaterialPipelineKey &key) const;
                 static MaterialPipelineKey makePipelineKey(const MaterialState &materialState);

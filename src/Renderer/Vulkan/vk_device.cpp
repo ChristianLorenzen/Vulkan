@@ -319,7 +319,7 @@ bool VulkanDevice::isDeviceSuitable(VkPhysicalDevice device)
     VkPhysicalDeviceFeatures supportedFeatures;
     vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-    return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
+    return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy && supportedFeatures.tessellationShader;
 }
 
 bool VulkanDevice::checkDeviceExtensionSupport(VkPhysicalDevice device)

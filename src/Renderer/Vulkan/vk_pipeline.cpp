@@ -6,10 +6,11 @@
 
 using namespace Faye;
 
-VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config) : device(device)
+VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
+                               const std::string &tescFilepath, const std::string &tesePath) : device(device)
 {
     LOG_INFO(Logger::get(), "Creating Graphics Pipeline...");
-    createGraphicsPipeline(vertFilepath, fragFilepath, config);
+    createGraphicsPipeline(vertFilepath, fragFilepath, config, tescFilepath, tesePath);
 }
 
 VulkanPipeline::~VulkanPipeline()
@@ -20,43 +21,59 @@ VulkanPipeline::~VulkanPipeline()
     }
 }
 
-void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config)
+void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
+                                            const std::string &tescFilepath, const std::string &tesePath)
 {
     auto vertShaderCode = FileSystem::readFile(vertFilepath);
     auto fragShaderCode = FileSystem::readFile(fragFilepath);
+    const bool hasTessellation = !tescFilepath.empty() && !tesePath.empty();
 
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+    VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
     VkShaderModule fragShaderModule{VK_NULL_HANDLE};
+    VkShaderModule tescShaderModule{VK_NULL_HANDLE};
+    VkShaderModule teseShaderModule{VK_NULL_HANDLE};
+
+    auto destroyCreatedModules = [&]()
+    {
+        if (fragShaderModule != VK_NULL_HANDLE) vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
+        if (tescShaderModule != VK_NULL_HANDLE) vkDestroyShaderModule(device.getDevice(), tescShaderModule, nullptr);
+        if (teseShaderModule != VK_NULL_HANDLE) vkDestroyShaderModule(device.getDevice(), teseShaderModule, nullptr);
+        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+    };
 
     try
     {
-        fragShaderModule = createShaderModule(fragShaderCode);
+        fragShaderModule = createShaderModule(device, fragShaderCode);
+        if (hasTessellation)
+        {
+            tescShaderModule = createShaderModule(device, FileSystem::readFile(tescFilepath));
+            teseShaderModule = createShaderModule(device, FileSystem::readFile(tesePath));
+        }
     }
     catch (const std::exception &e)
     {
-        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+        destroyCreatedModules();
         throw; // Re-throw the exception after cleanup
     }
 
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
-    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vertShaderModule;
-    vertShaderStageInfo.pName = "main";
-    vertShaderStageInfo.flags = 0;
-    vertShaderStageInfo.pNext = nullptr;
-    vertShaderStageInfo.pSpecializationInfo = nullptr;
+    auto makeStageInfo = [](VkShaderStageFlagBits stage, VkShaderModule module)
+    {
+        VkPipelineShaderStageCreateInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        info.stage = stage;
+        info.module = module;
+        info.pName = "main";
+        return info;
+    };
 
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
-    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = fragShaderModule;
-    fragShaderStageInfo.pName = "main";
-    fragShaderStageInfo.flags = 0;
-    fragShaderStageInfo.pNext = nullptr;
-    fragShaderStageInfo.pSpecializationInfo = nullptr;
-
-    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+    shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_VERTEX_BIT, vertShaderModule));
+    shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShaderModule));
+    if (hasTessellation)
+    {
+        shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescShaderModule));
+        shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseShaderModule));
+    }
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -72,8 +89,8 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
 
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+    pipelineInfo.pStages = shaderStages.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &config.inputAssemblyInfo;
     pipelineInfo.pViewportState = &config.viewportInfo;
@@ -85,6 +102,15 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     pipelineInfo.renderPass = VK_NULL_HANDLE;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
+
+    // Only chain tessellation state when both stages are present -- pTessellationState
+    // must point at a struct with a correct sType when non-null, even though the spec
+    // says it's "ignored" without tess stages, so it's left nullptr (the prior,
+    // implicit behavior) for every non-tessellated pipeline.
+    if (hasTessellation)
+    {
+        pipelineInfo.pTessellationState = &config.tessellationInfo;
+    }
 
     VkPipelineColorBlendStateCreateInfo colorBlendingInfo = config.colorBlendingInfo;
     colorBlendingInfo.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
@@ -107,8 +133,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
 
     VkResult result = vkCreateGraphicsPipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &graphicsPipeline);
 
-    vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
-    vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+    destroyCreatedModules();
 
     if (result != VK_SUCCESS)
     {
@@ -116,7 +141,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     }
 }
 
-VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char> &code)
+VkShaderModule Faye::createShaderModule(VulkanDevice &device, const std::vector<char> &code)
 {
     VkShaderModuleCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

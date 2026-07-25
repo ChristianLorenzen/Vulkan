@@ -32,21 +32,38 @@ namespace
     constexpr std::string_view kDefaultVertexShader = "shader.vert";
     constexpr std::string_view kDefaultFragmentShader = "shader.frag";
     const std::filesystem::path kCompiledShaderDirectory = Paths::compiledShaders();
+
+    // A pipeline only supports PATCH_LIST if it was actually built with tessellation
+    // control/evaluation stages (see SimpleRenderSystem::createPipeline). Branching on
+    // MaterialDomain::Water alone would be wrong until Phase 4 gives water real
+    // tesc/tese shaders -- until then this always resolves to TRIANGLE_LIST.
+    VkPrimitiveTopology topologyForMaterial(const Faye::MaterialPipelineConfig &pipelineConfig)
+    {
+        const bool hasTessellation = !pipelineConfig.tessControlShaderPath.empty() &&
+                                      !pipelineConfig.tessEvalShaderPath.empty();
+        return hasTessellation ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    }
 }
 
 size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const MaterialPipelineKey &key) const
 {
     const size_t vertexHash = std::hash<std::string>{}(key.vertexShaderPath);
     const size_t fragmentHash = std::hash<std::string>{}(key.fragmentShaderPath);
-    const size_t combined = vertexHash ^ (fragmentHash + 0x9e3779b9 + (vertexHash << 6) + (vertexHash >> 2));
-    return combined ^ (key.alphaBlend ? size_t{0x9e3779b97f4a7c15ULL} : size_t{0});
+    const size_t tescHash = std::hash<std::string>{}(key.tessControlShaderPath);
+    const size_t teseHash = std::hash<std::string>{}(key.tessEvalShaderPath);
+    size_t combined = vertexHash ^ (fragmentHash + 0x9e3779b9 + (vertexHash << 6) + (vertexHash >> 2));
+    combined ^= tescHash + 0x9e3779b9 + (combined << 6) + (combined >> 2);
+    combined ^= teseHash + 0x9e3779b9 + (combined << 6) + (combined >> 2);
+    combined ^= key.alphaBlend ? size_t{0x9e3779b97f4a7c15ULL} : size_t{0};
+    combined ^= static_cast<size_t>(key.domain) * 0x9e3779b97f4a7c15ULL;
+    return combined;
 }
 
-Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout)
+Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout)
     : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache), globalDescriptorSetLayout(globalSetLayout)
 {
     LOG_INFO(Logger::get(), "Creating Vulkan Pipeline Layout...");
-    createPipelineLayout(globalSetLayout.getDescriptorSetLayout(), materialSetLayout, bindlessSetLayout);
+    createPipelineLayout(globalSetLayout.getDescriptorSetLayout(), materialSetLayout, bindlessSetLayout, waterFieldSetLayout);
 }
 
 Faye::SimpleRenderSystem::~SimpleRenderSystem()
@@ -59,14 +76,14 @@ Faye::SimpleRenderSystem::~SimpleRenderSystem()
 }
 
 // ------------------------------------- Conversion Functions ------------------------------------- //
-void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout)
+void Faye::SimpleRenderSystem::createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout)
 {
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(SimplePushConstantData);
 
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts{globalSetLayout, materialSetLayout, bindlessSetLayout};
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts{globalSetLayout, materialSetLayout, bindlessSetLayout, waterFieldSetLayout};
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -119,10 +136,16 @@ Faye::SimpleRenderSystem::MaterialPipelineKey Faye::SimpleRenderSystem::makePipe
                                                 ? std::string_view(materialState.pipelineConfig.fragmentShaderPath)
                                                 : kDefaultFragmentShader;
 
+    const bool hasTessellation = !materialState.pipelineConfig.tessControlShaderPath.empty() &&
+                                  !materialState.pipelineConfig.tessEvalShaderPath.empty();
+
     return MaterialPipelineKey{
         resolveCompiledShaderPath(std::string(vertexShader)),
         resolveCompiledShaderPath(std::string(fragmentShader)),
-        materialState.pipelineConfig.enableAlphaBlending};
+        materialState.pipelineConfig.enableAlphaBlending,
+        materialState.pipelineConfig.domain,
+        hasTessellation ? resolveCompiledShaderPath(materialState.pipelineConfig.tessControlShaderPath) : std::string(),
+        hasTessellation ? resolveCompiledShaderPath(materialState.pipelineConfig.tessEvalShaderPath) : std::string()};
 }
 
 std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const MaterialPipelineKey &key) const
@@ -151,11 +174,21 @@ std::unique_ptr<VulkanPipeline> Faye::SimpleRenderSystem::createPipeline(const M
     pipelineConfig.depthAttachmentFormat = sceneDepthFormat;
     pipelineConfig.pipelineLayout = pipelineLayout;
 
+    const bool hasTessellation = !key.tessControlShaderPath.empty() && !key.tessEvalShaderPath.empty();
+    if (hasTessellation)
+    {
+        pipelineConfig.inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
+        pipelineConfig.tessellationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
+        pipelineConfig.tessellationInfo.patchControlPoints = 4;
+    }
+
     return std::make_unique<VulkanPipeline>(
         vk_device,
         key.vertexShaderPath,
         key.fragmentShaderPath,
-        pipelineConfig);
+        pipelineConfig,
+        key.tessControlShaderPath,
+        key.tessEvalShaderPath);
 }
 
 VulkanPipeline &Faye::SimpleRenderSystem::getOrCreatePipeline(const MaterialState &materialState)
@@ -242,7 +275,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
 
             vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
             vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
-            vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+            vkCmdSetPrimitiveTopology(frameContext.commandBuffer, topologyForMaterial(materialState.pipelineConfig));
             vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_TRUE);
             vkCmdSetDepthWriteEnable(frameContext.commandBuffer,
                                      materialState.pipelineConfig.enableAlphaBlending ? VK_FALSE : VK_TRUE);
@@ -307,7 +340,7 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
 
             vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
             vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
-            vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+            vkCmdSetPrimitiveTopology(frameContext.commandBuffer, topologyForMaterial(materialState.pipelineConfig));
             vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_TRUE);
             vkCmdSetDepthWriteEnable(frameContext.commandBuffer,
                                      materialState.pipelineConfig.enableAlphaBlending ? VK_FALSE : VK_TRUE);
@@ -419,14 +452,11 @@ void Faye::SimpleRenderSystem::renderDepthPrepass(
             continue;
         }
 
-        // Skip water — it is translucent/animated and must NOT occlude other objects.
-        if (renderable.material != nullptr)
+        // Skip non-opaque materials (e.g. water) — they are translucent/animated and
+        // must NOT occlude other objects in the depth prepass.
+        if (renderable.material != nullptr && renderable.material->getPipelineConfig().domain != MaterialDomain::Opaque)
         {
-            const std::string &vs = renderable.material->getVertexShaderPath();
-            if (vs.find("water") != std::string::npos)
-            {
-                continue;
-            }
+            continue;
         }
 
         SimplePushConstantData push{};
