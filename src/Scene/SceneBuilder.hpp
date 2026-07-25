@@ -10,6 +10,7 @@
 #include "Renderer/Resources/PrimitiveType.hpp"
 #include "Scene/Scene.hpp"
 #include "Scene/Entities/Entity.hpp"
+#include "Core/Jobs/JobSystem.hpp"
 
 namespace Faye
 {
@@ -34,12 +35,16 @@ namespace Faye
         SceneBuilder(ModelRegistry &models,
                      MaterialRegistry &materials,
                      ScriptSystem &scripts,
-                     LuaScriptSystem &luaScripts);
+                     LuaScriptSystem &luaScripts,
+                     Jobs::JobSystem &jobSystem
+                    );
 
         /// Populate the already-created, empty scene with the demo content and
         /// return the entities the engine needs to drive the frame. Assumes the
         /// scripting systems have already bound this scene (OnPostInit).
         SceneSetup populate(Scene &scene);
+
+        void populateDefaultScene(Scene &scene);
 
         /// Create a primitive entity at runtime — the editor "add primitive"
         /// action routes here.
@@ -65,6 +70,7 @@ namespace Faye
         MaterialRegistry &materials;
         ScriptSystem &scripts;
         LuaScriptSystem &luaScripts;
+        Jobs::JobSystem &jobSystem;
 
         std::array<ModelHandle, static_cast<std::size_t>(PrimitiveType::Count)> primitiveModelHandles{};
         MaterialHandle waterMaterialHandle{};

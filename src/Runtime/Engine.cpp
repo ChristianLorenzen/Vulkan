@@ -40,7 +40,7 @@ namespace Faye {
 
         sceneBuilder = std::make_unique<SceneBuilder>(
             *modelRegistry, *materialRegistry,
-            scriptingSystem->getScriptSystem(), scriptingSystem->getLuaScriptSystem());
+            scriptingSystem->getScriptSystem(), scriptingSystem->getLuaScriptSystem(), *jobSystem);
         
         Jobs::JobHandle handle = jobSystem->schedule([this]() {
             SceneBuilder::SceneSetup sceneSetup = sceneBuilder->populate(sceneManager->getActiveScene());

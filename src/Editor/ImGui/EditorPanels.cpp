@@ -918,6 +918,7 @@ namespace Faye
     {
         ImGui::Text("Model Handle: %u", mesh.modelHandle.value);
         ImGui::Text("Material Handle: %u", mesh.materialHandle.value);
+        ImGui::Checkbox("Visible", &mesh.view);
     }
 
     void drawCamera(const ComponentDrawContext &context, CameraComponent &camera)

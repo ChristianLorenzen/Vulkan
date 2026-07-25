@@ -18,6 +18,11 @@ namespace Faye
         world.view<TransformComponent, MeshRendererComponent>().each(
             [&](Ecs::Entity entity, TransformComponent &transform, MeshRendererComponent &mesh)
             {
+                if (!mesh.view)
+                {
+                    return;
+                }
+
                 Model *model = models.getModel(mesh.modelHandle);
                 if (model == nullptr)
                 {

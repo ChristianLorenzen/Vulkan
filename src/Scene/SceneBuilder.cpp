@@ -22,8 +22,9 @@ using namespace Faye;
 Faye::SceneBuilder::SceneBuilder(ModelRegistry &models,
                                  MaterialRegistry &materials,
                                  ScriptSystem &scripts,
-                                 LuaScriptSystem &luaScripts)
-    : models(models), materials(materials), scripts(scripts), luaScripts(luaScripts) {}
+                                 LuaScriptSystem &luaScripts,
+                                 Jobs::JobSystem &jobSystem)
+    : models(models), materials(materials), scripts(scripts), luaScripts(luaScripts), jobSystem(jobSystem) {}
 
 Faye::ModelHandle Faye::SceneBuilder::ensurePrimitiveHandle(PrimitiveType primitiveType)
 {
@@ -94,19 +95,11 @@ Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveTy
     return entity;
 }
 
-Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
+void Faye::SceneBuilder::populateDefaultScene(Scene &scene)
 {
     Time::StopWatch initSceneTimer;
 
-    SceneSetup setup;
-
-    setup.postProcessSettings = scene.createEntity("Post Processing");
-    setup.postProcessSettings.add<PostProcessStackComponent>() = makeDefaultPostProcessStack();
-
-    Entity editorCamera = scene.createEntity("Editor Camera");
-    setup.activeCamera = editorCamera;
-    editorCamera.add<TransformComponent>();
-    editorCamera.addCamera(true);
+    std::filesystem::path defaultAssetPath = Paths::projects();
 
     MaterialHandle defaultMat = materials.registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
     MaterialHandle redMat = materials.registerMaterial(MaterialData{"Red Material", glm::vec3(1.0f, 0.0f, 0.0f)});
@@ -115,34 +108,6 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     MaterialHandle shinyMat = materials.registerMaterial(MaterialData{"Shiny Material", glm::vec3(1.0f, 1.0f, 1.0f), {}, glm::vec4(1.0f), glm::vec4(0.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 32.0f)});
     (void)blueMat;
     (void)shinyMat;
-
-    // Water material — uses water.vert/water.frag via MaterialPipelineConfig.
-    // The pipeline is selected per-material by SimpleRenderSystem at draw time.
-    // Texture slot mapping (fixed by MaterialCache::writeDescriptorSet):
-    //   Albedo   (binding 0) → normalMap1 in water.frag → waternormal1.jpg
-    //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
-    //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
-    MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
-    waterMaterialData.shininess = 64.0f;  // specularShininess.w  -- editor: Shininess
-    waterMaterialData.normalScale = 0.4f; // surfaceFactors.z     -- editor: Normal Scale
-    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal1.jpg").string(), TextureType::Albedo));
-    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
-    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
-    MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
-    waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
-    waterPipelineConfig.domain = MaterialDomain::Water; // excluded from depth prepass
-    waterMaterialHandle = materials.registerMaterial(
-        std::move(waterMaterialData),
-        std::move(waterPipelineConfig));
-
-    MaterialData spyBoxMaterial{"Spy Box Material", glm::vec3(1.0f, 1.0f, 1.0f)};
-    spyBoxMaterial.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/spy.jpg").string(), TextureType::Albedo));
-    spyBoxMaterial.baseColorFactor = glm::vec4(1.0f);
-    spyBoxMaterial.metallicFactor = 0.0f;
-    spyBoxMaterial.roughnessFactor = 0.85f;
-
-    MaterialHandle spyBoxMat = materials.registerMaterial(std::move(spyBoxMaterial));
-    (void)spyBoxMat;
 
     Entity meshEntity = scene.createEntity("Cube A");
     auto &meshTransform = meshEntity.add<TransformComponent>();
@@ -167,7 +132,7 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     auto floorHandle = ensurePrimitiveHandle(PrimitiveType::Plane);
     auto &floorMeshComponent = floorEntity.addMesh(floorHandle);
     floorTransform.translation = {0.f, -0.5f, 0.f};
-    floorTransform.scale = {3.f, 1.f, 3.f};
+    floorTransform.scale = {5.f, 1.f, 5.f};
     floorMeshComponent.materialHandle = defaultMat;
 
     Entity pointLightEntity = scene.createEntity("Point Light");
@@ -201,15 +166,23 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     auto &sunLight = sunEntity.add<DirectionalLightComponent>();
     sunTransform.rotation = {0.9f, 0.4f, 0.f};
     sunLight.color = {1.0f, 0.96f, 0.9f};
-    sunLight.intensity = 1.0f;
+    sunLight.intensity = 0.2f;
 
-    Entity modelAdam = scene.createEntity("Adam Model");
-    auto &modelAdamTransform = modelAdam.add<TransformComponent>();
-    const ImportedModelRegistration adamRegistration = registerImportedModelWithBounds("src/include/models/adamHead/adamHead.gltf");
-    modelAdam.addMesh(adamRegistration.handle);
-    modelAdamTransform.translation = {0.f, 0.f, 0.f};
-    modelAdamTransform.rotation = {0.f, 0.f, 0.f};
-    modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
+    // Entity modelAdam = scene.createEntity("Adam Model");
+    // auto &modelAdamTransform = modelAdam.add<TransformComponent>();
+    // const ImportedModelRegistration adamRegistration = registerImportedModelWithBounds("src/include/models/adamHead/adamHead.gltf");
+    // modelAdam.addMesh(adamRegistration.handle);
+    // modelAdamTransform.translation = {0.f, 0.f, 0.f};
+    // modelAdamTransform.rotation = {0.f, 0.f, 0.f};
+    // modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
+
+    Entity shipModel = scene.createEntity("Ship");
+    auto &shipTransform = shipModel.add<TransformComponent>();
+    const ImportedModelRegistration shipReg = registerImportedModelWithBounds(defaultAssetPath.append("projects/models/stylized-pirate-ship/source/Ship_Scene.fbx").c_str());
+    shipModel.addMesh(shipReg.handle);
+    shipTransform.translation = {0.f, 0.f, 0.f};
+    shipTransform.rotation = {0.f, 0.f, 0.f};
+    shipTransform.scale = {0.01f, 0.01f, 0.01f};
 
     // Demo scripts: the scripting systems have already bound this scene in
     // OnPostInit, so onStart fires correctly here.
@@ -221,6 +194,44 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     {
         luaScripts.loadScript(secondMeshEntity, "src/Scripting/ExampleScripts/rotator.lua", &scene);
     }
+
+    LOG_INFO(Logger::get(), "Scene assets loaded in {} ms", initSceneTimer.elapsedMs());
+}
+
+Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
+{
+    Time::StopWatch initSceneTimer;
+
+    SceneSetup setup;
+
+    setup.postProcessSettings = scene.createEntity("Post Processing");
+    setup.postProcessSettings.add<PostProcessStackComponent>() = makeDefaultPostProcessStack();
+
+    Entity editorCamera = scene.createEntity("Editor Camera");
+    setup.activeCamera = editorCamera;
+    editorCamera.add<TransformComponent>();
+    editorCamera.addCamera(true);
+
+    // Water material — uses water.vert/water.frag via MaterialPipelineConfig.
+    // The pipeline is selected per-material by SimpleRenderSystem at draw time.
+    // Texture slot mapping (fixed by MaterialCache::writeDescriptorSet):
+    //   Albedo   (binding 0) → normalMap1 in water.frag → waternormal1.jpg
+    //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
+    //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
+    MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
+    waterMaterialData.shininess = 64.0f;  // specularShininess.w  -- editor: Shininess
+    waterMaterialData.normalScale = 0.4f; // surfaceFactors.z     -- editor: Normal Scale
+    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal1.jpg").string(), TextureType::Albedo));
+    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
+    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
+    MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
+    waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
+    waterPipelineConfig.domain = MaterialDomain::Water; // excluded from depth prepass
+    waterMaterialHandle = materials.registerMaterial(
+        std::move(waterMaterialData),
+        std::move(waterPipelineConfig));
+
+    populateDefaultScene(scene);
 
     LOG_INFO(Logger::get(), "Scene populated in {} ms", initSceneTimer.elapsedMs());
     return setup;

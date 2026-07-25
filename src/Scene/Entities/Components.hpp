@@ -41,6 +41,7 @@ namespace Faye
     {
         ModelHandle modelHandle{};
         MaterialHandle materialHandle{};
+        bool view = true;
     };
 
     struct CameraComponent
