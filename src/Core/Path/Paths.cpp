@@ -38,6 +38,11 @@ namespace Faye
         return root() / "bin";
     }
 
+    std::filesystem::path Paths::projects()
+    {
+        return root() / "assets";
+    }
+
     std::filesystem::path Paths::resolve(std::string_view relative)
     {
         return root() / relative;
@@ -49,6 +54,17 @@ namespace Faye
         if (p.extension() != ".spv")
             p += ".spv";
         return p;
+    }
+
+    std::string Paths::getFileName(std::filesystem::path path)
+    {
+        return path.filename().string();
+    }
+
+    std::string Paths::getFileName(std::string path)
+    {
+        // TODO: Seems string parsing might be more efficient. Not worried for now.
+        return std::filesystem::path(path).filename().string();
     }
 
     std::string Paths::normalizeExtension(std::string extension)

@@ -14,6 +14,11 @@ namespace Faye {
             struct ViewportState {
                 bool hovered = true, focused = true;
                 RenderDebugMode debugMode = RenderDebugMode::Lit;
+                // Persistent grid settings for the editor viewport. Enabled by
+                // default because the grid's whole purpose is orientation while
+                // navigating. The runtime never sees this — it is copied into
+                // the editor's RenderView only, in buildRenderView().
+                EditorGridSettings grid{ .enabled = true };
             };
 
             void wirePanels();

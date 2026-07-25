@@ -39,6 +39,18 @@ namespace Faye
         bool recursive = true;
     };
 
+    struct FileState
+    {
+        std::filesystem::file_time_type lastWriteTime{};
+        uintmax_t fileSize = 0;
+    };
+
+    struct WatchState
+    {
+        HotReloadWatchSpec spec{};
+        std::unordered_map<std::string, FileState> knownFiles{};
+    };
+
     class HotReloadManager
     {
     public:
@@ -57,6 +69,7 @@ namespace Faye
         bool removeWatch(std::string_view watchId);
         void clearWatches();
         std::vector<HotReloadWatchSpec> getWatches() const;
+        WatchState getWatch(std::string_view watchId) const;
 
         CallbackToken subscribe(EventCallback callback);
         CallbackToken subscribe(EventCallback callback, std::vector<std::string_view> watchIds);
@@ -76,18 +89,6 @@ namespace Faye
         void tick(Jobs::JobSystem &jobs);
 
     private:
-        struct FileState
-        {
-            std::filesystem::file_time_type lastWriteTime{};
-            uintmax_t fileSize = 0;
-        };
-
-        struct WatchState
-        {
-            HotReloadWatchSpec spec{};
-            std::unordered_map<std::string, FileState> knownFiles{};
-        };
-
         std::unordered_map<std::string, FileState> scanFiles(const HotReloadWatchSpec &watchSpec) const;
         bool shouldWatchFile(const HotReloadWatchSpec &watchSpec, const std::filesystem::path &path) const;
         void runScan();   // one scan pass, executed as a job; tick() owns scheduling

@@ -76,6 +76,19 @@ std::vector<HotReloadWatchSpec> HotReloadManager::getWatches() const
     return result;
 }
 
+WatchState HotReloadManager::getWatch(std::string_view watchId) const
+{
+    std::lock_guard<std::mutex> lock{mutex};
+
+    const auto it = watches.find(std::string(watchId));
+    if (it != watches.end())
+    {
+        return it->second;
+    }
+
+    throw std::invalid_argument("Watch not found");
+}
+
 HotReloadManager::CallbackToken HotReloadManager::subscribe(EventCallback callback)
 {
     std::lock_guard<std::mutex> lock{mutex};
@@ -219,7 +232,7 @@ std::chrono::milliseconds HotReloadManager::getPollInterval() const
     return pollInterval;
 }
 
-std::unordered_map<std::string, HotReloadManager::FileState> HotReloadManager::scanFiles(const HotReloadWatchSpec &watchSpec) const
+std::unordered_map<std::string, FileState> HotReloadManager::scanFiles(const HotReloadWatchSpec &watchSpec) const
 {
     std::unordered_map<std::string, FileState> files;
     std::error_code errorCode;

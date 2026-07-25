@@ -6,6 +6,12 @@
 
 namespace Faye
 {
+    enum WatchSpecId {
+        POSTPROCESSEFFECTS,
+        SHADERSOURCES,
+        PROJECTFILES
+    };
+
     void HotReloadSystem::OnInit()
     {
         LOG_INFO(Logger::get(), "HotReloadSystem OnInit");
@@ -21,8 +27,16 @@ namespace Faye
         hotReloadManager.addWatch({
             .id = "shader-sources",
             .rootPath = Paths::shaderSources(),
-            .fileExtensions = {".vert", ".frag", ".comp"},
+            .fileExtensions = {".vert", ".frag", ".comp", ".tesc", ".tese"},
             .recursive = true,
+        });
+
+        // TODO: for now this will be how "projects" are handled, and files in the editor file viewer will be in this directory.
+        hotReloadManager.addWatch({
+            .id = "project-files",
+            .rootPath = Paths::projects(),
+            .fileExtensions = {},
+            .recursive = true
         });
     }
 

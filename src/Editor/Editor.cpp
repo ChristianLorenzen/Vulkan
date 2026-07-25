@@ -1,13 +1,21 @@
 #include "Editor.hpp"
 
+#include "Core/Logging/Logger.hpp"
+#include "Renderer/Material/TextureLoader.hpp"
+
+#include "quill/LogMacros.h"
+
 namespace Faye {
 
     void Editor::run()
     {
-        engine.initialize();
+        Jobs::JobHandle handle = engine.initialize();
         layer.init(engine.window(), engine.renderer().targets());
         wirePanels();
         panels.bindScene(&engine.activeScene());
+
+        // Wait for scene to be populated.
+        engine.jobs().wait(handle);
 
         while (!engine.shouldClose()) {
             engine.pollEvents();
@@ -22,9 +30,25 @@ namespace Faye {
     }
 
     void Editor::wirePanels() {
+        Faye::AssetExplorerPanel *assetPanel = panels.getPanelByType<Faye::AssetExplorerPanel>();
+        engine.reloadSystem().getHotReloadManager().subscribe([assetPanel](const HotReloadEvent &event) {
+            assetPanel->FileChangeCallback(event);
+        }, {"project-files"});
+        assetPanel->setInitialFileWatch(engine.reloadSystem().getHotReloadManager().getWatch("project-files"));
+        assetPanel->setIconTextureCallback([this](const std::filesystem::path &path) -> ImTextureID {
+            try {
+                const MaterialTextureView tex = engine.renderer().getOrCreateTexture(
+                    loadTextureFromFile(path.string(), TextureType::Albedo));
+                return layer.registerThumbnail(tex.imageView, tex.sampler);
+            } catch (const std::exception &e) {
+                LOG_WARNING(Logger::get(), "Editor icon load failed for {}: {}", path.string(), e.what());
+                return 0;
+            }
+        });
+        assetPanel->loadIcons();
+
         panels.setMaterialRegistry(&engine.materials());
         panels.setModelRegistry(&engine.models());
-        panels.setScriptSystem(&engine.scripts());
         panels.setPrimitiveCreateCallback([this](PrimitiveType t){ return engine.createPrimitive(t); });
         panels.setTextureThumbnailCallback([this](MaterialHandle h, TextureType t) -> ImTextureID {
             const Material* m = engine.materials().getMaterial(h);
@@ -56,6 +80,11 @@ namespace Faye {
         // swapchain before recording any UI.
         if (frame->swapchainRecreated) {
             layer.onSwapchainRecreated(engine.window(), r.targets());
+            // The layer dropped its thumbnail descriptors, so the cached icon
+            // texture ids in the asset panel are stale — re-register them.
+            if (auto *assetPanel = panels.getPanelByType<AssetExplorerPanel>()) {
+                assetPanel->loadIcons();
+            }
         }
 
         engine.renderSceneInto(*frame, view);
@@ -68,6 +97,7 @@ namespace Faye {
         ImGuiFrameData frameData{};
         frameData.frameTimeMs = engine.frameTimeMs();
         frameData.averageFps = engine.averageFps();
+        frameData.viewportGrid = viewport.grid;
         layer.buildViewportFrameData(r.targets(),
                                      static_cast<uint32_t>(frame->frameIndex),
                                      viewport.debugMode,
@@ -89,9 +119,9 @@ namespace Faye {
     }
 
     void Editor::updateEditorCamera(float dt) {
-        auto* tf  = engine.activeCamera().tryGetTransform();
-        auto* cam = engine.activeCamera().tryGetCamera();
-        if (!tf || !cam) throw std::runtime_error("Active scene camera is not configured correctly");
+        auto* tf  = engine.activeCamera().tryGet<TransformComponent>();
+        auto* cam = engine.activeCamera().tryGet<CameraComponent>();
+        if (!tf || !cam) return; // throw std::runtime_error("Active scene camera is not configured correctly");
 
         cam->camera.saveViewProjectionMatrix();
         Input& input = Input::getInstance();
@@ -106,9 +136,10 @@ namespace Faye {
         // Before the viewport panel sizes the offscreen target (first frame), the
         // scene extent is 0x0; fall back to the window so aspectRatio() never /0.
         if (ext.width == 0 || ext.height == 0) ext = engine.windowExtent();
-        auto* cam = engine.activeCamera().tryGetCamera();
+        auto* cam = engine.activeCamera().tryGet<CameraComponent>();
         RenderView view{ &cam->camera, {ext.width, ext.height},
-                        RenderOutputTarget::OffscreenSceneColor, viewport.debugMode };
+                        RenderOutputTarget::OffscreenSceneColor, viewport.debugMode,
+                        viewport.grid };
         cam->camera.setPerspectiveProjection(glm::radians(50.f), view.viewport.aspectRatio(), 0.1f, 100.f);
         return view;
     }
@@ -116,7 +147,7 @@ namespace Faye {
     void Editor::onPresent(ImGuiFrameData& frameData) {
         panels.draw(frameData);
         if (frameData.viewportClicked) {
-            auto* cam = engine.activeCamera().tryGetCamera();
+            auto* cam = engine.activeCamera().tryGet<CameraComponent>();
             const auto hit = raycastScene(engine.activeScene(), engine.models(), cam->camera,
                                         {frameData.viewportClickUv.x, frameData.viewportClickUv.y});
             panels.setSelectedEntity(hit ? engine.activeScene().getEntity(hit->entity) : Entity{});
@@ -124,5 +155,6 @@ namespace Faye {
         viewport.hovered   = frameData.viewportHovered;
         viewport.focused   = frameData.viewportFocused;
         viewport.debugMode = frameData.viewportDebugMode;
+        viewport.grid       = frameData.viewportGrid;
     }
 }
