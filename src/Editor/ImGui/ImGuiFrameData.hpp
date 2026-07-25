@@ -21,5 +21,9 @@ namespace Faye
         bool viewportClicked = false;
         ImVec2 viewportClickUv{-1.0f, -1.0f};
         RenderDebugMode viewportDebugMode = RenderDebugMode::Lit;
+        // Reference-grid state, round-tripped like viewportDebugMode: the editor
+        // seeds it from its persistent copy before drawing panels, the viewport
+        // panel mutates it, and Editor::onPresent reads it back.
+        EditorGridSettings viewportGrid{};
     };
 }
