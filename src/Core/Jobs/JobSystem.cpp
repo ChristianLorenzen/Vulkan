@@ -17,6 +17,13 @@ namespace Faye::Jobs
     JobSystem::JobSystem(unsigned workerCount)
         : mainThreadId(std::this_thread::get_id())
     {
+#ifdef JOBS_SINGLE_THREADED
+        // Build-flag override (FAYE_JOBS_SINGLE_THREADED): force inline
+        // execution regardless of the requested count, so every parallel bug
+        // reproduces serially under a debugger. schedule()/parallelFor() take
+        // the workers.empty() inline paths.
+        workerCount = 0;
+#endif
         jobPool = std::make_unique<Job[]>(kMaxJobs);
         freeSlots.reserve(kMaxJobs);
         for (uint32_t i = kMaxJobs; i-- > 0;)

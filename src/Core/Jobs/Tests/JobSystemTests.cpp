@@ -118,6 +118,9 @@ TEST_CASE("main-thread jobs run only on the main thread")
     CHECK(mainSeen == std::this_thread::get_id());
 }
 
+// Asserts a real worker (not the main thread) ran the job, so it is meaningless
+// under FAYE_JOBS_SINGLE_THREADED, which forces every job inline on the caller.
+#ifndef JOBS_SINGLE_THREADED
 TEST_CASE("workers pick up jobs when the main thread never participates")
 {
     JobSystem jobs(2);
@@ -133,6 +136,7 @@ TEST_CASE("workers pick up jobs when the main thread never participates")
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     CHECK(workerSeen != std::this_thread::get_id());
 }
+#endif
 
 TEST_CASE("a main-thread job can depend on worker jobs")
 {

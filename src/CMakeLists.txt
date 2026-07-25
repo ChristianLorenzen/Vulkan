@@ -4,6 +4,7 @@ set(FAYE_ENGINE_SOURCES
     Core/HotReload/HotReloadSystem.cpp
     Core/IO/FileSystem.cpp
     Core/Jobs/JobSystem.cpp
+    Core/ECS/SystemSchedule.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
     Core/Time/Timer.cpp
@@ -123,6 +124,10 @@ target_compile_definitions(faye_app PRIVATE
     FAYE_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
 )
 
+if(FAYE_JOBS_SINGLE_THREADED)
+    target_compile_definitions(faye_app PRIVATE JOBS_SINGLE_THREADED)
+endif()
+
 if(MSVC)
     target_compile_options(faye_app PRIVATE /W4)
     target_compile_definitions(faye_app PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -152,8 +157,25 @@ endif()
 # (e.g. Core/Jobs/Tests/); TestMain.cpp provides the shared doctest entry point.
 add_executable(faye_tests
     Tests/TestMain.cpp
+    Core/HotReload/HotReloadManager.cpp
     Core/Jobs/JobSystem.cpp
-    Core/Jobs/Tests/JobSystemTests.cpp)
+    Core/ECS/SystemSchedule.cpp
+    Core/Jobs/Tests/JobSystemTests.cpp
+    Core/ECS/Tests/EcsTests.cpp
+    Core/ECS/Tests/TypeRegistryTests.cpp
+    Core/ECS/Tests/ScheduleTests.cpp
+    Core/Logging/Logger.cpp
+    Core/Path/Paths.cpp
+    Scene/Camera/Camera.cpp
+    Scene/Entities/Components.cpp
+    Scene/Entities/Entity.cpp
+    Scene/Entities/RegisterComponents.cpp
+    Scene/Scene.cpp
+    Scene/Tests/SceneTests.cpp
+    Scripting/ScriptSystem.cpp
+    Scripting/LuaScriptSystem.cpp
+    Scripting/Tests/ScriptSystemTests.cpp
+    Scripting/Tests/LuaScriptSystemTests.cpp)
 
 target_include_directories(faye_tests
     PRIVATE
@@ -161,7 +183,35 @@ target_include_directories(faye_tests
 
 target_link_libraries(faye_tests
     PRIVATE
-    doctest::doctest)
+    doctest::doctest
+    glm::glm
+    quill::quill
+    sol2::sol2
+    lua_static)
+
+# Core/Path/Paths.cpp (pulled in for the hot-reload watch path) needs the same
+# repo-root definition faye_app gets.
+target_compile_definitions(faye_tests PRIVATE
+    FAYE_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
+)
+
+if(FAYE_JOBS_SINGLE_THREADED)
+    target_compile_definitions(faye_tests PRIVATE JOBS_SINGLE_THREADED)
+endif()
+
+# ThreadSanitizer gate for the concurrent code (job system, scheduler). Scoped
+# to faye_tests: instrumenting the Vulkan app would flag driver/GLFW races that
+# aren't ours. Serial (FAYE_JOBS_SINGLE_THREADED) defeats the purpose here.
+if(FAYE_TSAN)
+    if(MSVC)
+        message(WARNING "FAYE_TSAN ignored: ThreadSanitizer requires GCC/Clang.")
+    elseif(FAYE_JOBS_SINGLE_THREADED)
+        message(WARNING "FAYE_TSAN with FAYE_JOBS_SINGLE_THREADED runs every job inline; no threads to check.")
+    else()
+        target_compile_options(faye_tests PRIVATE -fsanitize=thread -g)
+        target_link_options(faye_tests PRIVATE -fsanitize=thread)
+    endif()
+endif()
 
 target_compile_features(faye_tests PRIVATE cxx_std_20)
 
@@ -172,7 +222,7 @@ else()
 endif()
 
 if(UNIX AND NOT APPLE)
-    target_link_libraries(faye_tests PRIVATE pthread)
+    target_link_libraries(faye_tests PRIVATE dl pthread)
 endif()
 
 add_test(NAME faye_tests COMMAND faye_tests)

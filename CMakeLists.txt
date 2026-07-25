@@ -16,6 +16,10 @@ option(FAYE_BUILD_IMGUI_DEMO "Build Dear ImGui demo sources" OFF)
 option(FAYE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(FAYE_COPY_BIN_TO_REPO_BIN "Write executable output to the repository bin/ directory" ON)
 
+# Concurrency gates (see docs/ECS_AND_JOBS_IMPLEMENTATION_PLAN.md Phases 1 & 7).
+option(FAYE_TSAN "Build faye_tests with ThreadSanitizer (GCC/Clang)" OFF)
+option(FAYE_JOBS_SINGLE_THREADED "Run all jobs inline on the calling thread (serial debugging)" OFF)
+
 set(QUILL_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(QUILL_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(QUILL_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
