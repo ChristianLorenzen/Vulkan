@@ -256,6 +256,20 @@ void VulkanDevice::savePipelineCache()
 VulkanDevice::~VulkanDevice()
 {
     savePipelineCache();
+
+    // Anything still allocated here trips a VMA assert inside vmaDestroyAllocator
+    // ("Some allocations were not freed..."), which aborts with no clue about the
+    // owner. Log the leak first so the abort is at least diagnosable.
+    VmaTotalStatistics stats{};
+    vmaCalculateStatistics(allocator, &stats);
+    if (stats.total.statistics.allocationCount > 0)
+    {
+        LOG_ERROR(Logger::get(),
+                  "VMA leak on shutdown: {} allocations ({} bytes) still live",
+                  stats.total.statistics.allocationCount,
+                  stats.total.statistics.allocationBytes);
+    }
+
     vmaDestroyAllocator(allocator);
     vkDestroyCommandPool(device, commandPool, nullptr);
     vkDestroyDevice(device, nullptr);
