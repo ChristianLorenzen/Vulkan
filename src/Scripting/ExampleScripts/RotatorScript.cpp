@@ -21,7 +21,7 @@ public:
         if (!entity.isValid())
             return;
 
-        auto *transform = entity.tryGetTransform();
+        auto *transform = entity.tryGet<TransformComponent>();
         if (transform == nullptr)
             return;
 

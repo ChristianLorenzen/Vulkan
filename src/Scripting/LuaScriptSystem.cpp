@@ -1,6 +1,7 @@
 #include "Scripting/LuaScriptSystem.hpp"
 
 #include <filesystem>
+#include <vector>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -23,13 +24,46 @@ namespace Faye
             sol::lib::io);
     }
 
+    void LuaScriptSystem::bindScene(Scene *scene)
+    {
+        boundScene = scene;
+        if (scene == nullptr)
+        {
+            return;
+        }
+
+        auto &world = scene->getWorld();
+        world.types().registerType<LuaScriptComponent>("Lua Script");
+
+        // Teardown channel: fires on unloadScript, entity destruction, the
+        // editor's type-registry remove, and scene teardown. Calling onDestroy
+        // then resetting the component drops the sol references, so the Lua GC
+        // can collect the sandbox.
+        world.setRemoveHook<LuaScriptComponent>(
+            [this](Ecs::World &, Ecs::Entity entityHandle, void *raw)
+            {
+                auto *script = static_cast<LuaScriptComponent *>(raw);
+                if (script->onDestroy.valid() && boundScene != nullptr)
+                {
+                    auto r = script->onDestroy(Entity{boundScene, entityHandle});
+                    if (!r.valid())
+                    {
+                        sol::error err = r;
+                        LOG_WARNING(Logger::get(), "[LuaScriptSystem] onDestroy error in '{}': {}",
+                                    script->scriptPath, err.what());
+                    }
+                }
+                *script = LuaScriptComponent{};
+            });
+    }
+
     void LuaScriptSystem::bindEngineAPI()
     {
         // ----- Entity -----
         lua.new_usertype<Entity>("Entity", sol::no_constructor,
 
                                  "getId", [](const Entity &e) -> uint32_t
-                                 { return e.id(); },
+                                 { return e.handle().index; },
 
                                  "getName", [](const Entity &e) -> std::string
                                  { return std::string(e.getName()); },
@@ -38,7 +72,7 @@ namespace Faye
 
                                  "setTranslation", [](const Entity &e, float x, float y, float z)
                                  {
-            TransformComponent *t = e.tryGetTransform();
+            TransformComponent *t = e.tryGet<TransformComponent>();
             if (t != nullptr)
                 t->translation = glm::vec3(x, y, z); },
 
@@ -52,7 +86,7 @@ namespace Faye
         lua["Entity"]["getTranslation"] = [this](const Entity &e) -> sol::table
         {
             sol::table t = lua.create_table();
-            TransformComponent *tc = e.tryGetTransform();
+            TransformComponent *tc = e.tryGet<TransformComponent>();
             if (tc != nullptr)
             {
                 t["x"] = tc->translation.x;
@@ -65,14 +99,14 @@ namespace Faye
         // Rotation accessors — stored in radians (matches TransformComponent::mat4)
         lua["Entity"]["setRotation"] = [](const Entity &e, float x, float y, float z)
         {
-            TransformComponent *t = e.tryGetTransform();
+            TransformComponent *t = e.tryGet<TransformComponent>();
             if (t != nullptr)
                 t->rotation = glm::vec3(x, y, z);
         };
 
         lua["Entity"]["setRotationY"] = [](const Entity &e, float y)
         {
-            TransformComponent *t = e.tryGetTransform();
+            TransformComponent *t = e.tryGet<TransformComponent>();
             if (t != nullptr)
                 t->rotation.y = y;
         };
@@ -80,7 +114,7 @@ namespace Faye
         lua["Entity"]["getRotation"] = [this](const Entity &e) -> sol::table
         {
             sol::table t = lua.create_table();
-            TransformComponent *tc = e.tryGetTransform();
+            TransformComponent *tc = e.tryGet<TransformComponent>();
             if (tc != nullptr)
             {
                 t["x"] = tc->rotation.x;
@@ -103,10 +137,10 @@ namespace Faye
 
                                 "findEntityByName", [](Scene &scene, const std::string &name) -> sol::optional<Entity>
                                 {
-            for (EntityId id : scene.getEntities())
+            for (Ecs::Entity handle : scene.getEntities())
             {
-                if (scene.getEntityName(id) == name)
-                    return scene.getEntity(id);
+                if (scene.getEntityName(handle) == name)
+                    return scene.getEntity(handle);
             }
             return sol::nullopt; });
 
@@ -126,7 +160,7 @@ namespace Faye
 
     void LuaScriptSystem::loadScript(Entity entity, const std::string &scriptPath, Scene *scene)
     {
-        if (!entity.isValid())
+        if (scene == nullptr || !entity.isValid())
             return;
 
         if (!std::filesystem::exists(scriptPath))
@@ -150,16 +184,19 @@ namespace Faye
             return;
         }
 
-        LuaScriptEntry entry;
-        entry.scriptPath = scriptPath;
-        entry.scriptEnv = std::move(env);
+        LuaScriptComponent script;
+        script.scriptPath = scriptPath;
+        script.environment = std::move(env);
 
         // Grab optional callbacks
-        sol::safe_function onStart = entry.scriptEnv["onStart"];
-        entry.onUpdate = entry.scriptEnv["onUpdate"];
-        entry.onDestroy = entry.scriptEnv["onDestroy"];
+        sol::safe_function onStart = script.environment["onStart"];
+        script.onUpdate = script.environment["onUpdate"];
+        script.onDestroy = script.environment["onDestroy"];
 
-        // Call onStart if present
+        // Component first, then onStart: if onStart destroys its own entity,
+        // the remove hook already owns cleanup.
+        scene->getWorld().add<LuaScriptComponent>(entity.handle(), std::move(script));
+
         if (onStart.valid())
         {
             auto r = onStart(entity);
@@ -169,41 +206,49 @@ namespace Faye
                 LOG_WARNING(Logger::get(), "[LuaScriptSystem] onStart error in '{}': {}", scriptPath, err.what());
             }
         }
-
-        scripts.emplace(entity.id(), std::move(entry));
-        (void)scene; // scene is available for future API extensions
     }
 
     void LuaScriptSystem::unloadScript(Entity entity, Scene *scene)
     {
-        auto it = scripts.find(entity.id());
-        if (it == scripts.end())
+        if (scene == nullptr)
             return;
 
-        LuaScriptEntry &entry = it->second;
-        if (entry.onDestroy.valid())
-        {
-            auto r = entry.onDestroy(entity);
-            if (!r.valid())
-            {
-                sol::error err = r;
-                LOG_WARNING(Logger::get(), "[LuaScriptSystem] onDestroy error in '{}': {}", entry.scriptPath, err.what());
-            }
-        }
-
-        scripts.erase(it);
-        (void)scene;
+        auto &world = scene->getWorld();
+        if (world.has<LuaScriptComponent>(entity.handle()))
+            world.remove<LuaScriptComponent>(entity.handle());   // hook runs onDestroy
     }
 
     void LuaScriptSystem::reloadScript(Entity entity, Scene *scene)
     {
-        auto it = scripts.find(entity.id());
-        if (it == scripts.end())
+        if (scene == nullptr)
             return;
 
-        std::string path = it->second.scriptPath;
+        const auto *script = scene->getWorld().tryGet<LuaScriptComponent>(entity.handle());
+        if (script == nullptr)
+            return;
+
+        std::string path = script->scriptPath;
         unloadScript(entity, scene);
         loadScript(entity, path, scene);
+    }
+
+    void LuaScriptSystem::unloadAll()
+    {
+        if (boundScene == nullptr)
+            return;
+
+        auto &world = boundScene->getWorld();
+        auto *pool = world.poolIfExists<LuaScriptComponent>();
+        if (pool == nullptr)
+            return;
+
+        std::vector<Ecs::Entity> attached;
+        attached.reserve(pool->set.size());
+        for (const uint32_t entityIndex : pool->set.entities())
+            attached.push_back(world.entityAt(entityIndex));
+
+        for (const Ecs::Entity entityHandle : attached)
+            world.remove<LuaScriptComponent>(entityHandle);
     }
 
     void LuaScriptSystem::update(const EngineContext &ctx, Scene *scene)
@@ -215,27 +260,38 @@ namespace Faye
         // always matches what C++ scripts see via onUpdate ctx.
         engineContext.dt = ctx.dt;
 
-        for (auto &[entityId, entry] : scripts)
+        auto &world = scene->getWorld();
+        auto *pool = world.poolIfExists<LuaScriptComponent>();
+        if (pool == nullptr)
+            return;
+
+        // Snapshot first: Lua onUpdate may make structural changes.
+        std::vector<Ecs::Entity> attached;
+        attached.reserve(pool->set.size());
+        for (const uint32_t entityIndex : pool->set.entities())
+            attached.push_back(world.entityAt(entityIndex));
+
+        for (const Ecs::Entity entityHandle : attached)
         {
-            if (!entry.onUpdate.valid())
+            if (!world.alive(entityHandle))
+                continue;
+            auto *script = world.tryGet<LuaScriptComponent>(entityHandle);
+            if (script == nullptr || !script->onUpdate.valid())
                 continue;
 
-            Entity entity = scene->getEntity(entityId);
-            if (!entity.isValid())
-                continue;
-
-            auto r = entry.onUpdate(entity, ctx.dt);
+            auto r = script->onUpdate(Entity{scene, entityHandle}, ctx.dt);
             if (!r.valid())
             {
                 sol::error err = r;
-                LOG_WARNING(Logger::get(), "[LuaScriptSystem] onUpdate error in '{}': {}", entry.scriptPath, err.what());
+                LOG_WARNING(Logger::get(), "[LuaScriptSystem] onUpdate error in '{}': {}", script->scriptPath, err.what());
             }
         }
     }
 
     bool LuaScriptSystem::isLoaded(Entity entity) const
     {
-        return scripts.count(entity.id()) > 0;
+        return boundScene != nullptr &&
+               boundScene->getWorld().has<LuaScriptComponent>(entity.handle());
     }
 
 } // namespace Faye

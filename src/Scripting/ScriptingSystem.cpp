@@ -19,8 +19,11 @@ namespace Faye
     {
         LOG_INFO(Logger::get(), "ScriptingSystem OnPostInit");
         // The scene was created in SceneManager::OnInit, which runs before any
-        // OnPostInit, so the active scene is guaranteed to exist here.
+        // OnPostInit, so the active scene is guaranteed to exist here. Binding
+        // registers the script component types and installs their teardown
+        // hooks into the scene's World.
         scriptSystem.bindScene(&sceneManager.getActiveScene());
+        luaScriptSystem.bindScene(&sceneManager.getActiveScene());
         luaScriptSystem.bindEngineAPI();
     }
 
@@ -38,5 +41,10 @@ namespace Faye
     {
         LOG_INFO(Logger::get(), "ScriptingSystem OnStop");
         scriptSystem.unregisterHotReload();
+        // Unload every script now, while the scene, its World, and both
+        // script systems are still alive — teardown hooks reference all three.
+        // After this the destruction order of scene vs. systems is irrelevant.
+        scriptSystem.unloadAll();
+        luaScriptSystem.unloadAll();
     }
 }

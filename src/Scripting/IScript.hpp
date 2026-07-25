@@ -21,13 +21,6 @@ namespace Faye
         virtual void onUpdate(Entity entity, Scene *scene, const EngineContext &ctx) { (void)entity; (void)scene; (void)ctx; }
         virtual void onDestroy(Entity entity, Scene *scene) { (void)entity; (void)scene; }
     };
-
-    /// Lightweight metadata stored by ScriptSystem, keyed to an entity.
-    struct ScriptComponent
-    {
-        std::string scriptPath;
-        std::string scriptName;
-    };
 }
 
 // Function-pointer types for the C-linkage factory pair that every script .so must export:

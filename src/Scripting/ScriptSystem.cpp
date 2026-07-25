@@ -33,6 +33,7 @@ static const char *dl_error()
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "Core/Logging/Logger.hpp"
 #include "Core/Path/Paths.hpp"
@@ -42,38 +43,39 @@ static const char *dl_error()
 
 using namespace Faye;
 
-ScriptSystem::~ScriptSystem()
+namespace
 {
-    // Cleanup without calling onDestroy – the scene may already be gone.
-    for (auto &[entityId, script] : loadedScripts)
-    {
-        if (script.libHandle != nullptr && script.instance != nullptr)
-        {
-            auto *destroyFn = reinterpret_cast<DestroyScriptFn>(
-                dlsym(script.libHandle, "destroyScript"));
-            if (destroyFn != nullptr)
-            {
-                destroyFn(script.instance);
-            }
-            script.instance = nullptr;
-        }
-        if (script.libHandle != nullptr)
-        {
-            dlclose(script.libHandle);
-            script.libHandle = nullptr;
-        }
-    }
-    loadedScripts.clear();
+    constexpr const char *kBuiltinPath = "<builtin>";
 }
 
-void ScriptSystem::doUnload(EntityId entityId, LoadedScript &script)
+void ScriptSystem::bindScene(Scene *scene)
+{
+    boundScene = scene;
+    if (scene == nullptr)
+    {
+        return;
+    }
+
+    auto &world = scene->getWorld();
+    world.types().registerType<NativeScriptComponent>("Native Script");
+
+    // The channel that fixes the orphaned-script leak: every removal route —
+    // unloadScript, entity destruction, the editor's type-registry remove,
+    // scene teardown — funnels through this hook while the data is intact.
+    world.setRemoveHook<NativeScriptComponent>(
+        [this](Ecs::World &, Ecs::Entity entityHandle, void *raw)
+        {
+            teardown(entityHandle, *static_cast<NativeScriptComponent *>(raw));
+        });
+}
+
+void ScriptSystem::teardown(Ecs::Entity entityHandle, NativeScriptComponent &script)
 {
     if (script.instance != nullptr)
     {
         if (boundScene != nullptr)
         {
-            Entity entity = boundScene->getEntity(entityId);
-            script.instance->onDestroy(entity, boundScene);
+            script.instance->onDestroy(Entity{boundScene, entityHandle}, boundScene);
         }
 
         if (script.libHandle != nullptr)
@@ -102,7 +104,11 @@ void ScriptSystem::doUnload(EntityId entityId, LoadedScript &script)
 
 void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
 {
-    const EntityId entityId = entity.id();
+    if (boundScene == nullptr || !entity.isValid())
+    {
+        LOG_WARNING(Logger::get(), "ScriptSystem: loadScript without a bound scene / valid entity");
+        return;
+    }
 
     if (!std::filesystem::exists(soPath))
     {
@@ -110,13 +116,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
         return;
     }
 
-    // Unload any existing script on this entity first.
-    auto it = loadedScripts.find(entityId);
-    if (it != loadedScripts.end())
-    {
-        doUnload(entityId, it->second);
-        loadedScripts.erase(it);
-    }
+    unloadScript(entity);   // replace any existing script (hook tears it down)
 
     void *handle = dlopen(soPath.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (handle == nullptr)
@@ -147,18 +147,13 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
 
     const std::string scriptName = std::filesystem::path(soPath).stem().string();
 
-    if (boundScene != nullptr)
-    {
-        instance->onStart(entity, boundScene);
-    }
+    // Component first, then onStart: if onStart destroys its own entity, the
+    // hook already owns cleanup and the script still sees a full lifecycle.
+    boundScene->getWorld().add<NativeScriptComponent>(
+        entity.handle(), NativeScriptComponent{soPath, scriptName, handle, instance});
+    instance->onStart(entity, boundScene);
 
-    loadedScripts[entityId] = LoadedScript{
-        .libHandle = handle,
-        .instance = instance,
-        .component = ScriptComponent{soPath, scriptName},
-    };
-
-    LOG_INFO(Logger::get(), "ScriptSystem: loaded '{}' for entity {}", scriptName, entityId);
+    LOG_INFO(Logger::get(), "ScriptSystem: loaded '{}' for entity {}", scriptName, entity.handle().index);
 }
 
 void ScriptSystem::attachBuiltinScript(Entity entity, IScript *instance, const std::string &name)
@@ -166,60 +161,78 @@ void ScriptSystem::attachBuiltinScript(Entity entity, IScript *instance, const s
     if (instance == nullptr)
         return;
 
-    const EntityId entityId = entity.id();
-
-    // Unload any existing script first.
-    auto it = loadedScripts.find(entityId);
-    if (it != loadedScripts.end())
+    if (boundScene == nullptr || !entity.isValid())
     {
-        doUnload(entityId, it->second);
-        loadedScripts.erase(it);
+        LOG_WARNING(Logger::get(), "ScriptSystem: attachBuiltinScript without a bound scene / valid entity");
+        delete instance;
+        return;
     }
 
-    if (boundScene != nullptr)
-    {
-        instance->onStart(entity, boundScene);
-    }
+    unloadScript(entity);   // replace any existing script (hook tears it down)
 
-    loadedScripts[entityId] = LoadedScript{
-        .libHandle = nullptr, // built-in: no .so handle, doUnload will delete
-        .instance = instance,
-        .component = ScriptComponent{"<builtin>", name},
-    };
+    boundScene->getWorld().add<NativeScriptComponent>(
+        entity.handle(), NativeScriptComponent{kBuiltinPath, name, nullptr, instance});
+    instance->onStart(entity, boundScene);
 
-    LOG_INFO(Logger::get(), "ScriptSystem: attached built-in '{}' for entity {}", name, entityId);
+    LOG_INFO(Logger::get(), "ScriptSystem: attached built-in '{}' for entity {}", name, entity.handle().index);
 }
 
 void ScriptSystem::unloadScript(Entity entity)
 {
-    const EntityId entityId = entity.id();
-    auto it = loadedScripts.find(entityId);
-    if (it == loadedScripts.end())
-    {
+    if (boundScene == nullptr)
         return;
-    }
 
-    doUnload(entityId, it->second);
-    loadedScripts.erase(it);
-    LOG_INFO(Logger::get(), "ScriptSystem: unloaded script for entity {}", entityId);
+    auto &world = boundScene->getWorld();
+    if (world.has<NativeScriptComponent>(entity.handle()))
+    {
+        world.remove<NativeScriptComponent>(entity.handle());   // hook runs teardown
+        LOG_INFO(Logger::get(), "ScriptSystem: unloaded script for entity {}", entity.handle().index);
+    }
 }
 
 void ScriptSystem::reloadScript(Entity entity)
 {
-    const EntityId entityId = entity.id();
-    auto it = loadedScripts.find(entityId);
-    if (it == loadedScripts.end())
+    if (boundScene == nullptr)
+        return;
+
+    auto *script = boundScene->getWorld().tryGet<NativeScriptComponent>(entity.handle());
+    if (script == nullptr)
     {
         LOG_WARNING(Logger::get(),
-                    "ScriptSystem: reloadScript called for entity {} but no script loaded", entityId);
+                    "ScriptSystem: reloadScript called for entity {} but no script loaded",
+                    entity.handle().index);
         return;
     }
 
-    const std::string soPath = it->second.component.scriptPath;
-    doUnload(entityId, it->second);
-    loadedScripts.erase(it);
+    if (script->scriptPath == kBuiltinPath)
+    {
+        LOG_WARNING(Logger::get(), "ScriptSystem: built-in script '{}' cannot be reloaded", script->scriptName);
+        return;
+    }
 
+    const std::string soPath = script->scriptPath;
+    unloadScript(entity);
     loadScript(entity, soPath);
+}
+
+void ScriptSystem::unloadAll()
+{
+    if (boundScene == nullptr)
+        return;
+
+    auto &world = boundScene->getWorld();
+    auto *pool = world.poolIfExists<NativeScriptComponent>();
+    if (pool == nullptr)
+        return;
+
+    // Snapshot: each remove mutates the pool we'd otherwise be iterating.
+    std::vector<Ecs::Entity> attached;
+    attached.reserve(pool->set.size());
+    for (const uint32_t entityIndex : pool->set.entities())
+        attached.push_back(world.entityAt(entityIndex));
+
+    for (const Ecs::Entity entityHandle : attached)
+        world.remove<NativeScriptComponent>(entityHandle);
 }
 
 void ScriptSystem::update(const EngineContext &ctx, Scene *scene)
@@ -229,20 +242,28 @@ void ScriptSystem::update(const EngineContext &ctx, Scene *scene)
         return;
     }
 
-    for (auto &[entityId, script] : loadedScripts)
+    auto &world = scene->getWorld();
+    auto *pool = world.poolIfExists<NativeScriptComponent>();
+    if (pool == nullptr)
+        return;
+
+    // Snapshot the attached entities first: scripts may make structural
+    // changes (destroy entities, load/unload scripts) from onUpdate, which
+    // would invalidate a live iteration of the pool.
+    std::vector<Ecs::Entity> attached;
+    attached.reserve(pool->set.size());
+    for (const uint32_t entityIndex : pool->set.entities())
+        attached.push_back(world.entityAt(entityIndex));
+
+    for (const Ecs::Entity entityHandle : attached)
     {
-        if (script.instance == nullptr)
-        {
+        if (!world.alive(entityHandle))
             continue;
-        }
-
-        Entity entity = scene->getEntity(entityId);
-        if (!entity.isValid())
-        {
+        auto *script = world.tryGet<NativeScriptComponent>(entityHandle);
+        if (script == nullptr || script->instance == nullptr)
             continue;
-        }
 
-        script.instance->onUpdate(entity, scene, ctx);
+        script->instance->onUpdate(Entity{scene, entityHandle}, scene, ctx);
     }
 }
 
@@ -265,31 +286,37 @@ void ScriptSystem::registerHotReload(HotReloadManager &hotReloadManager)
                 return;
             }
 
+            if (boundScene == nullptr)
+                return;
+
             const std::string changedPath =
                 std::filesystem::path(event.path).lexically_normal().string();
 
-            // Iterate a snapshot to avoid invalidating the map during reload.
-            std::vector<EntityId> toReload;
-            for (const auto &[entityId, script] : loadedScripts)
+            // Snapshot: reloadScript restructures the pool mid-iteration.
+            auto &world = boundScene->getWorld();
+            auto *pool = world.poolIfExists<NativeScriptComponent>();
+            if (pool == nullptr)
+                return;
+
+            std::vector<Ecs::Entity> toReload;
+            for (const uint32_t entityIndex : pool->set.entities())
             {
+                const Ecs::Entity entityHandle = world.entityAt(entityIndex);
+                const auto *script = world.tryGet<NativeScriptComponent>(entityHandle);
                 const std::string scriptPath =
-                    std::filesystem::path(script.component.scriptPath).lexically_normal().string();
+                    std::filesystem::path(script->scriptPath).lexically_normal().string();
                 if (scriptPath == changedPath)
                 {
-                    toReload.push_back(entityId);
+                    toReload.push_back(entityHandle);
                 }
             }
 
-            for (EntityId entityId : toReload)
+            for (const Ecs::Entity entityHandle : toReload)
             {
-                if (boundScene != nullptr)
-                {
-                    Entity entity = boundScene->getEntity(entityId);
-                    LOG_INFO(Logger::get(),
-                             "ScriptSystem: hot-reloading '{}' for entity {}",
-                             changedPath, entityId);
-                    reloadScript(entity);
-                }
+                LOG_INFO(Logger::get(),
+                         "ScriptSystem: hot-reloading '{}' for entity {}",
+                         changedPath, entityHandle.index);
+                reloadScript(Entity{boundScene, entityHandle});
             }
         },
         std::vector<std::string_view>{"script-libs"});
@@ -303,14 +330,4 @@ void ScriptSystem::unregisterHotReload()
         hotReloadToken = 0;
     }
     hotReloadManagerPtr = nullptr;
-}
-
-const ScriptComponent *ScriptSystem::tryGetScriptComponent(EntityId entityId) const
-{
-    auto it = loadedScripts.find(entityId);
-    if (it == loadedScripts.end())
-    {
-        return nullptr;
-    }
-    return &it->second.component;
 }

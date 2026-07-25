@@ -36,7 +36,7 @@ namespace Faye
 
         void onStart(Entity entity, Scene * /*scene*/) override
         {
-            auto *water = entity.tryGetWater();
+            auto *water = entity.tryGet<WaterComponent>();
             if (water != nullptr)
             {
                 lastSubdivisions = water->subdivisions;
@@ -48,7 +48,7 @@ namespace Faye
             if (!entity.isValid())
                 return;
 
-            auto *water = entity.tryGetWater();
+            auto *water = entity.tryGet<WaterComponent>();
             if (water == nullptr)
                 return;
 
@@ -65,7 +65,7 @@ namespace Faye
             if (!newHandle.isValid())
                 return;
 
-            auto *mesh = entity.tryGetMesh();
+            auto *mesh = entity.tryGet<MeshRendererComponent>();
             if (mesh != nullptr)
             {
                 mesh->modelHandle = newHandle;
