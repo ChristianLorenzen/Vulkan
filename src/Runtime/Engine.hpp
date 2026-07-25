@@ -14,6 +14,7 @@
 #include "Core/Logging/Logger.hpp"
 #include "Core/Path/Paths.hpp"
 #include "Core/Time/Timer.hpp"
+#include "Core/Time/FixedStepper.hpp"
 #include "Core/Jobs/JobSystem.hpp"
 #include "Platform/Input/Input.hpp"
 #include "Platform/Window/Window.hpp"
@@ -40,7 +41,7 @@ namespace Faye {
     public:
         Engine() = default;
 
-        void initialize();
+        Jobs::JobHandle initialize();
 
         void pollEvents();
         bool shouldClose() const;
@@ -69,10 +70,16 @@ namespace Faye {
         MaterialRegistry&   materials()         { return *materialRegistry; }
         ScriptSystem&       scripts()           { return scriptingSystem->getScriptSystem(); }
         Jobs::JobSystem&    jobs()              { return *jobSystem; }
+        HotReloadSystem&    reloadSystem()      { return *hotReloadSystem; }
         Entity              createPrimitive(PrimitiveType t) { return sceneBuilder->createPrimitiveEntity(activeScene(), t); }
         VkExtent2D          sceneRenderExtent() const { return vkData->getSceneRenderExtent(); }
 
     private:
+        // Register an ITick coordinator. These are the engine's main-thread,
+        // per-frame coordination systems (timing, input, hot-reload, scripting,
+        // scene management) — inherently serial, so they run in registration
+        // order in a plain loop. Parallel ECS work lives behind ISystem /
+        // SystemSchedule (see RenderExtractionManager), not here.
         template <class T, class... Args>
         T &addSystem(Args &&...args)
         {
@@ -84,8 +91,7 @@ namespace Faye {
         void init() { for (auto &system : systems) { system->OnInit(); } }
         void postInit() { for (auto &system : systems) { system->OnPostInit(); } }
         void update() { for (auto &system : systems) { system->OnUpdate(frameContext); } }
-        // Fixed update is a future addition; the contract is already in place.
-        // void fixedUpdate() { for (auto &system : systems) { system->OnFixedUpdate(frameContext); } }
+        void fixedUpdate() { for (auto &system : systems) { system->OnFixedUpdate(fixedContext); } }
         void stop() { for (auto &system : systems) { system->OnStop(); } }
 
         // ---------------------------------------------------------------------
@@ -122,10 +128,15 @@ namespace Faye {
         SceneManager *sceneManager = nullptr;
         ScriptingSystem *scriptingSystem = nullptr;
 
+        // Fixed-timestep accumulator driving OnFixedUpdate at a constant rate.
+        FixedStepper fixedStepper{1.0 / 60.0};
+
         VulkanShaderManager shaderManager;
 
-        // Per-tick context pushed to every system
+        // Per-tick contexts pushed to every system: variable frame delta for the
+        // Update stage, the fixed step for FixedUpdate.
         EngineContext frameContext;
+        EngineContext fixedContext;
 
         // Existing fields
         Entity activeCameraEntity;
