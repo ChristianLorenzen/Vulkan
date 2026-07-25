@@ -30,8 +30,10 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_descriptors.cpp
     Renderer/Vulkan/vk_device.cpp
     Renderer/Vulkan/vk_pipeline.cpp
+    Renderer/Vulkan/vk_compute_pipeline.cpp
     Renderer/Vulkan/vk_render_system.cpp
     Renderer/Vulkan/point_light_render_system.cpp
+    Renderer/Vulkan/editor_grid_render_system.cpp
     Renderer/Vulkan/vk_post_process.cpp
     Renderer/Vulkan/vk_renderer.cpp
     Renderer/Vulkan/vk_swapchain.cpp
@@ -73,9 +75,12 @@ if(FAYE_BUILD_IMGUI_DEMO)
     list(APPEND FAYE_IMGUI_SOURCES ${_imgui_src}/imgui_demo.cpp)
 endif()
 
-file(GLOB FAYE_SHADER_SOURCES
+file(GLOB_RECURSE FAYE_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.comp
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.tesc
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.tese
 )
 
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})

@@ -118,7 +118,9 @@ namespace Faye
         // The set layout must have been created with VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR.
         void pushDescriptors(VkCommandBuffer commandBuffer,
                              VkPipelineLayout pipelineLayout,
-                             uint32_t setIndex);
+                             uint32_t setIndex,
+                             VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS
+                            );
 
     private:
         VulkanDescriptorSetLayout &setLayout;

@@ -226,7 +226,9 @@ void VulkanDescriptorWriter::overwrite(VkDescriptorSet &set) {
 void VulkanDescriptorWriter::pushDescriptors(
     VkCommandBuffer commandBuffer,
     VkPipelineLayout pipelineLayout,
-    uint32_t setIndex)
+    uint32_t setIndex,
+    VkPipelineBindPoint bindPoint
+  )
 {
   // VK_KHR_push_descriptor is not core in Vulkan 1.3 — load the function pointer at
   // call time. VulkanDescriptorWriter is a friend of VulkanDescriptorSetLayout, so
@@ -241,7 +243,7 @@ void VulkanDescriptorWriter::pushDescriptors(
     write.dstSet = VK_NULL_HANDLE;
   }
   pfn(commandBuffer,
-      VK_PIPELINE_BIND_POINT_GRAPHICS,
+      bindPoint,
       pipelineLayout,
       setIndex,
       static_cast<uint32_t>(writes.size()),
