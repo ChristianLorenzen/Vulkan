@@ -64,7 +64,7 @@ Faye::SceneBuilder::ImportedModelRegistration Faye::SceneBuilder::registerImport
 Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveType primitiveType)
 {
     Entity entity = scene.createEntity(std::string(primitiveTypeName(primitiveType)));
-    auto &transform = entity.addTransform();
+    auto &transform = entity.add<TransformComponent>();
 
     auto &mesh = entity.addMesh(ensurePrimitiveHandle(primitiveType));
 
@@ -76,7 +76,7 @@ Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveTy
         transform.scale = {20.0f, 1.0f, 20.0f};
 
         // Add WaterComponent so the subdivision count is inspectable.
-        auto &water = entity.addWater();
+        auto &water = entity.add<WaterComponent>();
         water.subdivisions = 64;
 
         // Attach the subdivision script — it watches WaterComponent.subdivisions
@@ -101,11 +101,11 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     SceneSetup setup;
 
     setup.postProcessSettings = scene.createEntity("Post Processing");
-    setup.postProcessSettings.addPostProcessStack() = makeDefaultPostProcessStack();
+    setup.postProcessSettings.add<PostProcessStackComponent>() = makeDefaultPostProcessStack();
 
     Entity editorCamera = scene.createEntity("Editor Camera");
     setup.activeCamera = editorCamera;
-    editorCamera.addTransform();
+    editorCamera.add<TransformComponent>();
     editorCamera.addCamera(true);
 
     MaterialHandle defaultMat = materials.registerMaterial(MaterialData{"Default Material", glm::vec3(1.0f, 1.0f, 1.0f)});
@@ -129,7 +129,8 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
     waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
     MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
-    waterPipelineConfig.enableAlphaBlending = true; // water alpha is meaningful
+    waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
+    waterPipelineConfig.domain = MaterialDomain::Water; // excluded from depth prepass
     waterMaterialHandle = materials.registerMaterial(
         std::move(waterMaterialData),
         std::move(waterPipelineConfig));
@@ -144,7 +145,7 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     (void)spyBoxMat;
 
     Entity meshEntity = scene.createEntity("Cube A");
-    auto &meshTransform = meshEntity.addTransform();
+    auto &meshTransform = meshEntity.add<TransformComponent>();
     auto meshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
     auto &meshComponent = meshEntity.addMesh(meshHandle);
     meshTransform.translation = {-1.f, 0.f, -1.f};
@@ -153,7 +154,7 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     meshComponent.materialHandle = redMat;
 
     Entity secondMeshEntity = scene.createEntity("Cube B");
-    auto &secondMeshTransform = secondMeshEntity.addTransform();
+    auto &secondMeshTransform = secondMeshEntity.add<TransformComponent>();
     auto secondMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
     auto &secondMeshComponent = secondMeshEntity.addMesh(secondMeshHandle);
     secondMeshTransform.translation = {2.f, 0.f, -1.f};
@@ -162,7 +163,7 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     secondMeshComponent.materialHandle = greenMat;
 
     Entity floorEntity = scene.createEntity("Floor");
-    auto &floorTransform = floorEntity.addTransform();
+    auto &floorTransform = floorEntity.add<TransformComponent>();
     auto floorHandle = ensurePrimitiveHandle(PrimitiveType::Plane);
     auto &floorMeshComponent = floorEntity.addMesh(floorHandle);
     floorTransform.translation = {0.f, -0.5f, 0.f};
@@ -170,31 +171,40 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     floorMeshComponent.materialHandle = defaultMat;
 
     Entity pointLightEntity = scene.createEntity("Point Light");
-    auto &pointLightTransform = pointLightEntity.addTransform();
-    auto &pointLightComponent = pointLightEntity.addPointLight();
+    auto &pointLightTransform = pointLightEntity.add<TransformComponent>();
+    auto &pointLightComponent = pointLightEntity.add<PointLightComponent>();
     pointLightTransform.translation = {0.f, -1.0f, 1.25f};
     pointLightComponent.color = {0.f, 0.f, 1.f};
     pointLightComponent.intensity = 1.5f;
     pointLightComponent.radius = 0.1f;
 
     Entity pointLightEntity2 = scene.createEntity("Point Light Green");
-    auto &pointLightTransform2 = pointLightEntity2.addTransform();
-    auto &pointLightComponent2 = pointLightEntity2.addPointLight();
+    auto &pointLightTransform2 = pointLightEntity2.add<TransformComponent>();
+    auto &pointLightComponent2 = pointLightEntity2.add<PointLightComponent>();
     pointLightTransform2.translation = {0.f, 1.0f, 1.25f};
     pointLightComponent2.color = {0.f, 1.f, 0.f};
     pointLightComponent2.intensity = 1.5f;
     pointLightComponent2.radius = 0.1f;
 
     Entity pointLightEntity3 = scene.createEntity("Point Light Red");
-    auto &pointLightTransform3 = pointLightEntity3.addTransform();
-    auto &pointLightComponent3 = pointLightEntity3.addPointLight();
+    auto &pointLightTransform3 = pointLightEntity3.add<TransformComponent>();
+    auto &pointLightComponent3 = pointLightEntity3.add<PointLightComponent>();
     pointLightTransform3.translation = {0.f, 1.0f, -1.25f};
     pointLightComponent3.color = {1.0f, 0.0f, 0.0f};
     pointLightComponent3.intensity = 1.5f;
     pointLightComponent3.radius = 0.1f;
 
+    // Directional "sun": direction comes from the Transform rotation (pitched
+    // down and angled), so rotating this entity aims the light.
+    Entity sunEntity = scene.createEntity("Directional Light");
+    auto &sunTransform = sunEntity.add<TransformComponent>();
+    auto &sunLight = sunEntity.add<DirectionalLightComponent>();
+    sunTransform.rotation = {0.9f, 0.4f, 0.f};
+    sunLight.color = {1.0f, 0.96f, 0.9f};
+    sunLight.intensity = 1.0f;
+
     Entity modelAdam = scene.createEntity("Adam Model");
-    auto &modelAdamTransform = modelAdam.addTransform();
+    auto &modelAdamTransform = modelAdam.add<TransformComponent>();
     const ImportedModelRegistration adamRegistration = registerImportedModelWithBounds("src/include/models/adamHead/adamHead.gltf");
     modelAdam.addMesh(adamRegistration.handle);
     modelAdamTransform.translation = {0.f, 0.f, 0.f};

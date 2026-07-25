@@ -2,15 +2,25 @@
 
 #include <glm/glm.hpp>
 
-#include <vector>
+#include <string>
 
-#include "Assets/ModelRegistry.hpp"
-#include "Renderer/Material/MaterialRegistry.hpp"
+// Headless by design: handles instead of registries, no renderer includes.
+// The ECS core (Core/ECS/) must stay buildable without the renderer.
+#include "Assets/ModelHandle.hpp"
+#include "Renderer/Material/MaterialHandle.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 #include "Scene/Camera/Camera.hpp"
 
 namespace Faye
 {
+    /// Name (and future editor-only metadata) for an entity. Every entity the
+    /// Scene creates carries one. Deliberately absent from the type registry:
+    /// the inspector draws the name field itself.
+    struct EntityMetadata
+    {
+        std::string name{};
+    };
+
     struct RigidBody2dComponent
     {
         glm::vec2 velocity{};
@@ -44,6 +54,29 @@ namespace Faye
         glm::vec3 color{1.0f, 1.0f, 1.0f};
         float intensity = 1.0f;
         float radius = 0.25f;
+    };
+
+    /// A directional ("sun") light. Holds only radiometric properties; the
+    /// light direction is the entity's forward vector, derived from the sibling
+    /// TransformComponent.rotation (see LightingUniforms / packSceneLighting).
+    /// This mirrors how PointLightComponent takes its position from the transform.
+    struct DirectionalLightComponent
+    {
+        glm::vec3 color{1.0f, 1.0f, 1.0f};
+        float intensity = 1.0f;
+    };
+
+    struct WaterState {
+        float windSpeed;
+        float windDir;
+        float waveAmp;
+        float waveChopiness;
+    };
+
+    struct WaterSample {
+        float height;
+        glm::vec3 normal;
+        glm::vec2 velocity;
     };
 
     /// Marks an entity as a water surface and holds its mesh subdivision count.

@@ -9,6 +9,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/constants.hpp>
 
+#include "Core/Logging/Logger.hpp"
 #include "Scene/Camera/Camera.hpp"
 #include "Scene/Entities/Components.hpp"
 

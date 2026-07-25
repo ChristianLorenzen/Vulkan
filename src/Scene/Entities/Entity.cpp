@@ -8,23 +8,23 @@ namespace Faye
 {
     bool Entity::isValid() const
     {
-        return scene != nullptr && scene->isValid(entityId);
+        return scene != nullptr && scene->isValid(entityHandle);
     }
 
     std::string_view Entity::getName() const
     {
-        return scene != nullptr ? scene->getEntityName(entityId) : std::string_view{};
+        return scene != nullptr ? scene->getEntityName(entityHandle) : std::string_view{};
     }
 
     void Entity::setName(std::string name) const
     {
-        requireScene().setEntityName(entityId, std::move(name));
+        requireScene().setEntityName(entityHandle, std::move(name));
     }
 
     void Entity::destroy()
     {
-        requireScene().destroyEntity(entityId);
-        entityId = invalidEntity;
+        requireScene().destroyEntity(entityHandle);
+        entityHandle = Ecs::Entity::null();
     }
 
     void Entity::setPrimaryCamera() const
@@ -32,119 +32,14 @@ namespace Faye
         requireScene().setPrimaryCamera(*this);
     }
 
-    ComponentMask Entity::getComponentMask() const
-    {
-        return scene != nullptr ? scene->getComponentMask(entityId) : 0;
-    }
-
-    std::vector<ComponentKind> Entity::getComponentKinds() const
-    {
-        return scene != nullptr ? scene->getComponentKinds(entityId) : std::vector<ComponentKind>{};
-    }
-
-    bool Entity::hasComponent(ComponentKind kind) const
-    {
-        return scene != nullptr && scene->hasComponent(entityId, kind);
-    }
-
-    TransformComponent &Entity::addTransform() const
-    {
-        return requireScene().addTransform(entityId);
-    }
-
-    RigidBody2dComponent &Entity::addRigidBody2d() const
-    {
-        return requireScene().addRigidBody2d(entityId);
-    }
-
     MeshRendererComponent &Entity::addMesh(ModelHandle modelHandle) const
     {
-        return requireScene().addMesh(entityId, modelHandle);
+        return requireScene().addMesh(entityHandle, modelHandle);
     }
 
     CameraComponent &Entity::addCamera(bool primary) const
     {
-        return requireScene().addCamera(entityId, primary);
-    }
-
-    PointLightComponent &Entity::addPointLight() const
-    {
-        return requireScene().addPointLight(entityId);
-    }
-
-    PostProcessStackComponent &Entity::addPostProcessStack() const
-    {
-        return requireScene().addPostProcessStack(entityId);
-    }
-
-    WaterComponent &Entity::addWater() const
-    {
-        return requireScene().addWater(entityId);
-    }
-
-    void Entity::removeTransform() const
-    {
-        requireScene().removeTransform(entityId);
-    }
-
-    void Entity::removeRigidBody2d() const
-    {
-        requireScene().removeRigidBody2d(entityId);
-    }
-
-    void Entity::removeMesh() const
-    {
-        requireScene().removeMesh(entityId);
-    }
-
-    void Entity::removeCamera() const
-    {
-        requireScene().removeCamera(entityId);
-    }
-
-    void Entity::removePointLight() const
-    {
-        requireScene().removePointLight(entityId);
-    }
-
-    void Entity::removePostProcessStack() const
-    {
-        requireScene().removePostProcessStack(entityId);
-    }
-
-    TransformComponent *Entity::tryGetTransform() const
-    {
-        return scene != nullptr ? scene->tryGetTransform(entityId) : nullptr;
-    }
-
-    RigidBody2dComponent *Entity::tryGetRigidBody2d() const
-    {
-        return scene != nullptr ? scene->tryGetRigidBody2d(entityId) : nullptr;
-    }
-
-    MeshRendererComponent *Entity::tryGetMesh() const
-    {
-        return scene != nullptr ? scene->tryGetMesh(entityId) : nullptr;
-    }
-
-    CameraComponent *Entity::tryGetCamera() const
-    {
-        return scene != nullptr ? scene->tryGetCamera(entityId) : nullptr;
-    }
-
-    PointLightComponent *Entity::tryGetPointLight() const
-    {
-        return scene != nullptr ? scene->tryGetPointLight(entityId) : nullptr;
-    }
-
-    PostProcessStackComponent *Entity::tryGetPostProcessStack() const
-    {
-        return scene != nullptr ? scene->tryGetPostProcessStack(entityId) : nullptr;
-    }
-
-    WaterComponent *Entity::tryGetWater() const
-    {
-        return scene != nullptr ? scene->tryGetWater(entityId) : nullptr;
+        return requireScene().addCamera(entityHandle, primary);
     }
 
     Scene &Entity::requireScene() const

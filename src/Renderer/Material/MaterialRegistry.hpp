@@ -5,18 +5,10 @@
 #include <unordered_map>
 
 #include "Material.hpp"
+#include "Renderer/Material/MaterialHandle.hpp"
 
 namespace Faye
 {
-    struct MaterialHandle
-    {
-        uint32_t value = 0;
-
-        bool isValid() const { return value != 0; }
-
-        friend bool operator==(const MaterialHandle &left, const MaterialHandle &right) = default;
-    };
-
     class MaterialRegistry
     {
     public:

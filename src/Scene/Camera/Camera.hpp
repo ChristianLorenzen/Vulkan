@@ -26,6 +26,12 @@ namespace Faye
         Camera(const Camera &) = delete;
         Camera &operator=(const Camera &) = delete;
 
+        // Movable (but still not copyable): CameraComponent lives in a
+        // sparse-set pool, whose swap-and-pop removal and vector growth
+        // relocate components by move.
+        Camera(Camera &&) = default;
+        Camera &operator=(Camera &&) = default;
+
         glm::vec3 position;
         glm::vec3 velocity;
 

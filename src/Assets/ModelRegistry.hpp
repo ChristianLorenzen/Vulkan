@@ -5,21 +5,12 @@
 #include <string>
 #include <unordered_map>
 
+#include "Assets/ModelHandle.hpp"
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Resources/PrimitiveType.hpp"
 
 namespace Faye
 {
-    struct ModelHandle
-    {
-        uint32_t value = 0;
-
-        bool isValid() const { return value != 0; }
-
-        friend bool operator==(const ModelHandle &left, const ModelHandle &right) = default;
-    };
-
-
     class ModelRegistry
     {
     public:

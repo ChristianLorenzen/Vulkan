@@ -51,7 +51,7 @@ set(FAYE_ENGINE_SOURCES
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
-    Scene/Entities/EntityManager.cpp
+    Scene/Entities/RegisterComponents.cpp
     Scene/Scene.cpp
     Scene/SceneQueries.cpp
     Scene/SceneManager.cpp
