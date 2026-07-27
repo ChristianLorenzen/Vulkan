@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <string>
+#include <filesystem>
 
 #include "Assets/ModelRegistry.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
@@ -45,6 +46,8 @@ namespace Faye
         SceneSetup populate(Scene &scene);
 
         void populateDefaultScene(Scene &scene);
+
+        Entity importAndCreateModel(Scene &scene, std::filesystem::path path);
 
         /// Create a primitive entity at runtime — the editor "add primitive"
         /// action routes here.

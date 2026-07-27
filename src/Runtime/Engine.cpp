@@ -105,5 +105,4 @@ namespace Faye {
     GLFWwindow* Engine::window() { return glfwWindow->getWindow(); }
 
     Scene& Engine::activeScene() { return sceneManager->getActiveScene(); }
-
 }

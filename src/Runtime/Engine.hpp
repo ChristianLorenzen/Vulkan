@@ -5,6 +5,7 @@
 #include <optional>
 #include <vector>
 #include <exception>
+#include <filesystem>
 
 #include "Assets/ModelRegistry.hpp"
 #include "Core/EngineContext.hpp"
@@ -72,6 +73,7 @@ namespace Faye {
         Jobs::JobSystem&    jobs()              { return *jobSystem; }
         HotReloadSystem&    reloadSystem()      { return *hotReloadSystem; }
         Entity              createPrimitive(PrimitiveType t) { return sceneBuilder->createPrimitiveEntity(activeScene(), t); }
+        Entity              importAndCreateModel(std::filesystem::path path) { return sceneBuilder->importAndCreateModel(activeScene(), std::move(path)); }
         VkExtent2D          sceneRenderExtent() const { return vkData->getSceneRenderExtent(); }
 
     private:

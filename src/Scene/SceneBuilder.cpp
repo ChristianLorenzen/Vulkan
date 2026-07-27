@@ -95,6 +95,25 @@ Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveTy
     return entity;
 }
 
+/**
+ * TODO: Create switch which handles different file types.
+ * so if 3d models are passed in, the models are imported.
+ * if mats are imported, they are loaded and created, etc.
+ */
+
+Entity Faye::SceneBuilder::importAndCreateModel(Scene &scene, std::filesystem::path path)
+{
+    // Implementation for importing and creating a model entity
+    Entity entity = scene.createEntity(path.filename().string());
+    auto &t = entity.add<TransformComponent>();
+    const ImportedModelRegistration reg = registerImportedModelWithBounds(path);
+    entity.addMesh(reg.handle);
+    t.translation = {0.f, 0.f, 0.f};
+    t.rotation = {0.f, 0.f, 0.f};
+    t.scale = {1.0f, 1.01f, 1.0f};
+    return entity;
+}
+
 void Faye::SceneBuilder::populateDefaultScene(Scene &scene)
 {
     Time::StopWatch initSceneTimer;
@@ -109,31 +128,22 @@ void Faye::SceneBuilder::populateDefaultScene(Scene &scene)
     (void)blueMat;
     (void)shinyMat;
 
-    Entity meshEntity = scene.createEntity("Cube A");
-    auto &meshTransform = meshEntity.add<TransformComponent>();
-    auto meshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
-    auto &meshComponent = meshEntity.addMesh(meshHandle);
-    meshTransform.translation = {-1.f, 0.f, -1.f};
-    meshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
-    meshTransform.scale = {.5f, .5f, .5f};
-    meshComponent.materialHandle = redMat;
+    Entity meshEntity = createPrimitiveEntity(scene, PrimitiveType::Cube);
+    meshEntity.tryGet<TransformComponent>()->translation = {-1.f, 0.f, -1.f};
+    meshEntity.tryGet<TransformComponent>()->rotation = glm::vec3(45.f, 0.f, 0.f);
+    meshEntity.tryGet<TransformComponent>()->scale = {.5f, .5f, .5f};
+    meshEntity.tryGet<MeshRendererComponent>()->materialHandle = redMat;
 
-    Entity secondMeshEntity = scene.createEntity("Cube B");
-    auto &secondMeshTransform = secondMeshEntity.add<TransformComponent>();
-    auto secondMeshHandle = ensurePrimitiveHandle(PrimitiveType::Cube);
-    auto &secondMeshComponent = secondMeshEntity.addMesh(secondMeshHandle);
-    secondMeshTransform.translation = {2.f, 0.f, -1.f};
-    secondMeshTransform.rotation = glm::vec3(45.f, 0.f, 0.f);
-    secondMeshTransform.scale = {.5f, .5f, .5f};
-    secondMeshComponent.materialHandle = greenMat;
+    Entity secondMeshEntity = createPrimitiveEntity(scene, PrimitiveType::Cube);
+    secondMeshEntity.tryGet<TransformComponent>()->translation = {2.f, 0.f, -1.f};
+    secondMeshEntity.tryGet<TransformComponent>()->rotation = glm::vec3(45.f, 0.f, 0.f);
+    secondMeshEntity.tryGet<TransformComponent>()->scale = {.5f, .5f, .5f};
+    secondMeshEntity.tryGet<MeshRendererComponent>()->materialHandle = greenMat;
 
-    Entity floorEntity = scene.createEntity("Floor");
-    auto &floorTransform = floorEntity.add<TransformComponent>();
-    auto floorHandle = ensurePrimitiveHandle(PrimitiveType::Plane);
-    auto &floorMeshComponent = floorEntity.addMesh(floorHandle);
-    floorTransform.translation = {0.f, -0.5f, 0.f};
-    floorTransform.scale = {5.f, 1.f, 5.f};
-    floorMeshComponent.materialHandle = defaultMat;
+    Entity floorEntity = createPrimitiveEntity(scene, PrimitiveType::Plane);
+    floorEntity.tryGet<TransformComponent>()->translation = {0.f, -0.5f, 0.f};
+    floorEntity.tryGet<TransformComponent>()->scale = {5.f, 1.f, 5.f};
+    floorEntity.tryGet<MeshRendererComponent>()->materialHandle = defaultMat;
 
     Entity pointLightEntity = scene.createEntity("Point Light");
     auto &pointLightTransform = pointLightEntity.add<TransformComponent>();
@@ -176,13 +186,11 @@ void Faye::SceneBuilder::populateDefaultScene(Scene &scene)
     // modelAdamTransform.rotation = {0.f, 0.f, 0.f};
     // modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
 
-    Entity shipModel = scene.createEntity("Ship");
-    auto &shipTransform = shipModel.add<TransformComponent>();
-    const ImportedModelRegistration shipReg = registerImportedModelWithBounds(defaultAssetPath.append("projects/models/stylized-pirate-ship/source/Ship_Scene.fbx").c_str());
-    shipModel.addMesh(shipReg.handle);
-    shipTransform.translation = {0.f, 0.f, 0.f};
-    shipTransform.rotation = {0.f, 0.f, 0.f};
-    shipTransform.scale = {0.01f, 0.01f, 0.01f};
+    Entity shipModel = importAndCreateModel(scene, defaultAssetPath.string() + "/projects/models/stylized-pirate-ship/source/Ship_Scene.fbx");
+    shipModel.tryGet<TransformComponent>()->scale = {0.01f, 0.01f, 0.01f};
+
+    Entity rock = importAndCreateModel(scene, defaultAssetPath.string() + "/projects/models/stylized-stones-minipack/source/model/stones_v2.fbx");
+    rock.tryGet<TransformComponent>()->scale = {0.01f, 0.01f, 0.01f};
 
     // Demo scripts: the scripting systems have already bound this scene in
     // OnPostInit, so onStart fires correctly here.
