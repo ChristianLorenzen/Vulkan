@@ -11,6 +11,15 @@ set(FAYE_ENGINE_SOURCES
     Editor/Editor.cpp
     Editor/ImGui/AssetBrowser.cpp
     Editor/ImGui/EditorPanels.cpp
+    Editor/ImGui/Panels/AssetExplorer/AssetExplorerPanel.cpp
+    Editor/ImGui/Panels/Console/ConsolePanel.cpp
+    Editor/ImGui/Panels/EditorView/EditorViewPanel.cpp
+    Editor/ImGui/Panels/FrameStats/FrameStatsPanel.cpp
+    Editor/ImGui/Panels/Hierarchy/HierarchyPanel.cpp
+    Editor/ImGui/Panels/Inspector/ComponentDrawers.cpp
+    Editor/ImGui/Panels/Inspector/InspectorPanel.cpp
+    Editor/ImGui/Panels/Inspector/MaterialEditor.cpp
+    Editor/ImGui/Panels/RuntimeView/RuntimeViewPanel.cpp
     Editor/ImGui/EditorRenderLayer.cpp
     Editor/ImGui/EditorWidgets.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp

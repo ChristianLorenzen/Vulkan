@@ -1,6 +1,7 @@
 #include "Editor.hpp"
 
 #include "Core/Logging/Logger.hpp"
+#include "Editor/ImGui/Panels/AssetExplorer/AssetExplorerPanel.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 
 #include "quill/LogMacros.h"

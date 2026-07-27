@@ -1,6 +1,8 @@
 #include "Editor/ImGui/EditorWidgets.hpp"
 
+#include <algorithm>
 #include <cfloat>
+#include <cstring>
 
 namespace Faye::EditorUI
 {
@@ -168,5 +170,13 @@ namespace Faye::EditorUI
 
         ImGui::PopID();
         ImGui::Spacing();
+    }
+
+    void copyNameToBuffer(std::string_view value, std::array<char, 128> &buffer)
+    {
+        buffer.fill('\0');
+
+        const size_t copyLength = std::min(buffer.size() - 1, value.size());
+        std::memcpy(buffer.data(), value.data(), copyLength);
     }
 }

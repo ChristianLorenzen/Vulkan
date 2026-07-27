@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <string_view>
+
 #include <imgui.h>
 
 // Shared inspector chrome. The editor previously drew every component with
@@ -56,4 +59,10 @@ namespace Faye::EditorUI
     // after "###", or toggling state resets whenever the text changes:
     //   subSection("Textures (2/5)###textures", false)
     bool subSection(const char *label, bool defaultOpen = true);
+
+    // ---- Text buffers -----------------------------------------------------
+    // Seeds a fixed InputText buffer from a name that is stored as a
+    // std::string elsewhere (entity names, material names). Truncates rather
+    // than overflowing, and always leaves the buffer nul-terminated.
+    void copyNameToBuffer(std::string_view value, std::array<char, 128> &buffer);
 }
