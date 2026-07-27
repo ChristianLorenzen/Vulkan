@@ -218,32 +218,17 @@ void Faye::Vulkan::initializeFrameResources()
 
 Faye::Vulkan::~Vulkan()
 {
-    if (vk_device != nullptr)
-    {
-        vkDeviceWaitIdle(vk_device->getDevice());
-    }
 
-    simpleRenderSystem.reset();
-    pointLightRenderSystem.reset();
-    editorGridRenderSystem.reset();
-    postProcessChain.reset();
-    materialCache.reset();
-    textureCache.reset();
+    vkDeviceWaitIdle(vk_device->getDevice());
+    
+    waterFieldDebugImage.destroy(vk_device->getDevice());
+
     if (sceneDepthSampler != VK_NULL_HANDLE)
     {
         vkDestroySampler(vk_device->getDevice(), sceneDepthSampler, nullptr);
         sceneDepthSampler = VK_NULL_HANDLE;
     }
-    vk_renderer.reset();
-    globalSetLayout.reset();
-    materialSetLayout.reset();
-    bindlessSetLayout.reset();
-    uboBuffers.clear();
-    lightingBuffers.clear();
-    materialPool.reset();
-    bindlessPool.reset();
-    globalPool.reset();
-    vk_device.reset();
+
 }
 
 float Faye::Vulkan::getAspectRatio() const

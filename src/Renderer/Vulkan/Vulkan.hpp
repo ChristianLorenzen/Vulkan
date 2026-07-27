@@ -123,8 +123,14 @@ namespace Faye
 		std::unique_ptr<VulkanDescriptorSetLayout> materialSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> bindlessSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> waterFieldSetLayout{};
+
+		std::unique_ptr<VulkanDescriptorPool> globalPool{};
+		std::unique_ptr<VulkanDescriptorPool> materialPool{};
+		std::unique_ptr<VulkanDescriptorPool> bindlessPool{};
+
 		std::unique_ptr<TextureCache> textureCache{};
 		std::unique_ptr<MaterialCache> materialCache{};
+		
 		std::unique_ptr<SimpleRenderSystem> simpleRenderSystem{};
 		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
 		std::unique_ptr<VulkanComputePipeline> waterDebugGradient{};
@@ -134,9 +140,6 @@ namespace Faye
 		std::unique_ptr<EditorGridRenderSystem> editorGridRenderSystem{};
 		std::unique_ptr<PostProcessChain> postProcessChain{};
 
-		std::unique_ptr<VulkanDescriptorPool> globalPool{};
-		std::unique_ptr<VulkanDescriptorPool> materialPool{};
-		std::unique_ptr<VulkanDescriptorPool> bindlessPool{};
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;
 		std::vector<std::unique_ptr<VulkanBuffer>> lightingBuffers;
 		VkDescriptorSet bindlessDescriptorSet{VK_NULL_HANDLE};
