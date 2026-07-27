@@ -18,7 +18,7 @@ int main(int argc, char **argv)
 {
     quill::Backend::start();
 
-    Faye::Editor editor;
+    Faye::Editor::Application editor;
 
     try
     {

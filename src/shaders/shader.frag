@@ -38,11 +38,15 @@ layout(set = 1, binding = 0) uniform MaterialParams {
 layout(set = 2, binding = 0) uniform sampler2D allTextures[];
 
 void main() {
-    vec3 albedo = texture(allTextures[nonuniformEXT(push.albedoSlot)],   fragTexCoord).rgb
-                * materialParams.baseColorFactor.rgb * fragColor;
-    float metallic  = clamp(texture(allTextures[nonuniformEXT(push.metallicSlot)],  fragTexCoord).r * materialParams.surfaceFactors.x, 0.0, 1.0);
+    vec4 baseColor = texture(allTextures[nonuniformEXT(push.albedoSlot)],   fragTexCoord);
+    vec3 albedo = baseColor.rgb * materialParams.baseColorFactor.rgb * fragColor;
+    float metallic  = clamp(baseColor.a * materialParams.surfaceFactors.x, 0.0, 1.0);
     float roughness = clamp(texture(allTextures[nonuniformEXT(push.roughnessSlot)], fragTexCoord).r * materialParams.surfaceFactors.y, 0.04, 1.0);
     float occlusion = clamp(mix(1.0, texture(allTextures[nonuniformEXT(push.aoSlot)], fragTexCoord).r, materialParams.surfaceFactors.w), 0.0, 1.0);
+
+    if (materialParams.alphaModeCutoff.x > 0.5 && baseColor.a < materialParams.alphaModeCutoff.y) {
+        discard;
+    }
 
     vec3 diffuseLight = fayeAmbient();
     vec3 specularLight = vec3(0.0);

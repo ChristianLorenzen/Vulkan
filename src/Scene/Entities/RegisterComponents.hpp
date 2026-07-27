@@ -12,6 +12,6 @@ namespace Faye
     // then follows registration order, deterministic per build.
     //
     // Adding a component type to the engine = one struct + one line here
-    // (+ optionally a drawer in Editor/ImGui/InspectorDrawers.cpp).
+    // (+ optionally a drawer in Editor/Panels/Inspector/ComponentDrawers.cpp).
     void registerEngineComponents(Ecs::World &world);
 }

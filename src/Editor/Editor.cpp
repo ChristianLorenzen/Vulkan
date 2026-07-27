@@ -1,14 +1,14 @@
 #include "Editor.hpp"
 
 #include "Core/Logging/Logger.hpp"
-#include "Editor/ImGui/Panels/AssetExplorer/AssetExplorerPanel.hpp"
+#include "Editor/Panels/AssetExplorer/AssetExplorerPanel.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
 
 #include "quill/LogMacros.h"
 
-namespace Faye {
+namespace Faye::Editor {
 
-    void Editor::run()
+    void Application::run()
     {
         Jobs::JobHandle handle = engine.initialize();
         layer.init(engine.window(), engine.renderer().targets());
@@ -30,8 +30,8 @@ namespace Faye {
         }
     }
 
-    void Editor::wirePanels() {
-        Faye::AssetExplorerPanel *assetPanel = panels.getPanelByType<Faye::AssetExplorerPanel>();
+    void Application::wirePanels() {
+        Panels::AssetExplorerPanel *assetPanel = panels.getPanelByType<Panels::AssetExplorerPanel>();
         engine.reloadSystem().getHotReloadManager().subscribe([assetPanel](const HotReloadEvent &event) {
             assetPanel->FileChangeCallback(event);
         }, {"project-files"});
@@ -63,7 +63,7 @@ namespace Faye {
         });
     }
 
-    void Editor::renderFrame(const RenderView& view) {
+    void Application::renderFrame(const RenderView& view) {
         Vulkan& r = engine.renderer();
 
         // Apply the offscreen resize the viewport panel requested last frame.
@@ -121,7 +121,7 @@ namespace Faye {
         r.endFrame(*frame);
     }
 
-    void Editor::updateEditorCamera(float dt) {
+    void Application::updateEditorCamera(float dt) {
         auto* tf  = engine.activeCamera().tryGet<TransformComponent>();
         auto* cam = engine.activeCamera().tryGet<CameraComponent>();
         if (!tf || !cam) return; // throw std::runtime_error("Active scene camera is not configured correctly");
@@ -134,7 +134,7 @@ namespace Faye {
             glfwSetWindowShouldClose(engine.window(), true);
     }
 
-    RenderView Editor::buildRenderView() {
+    RenderView Application::buildRenderView() {
         VkExtent2D ext = engine.sceneRenderExtent();
         // Before the viewport panel sizes the offscreen target (first frame), the
         // scene extent is 0x0; fall back to the window so aspectRatio() never /0.
@@ -147,7 +147,7 @@ namespace Faye {
         return view;
     }
 
-    void Editor::onPresent(ImGuiFrameData& frameData) {
+    void Application::onPresent(ImGuiFrameData& frameData) {
         panels.draw(frameData);
         if (frameData.viewportClicked) {
             auto* cam = engine.activeCamera().tryGet<CameraComponent>();

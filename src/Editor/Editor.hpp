@@ -1,14 +1,14 @@
 #pragma once
 
 #include "Runtime/Engine.hpp"
-#include "Editor/ImGui/EditorPanels.hpp"
-#include "Editor/ImGui/EditorRenderLayer.hpp"
+#include "Editor/Panels/EditorPanels.hpp"
+#include "Editor/ImGuiIntegration/EditorRenderLayer.hpp"
 #include "Scene/SceneQueries.hpp"
 
 #include <filesystem>
 
-namespace Faye {
-    class Editor {
+namespace Faye::Editor {
+    class Application {
         public:
             void run();
 
@@ -30,8 +30,8 @@ namespace Faye {
             void onPresent(ImGuiFrameData& frameData);
 
             Engine            engine;
-            EditorPanels      panels;
-            EditorRenderLayer layer;
+            Panels::EditorPanels      panels;
+            ImGuiIntegration::EditorRenderLayer layer;
             ViewportState     viewport;
 
             // Offscreen scene size requested by the viewport panel last frame,

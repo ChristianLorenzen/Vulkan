@@ -9,21 +9,21 @@ set(FAYE_ENGINE_SOURCES
     Core/Path/Paths.cpp
     Core/Time/Timer.cpp
     Editor/Editor.cpp
-    Editor/ImGui/AssetBrowser.cpp
-    Editor/ImGui/EditorPanels.cpp
-    Editor/ImGui/Panels/AssetExplorer/AssetExplorerPanel.cpp
-    Editor/ImGui/Panels/Console/ConsolePanel.cpp
-    Editor/ImGui/Panels/EditorView/EditorViewPanel.cpp
-    Editor/ImGui/Panels/FrameStats/FrameStatsPanel.cpp
-    Editor/ImGui/Panels/Hierarchy/HierarchyPanel.cpp
-    Editor/ImGui/Panels/Inspector/ComponentDrawers.cpp
-    Editor/ImGui/Panels/Inspector/InspectorPanel.cpp
-    Editor/ImGui/Panels/Inspector/MaterialEditor.cpp
-    Editor/ImGui/Panels/RuntimeView/RuntimeViewPanel.cpp
-    Editor/ImGui/EditorRenderLayer.cpp
-    Editor/ImGui/EditorWidgets.cpp
-    Editor/ImGui/ImGuiCustomStyle.cpp
-    Editor/ImGui/ImGuiRenderer.cpp
+    Editor/ImGuiIntegration/EditorRenderLayer.cpp
+    Editor/ImGuiIntegration/ImGuiCustomStyle.cpp
+    Editor/ImGuiIntegration/ImGuiRenderer.cpp
+    Editor/Panels/EditorPanels.cpp
+    Editor/Panels/AssetExplorer/AssetExplorerPanel.cpp
+    Editor/Panels/Console/ConsolePanel.cpp
+    Editor/Panels/EditorView/EditorViewPanel.cpp
+    Editor/Panels/FrameStats/FrameStatsPanel.cpp
+    Editor/Panels/Hierarchy/HierarchyPanel.cpp
+    Editor/Panels/Inspector/ComponentDrawers.cpp
+    Editor/Panels/Inspector/InspectorPanel.cpp
+    Editor/Panels/Inspector/MaterialEditor.cpp
+    Editor/Panels/RuntimeView/RuntimeViewPanel.cpp
+    Editor/Widgets/AssetBrowser.cpp
+    Editor/Widgets/EditorWidgets.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
