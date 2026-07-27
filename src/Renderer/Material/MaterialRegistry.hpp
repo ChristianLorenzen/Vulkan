@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "Material.hpp"
 #include "Renderer/Material/MaterialHandle.hpp"
@@ -21,6 +22,11 @@ namespace Faye
 
         Material *getMaterial(MaterialHandle handle);
         const Material *getMaterial(MaterialHandle handle) const;
+
+        // Every registered handle, ordered by value. The backing map is
+        // unordered, so the editor's material picker would otherwise reshuffle
+        // its list every frame.
+        std::vector<MaterialHandle> getAllHandles() const;
 
         // Returns the handle of the built-in white fallback material.
         MaterialHandle getDefaultHandle() const { return defaultHandle; }

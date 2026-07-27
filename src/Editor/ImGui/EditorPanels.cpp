@@ -3,8 +3,10 @@
 #include "Assets/ModelRegistry.hpp"
 #include "Core/ECS/World.hpp"
 #include "Editor/ImGui/ComponentDrawRegistry.hpp"
+#include "Editor/ImGui/EditorWidgets.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Material/MaterialTemplate.hpp"
+#include "Renderer/Material/TextureLoader.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 #include "Renderer/Resources/Model.hpp"
 #include "Scripting/LuaScriptSystem.hpp"
@@ -17,11 +19,15 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <cfloat>
 #include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+
+#include <glm/trigonometric.hpp>
 
 namespace Faye
 {
@@ -215,121 +221,20 @@ namespace Faye
         
     }
 
-    AssetExplorerPanel::FileIcon AssetExplorerPanel::iconForFile(const std::filesystem::path &path)
+    void AssetExplorerPanel::FileChangeCallback(const HotReloadEvent &event)
     {
-        std::error_code ec;
-        if (std::filesystem::is_directory(path, ec))
-            return FileIcon::Folder;
-
-        const std::string ext = Paths::normalizeExtension(path.extension().string());
-
-        static const std::unordered_map<std::string, FileIcon> kIconsByExtension = {
-            {".png", FileIcon::Texture},   {".jpg", FileIcon::Texture},   {".jpeg", FileIcon::Texture},
-            {".tga", FileIcon::Texture},   {".bmp", FileIcon::Texture},   {".psd", FileIcon::Texture},
-            {".hdr", FileIcon::Cubemap},   {".exr", FileIcon::Cubemap},   {".ktx", FileIcon::Cubemap},
-            {".dds", FileIcon::Cubemap},
-            {".obj", FileIcon::Model},     {".fbx", FileIcon::Model},     {".gltf", FileIcon::Model},
-            {".glb", FileIcon::Model},     {".dae", FileIcon::Model},     {".stl", FileIcon::Model},
-            {".mtl", FileIcon::Material},  {".mat", FileIcon::Material},
-            {".vert", FileIcon::Shader},   {".frag", FileIcon::Shader},   {".comp", FileIcon::Shader},
-            {".geom", FileIcon::Shader},   {".glsl", FileIcon::Shader},   {".spv", FileIcon::Shader},
-            {".hlsl", FileIcon::Shader},
-            {".scene", FileIcon::Scene},   {".faye", FileIcon::Scene},
-            {".prefab", FileIcon::Prefab},
-            {".lua", FileIcon::Script},    {".cpp", FileIcon::Script},    {".hpp", FileIcon::Script},
-            {".h", FileIcon::Script},      {".c", FileIcon::Script},      {".py", FileIcon::Script},
-            {".wav", FileIcon::Audio},     {".mp3", FileIcon::Audio},     {".ogg", FileIcon::Audio},
-            {".flac", FileIcon::Audio},
-            {".mp4", FileIcon::Video},     {".mov", FileIcon::Video},     {".avi", FileIcon::Video},
-            {".mkv", FileIcon::Video},     {".webm", FileIcon::Video},
-            {".ttf", FileIcon::Font},      {".otf", FileIcon::Font},      {".woff", FileIcon::Font},
-            {".anim", FileIcon::Animation},
-            {".skel", FileIcon::Skeleton},
-            {".particle", FileIcon::Particle},
-            {".zip", FileIcon::Archive},   {".7z", FileIcon::Archive},    {".tar", FileIcon::Archive},
-            {".gz", FileIcon::Archive},    {".rar", FileIcon::Archive},
-            {".ini", FileIcon::Config},    {".toml", FileIcon::Config},   {".yaml", FileIcon::Config},
-            {".yml", FileIcon::Config},    {".cfg", FileIcon::Config},    {".cmake", FileIcon::Config},
-            {".json", FileIcon::Data},     {".xml", FileIcon::Data},      {".csv", FileIcon::Data},
-            {".bin", FileIcon::Data},
-            {".txt", FileIcon::Text},      {".md", FileIcon::Text},       {".log", FileIcon::Text},
-        };
-
-        const auto it = kIconsByExtension.find(ext);
-        return it != kIconsByExtension.end() ? it->second : FileIcon::Unknown;
-    }
-
-    std::filesystem::path AssetExplorerPanel::iconTexturePath(FileIcon icon)
-    {
-        const char *fileName = "icon_unknown.png";
-        switch (icon)
+        // Content changes don't move files around, so only creates/deletes/
+        // renames need the directory listing rebuilt.
+        if (event.type != HotReloadEventType::Modified)
         {
-        case FileIcon::Folder:     fileName = "icon_folder.png";      break;
-        case FileIcon::FolderOpen: fileName = "icon_folder_open.png"; break;
-        case FileIcon::Texture:    fileName = "icon_texture.png";     break;
-        case FileIcon::Cubemap:    fileName = "icon_cubemap.png";     break;
-        case FileIcon::Model:      fileName = "icon_model.png";       break;
-        case FileIcon::Material:   fileName = "icon_material.png";    break;
-        case FileIcon::Shader:     fileName = "icon_shader.png";      break;
-        case FileIcon::Scene:      fileName = "icon_scene.png";       break;
-        case FileIcon::Prefab:     fileName = "icon_prefab.png";      break;
-        case FileIcon::Script:     fileName = "icon_script.png";      break;
-        case FileIcon::Audio:      fileName = "icon_audio.png";       break;
-        case FileIcon::Video:      fileName = "icon_video.png";       break;
-        case FileIcon::Font:       fileName = "icon_font.png";        break;
-        case FileIcon::Animation:  fileName = "icon_animation.png";   break;
-        case FileIcon::Skeleton:   fileName = "icon_skeleton.png";    break;
-        case FileIcon::Particle:   fileName = "icon_particle.png";    break;
-        case FileIcon::Archive:    fileName = "icon_archive.png";     break;
-        case FileIcon::Config:     fileName = "icon_config.png";      break;
-        case FileIcon::Data:       fileName = "icon_data.png";        break;
-        case FileIcon::Text:       fileName = "icon_text.png";        break;
-        case FileIcon::Unknown:
-        case FileIcon::Count:      fileName = "icon_unknown.png";     break;
+            browser.markDirty();
         }
-
-        return Paths::resolve("assets/editor/icons") / fileName;
     }
 
-    void AssetExplorerPanel::loadIcons()
+    void AssetExplorerPanel::setInitialFileWatch(WatchState watchState)
     {
-        if (!iconTextureCallback)
-            return;
-
-        for (size_t i = 0; i < iconTextures.size(); ++i)
-        {
-            iconTextures[i] = iconTextureCallback(iconTexturePath(static_cast<FileIcon>(i)));
-        }
-    }
-
-    void AssetExplorerPanel::FileChangeCallback(const HotReloadEvent &event) {
-        LOG_INFO(Logger::get(), "File {}: {}", static_cast<int>(event.type), event.path.string());
-        if (event.type != HotReloadEventType::Modified) {
-            dirty = true;
-        }
-    }
-
-    void AssetExplorerPanel::setInitialFileWatch(WatchState watchState) {
-        LOG_INFO(Logger::get(), "Setting initial file watch state {}", watchState.knownFiles.size());
         this->watchState = watchState;
-        LOG_INFO(Logger::get(), "Root path: {}, Current path: {}, Spec: {}", this->rootPath.string(), this->currentPath.string(), watchState.spec.rootPath.string());
-        this->rootPath = watchState.spec.rootPath;
-        this->currentPath = this->rootPath;
-
-        if (dirty)
-        {
-            revalidateCurrentDir();
-        }
-    }
-
-    void AssetExplorerPanel::revalidateCurrentDir() {
-        fileViews.clear();
-        for (const auto &entry : std::filesystem::directory_iterator(this->currentPath))
-        {
-            LOG_INFO(Logger::get(), "Processing file: {}", entry.path().string());
-            fileViews.push_back(FileUI{entry.path().filename().string(), entry.path().string(), iconForFile(entry.path())});
-        }
-        this->dirty = false;
+        browser.setRoot(watchState.spec.rootPath);
     }
 
     void AssetExplorerPanel::draw(ImGuiFrameData &frameData,
@@ -341,6 +246,7 @@ namespace Faye
                 const TextureThumbnailCallback *textureThumbnailCallback,
                 MaterialTemplateRegistry *materialTemplateRegistry)
     {
+        (void)frameData;
         (void)scene;
         (void)selectedEntity;
         (void)selectedMeshNodeIndex;
@@ -352,61 +258,31 @@ namespace Faye
         if (!open)
             return;
 
-        if (this->dirty)
-        {
-            revalidateCurrentDir();
-        }
-
         if (ImGui::Begin(getName(), &open))
         {
-            float width = ImGui::CalcItemWidth();
-            int columnCount = width / 80; // Assuming each column is 80 pixels wide
-            if (columnCount < 1) columnCount = 1;
-            if (ImGui::BeginTable("File Views", columnCount)) 
+            if (icons != nullptr)
             {
-                // Create back icon
-                ImGui::TableNextColumn();
-                ImGui::ImageButton("back", iconTexture(FileIcon::Folder), ImVec2(64, 64));
-                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) 
-                {
-                    if (this->currentPath != this->rootPath)
-                    {
-                        this->currentPath = this->currentPath.parent_path();
-                        this->dirty = true;
-                    }
-                }
-                ImGui::Text("%s", "Back");
+                browser.drawBreadcrumb();
+                ImGui::Separator();
 
-                for(const auto &fileView : fileViews)
-                {
-                    ImGui::TableNextColumn();
+                // Deferred: the callback imports a model and mutates the scene,
+                // which is not safe to do while the popup owns the ImGui frame.
+                browser.draw(*icons, [this](const std::filesystem::path &path) {
+                    if (ImGui::MenuItem("Create Entity"))
+                        pendingCreationPath = path;
+                });
 
-                    // Draw file view
-                    ImGui::PushID(fileView.file_name.c_str());
-                    const ImTextureID icon = iconTexture(fileView.icon);
-                    const bool clicked = icon != 0
-                        ? ImGui::ImageButton("icon", icon, ImVec2(64, 64))
-                        : ImGui::Button("File", ImVec2(80, 40));
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) 
-                    {
-                        //fileView.onClick();
-                        LOG_INFO(Logger::get(), "File clicked: {}:{}", fileView.file_name, fileView.file_path);
-                        this->currentPath.append(fileView.file_name);
-                        this->dirty = true;
-                    }
-                    const std::string text = Paths::getFileName(fileView.file_name).c_str();
-                    float text_width = ImGui::CalcTextSize(text.c_str()).x;
-                    float text_offset = (100.0f - text_width) * 0.5f;
-                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_offset);
-                    ImGui::Text("%s", text.c_str());
-                    ImGui::PopID();
+                if (!pendingCreationPath.empty())
+                {
+                    if (entityCreateCallback)
+                        entityCreateCallback(pendingCreationPath);
+                    pendingCreationPath.clear();
                 }
             }
-            ImGui::EndTable();
         }
 
         ImGui::End();
-    };
+    }
 
 
     class FrameStatsPanel final : public IEditorPanel
@@ -902,67 +778,592 @@ namespace Faye
         bool open = true;
     };
 
+    // ---- Material editing ---------------------------------------------
+    // Free functions rather than InspectorPanel members: the Mesh Renderer
+    // drawer needs them too, and drawers are plain functions in the draw table.
+    namespace
+    {
+        // The five slots the shaders actually sample (see the push-constant
+        // block in vk_render_system.cpp and MaterialCache::refreshState). Height
+        // is a valid TextureType but nothing binds it, so it is not offered.
+        constexpr std::array<TextureType, 5> kEditableTextureSlots{
+            TextureType::Albedo,
+            TextureType::Normal,
+            TextureType::Metallic,
+            TextureType::Roughness,
+            TextureType::AmbientOcclusion};
+
+        constexpr ImVec2 kTextureSlotSize{48.0f, 48.0f};
+
+        const Texture *findTexture(const MaterialData &materialData, TextureType type)
+        {
+            for (const Texture &texture : materialData.textures)
+            {
+                if (texture.type == type)
+                    return &texture;
+            }
+            return nullptr;
+        }
+
+        // Replaces the material's texture of this type, or appends one if the
+        // slot was empty. Returns false (and leaves the material untouched) if
+        // the file cannot be decoded.
+        bool assignTexture(Material &material, TextureType type, const std::filesystem::path &path)
+        {
+            Texture loaded;
+            try
+            {
+                loaded = loadTextureFromFile(path.string(), type);
+            }
+            catch (const std::exception &e)
+            {
+                LOG_WARNING(Logger::get(), "Texture assign failed for {}: {}", path.string(), e.what());
+                return false;
+            }
+
+            MaterialData &materialData = material.getMaterialData();
+            for (Texture &texture : materialData.textures)
+            {
+                if (texture.type == type)
+                {
+                    texture = std::move(loaded);
+                    material.markDirty();
+                    return true;
+                }
+            }
+
+            materialData.textures.push_back(std::move(loaded));
+            material.markDirty();
+            return true;
+        }
+
+        void clearTexture(Material &material, TextureType type)
+        {
+            MaterialData &materialData = material.getMaterialData();
+            const auto removed = std::remove_if(
+                materialData.textures.begin(), materialData.textures.end(),
+                [type](const Texture &texture) { return texture.type == type; });
+
+            if (removed != materialData.textures.end())
+            {
+                materialData.textures.erase(removed, materialData.textures.end());
+                // MaterialCache re-seeds the slot with the fallback texture.
+                material.markDirty();
+            }
+        }
+
+        // One row per shader-sampled slot, always shown so an empty slot is as
+        // visible as a filled one. The thumbnail is the button.
+        void drawTextureSlots(MaterialHandle handle,
+                              Material &material,
+                              const ComponentDrawContext::TextureThumbnailFn *thumbnails,
+                              TexturePickerPopup *picker)
+        {
+            const MaterialData &materialData = material.getMaterialData();
+
+            // Each slot is a 48px thumbnail row, so five of them dominate the
+            // panel. Collapsed by default; the header carries the filled count
+            // so the collapsed state still says whether anything is assigned.
+            size_t assignedCount = 0;
+            for (const TextureType type : kEditableTextureSlots)
+            {
+                if (findTexture(materialData, type) != nullptr)
+                    ++assignedCount;
+            }
+
+            const std::string texturesLabel =
+                "Textures (" + std::to_string(assignedCount) + "/" +
+                std::to_string(kEditableTextureSlots.size()) + ")###textures";
+
+            if (!EditorUI::subSection(texturesLabel.c_str(), false))
+                return;
+
+            for (const TextureType type : kEditableTextureSlots)
+            {
+                const Texture *texture = findTexture(materialData, type);
+                ImGui::PushID(static_cast<int>(type));
+
+                ImTextureID preview = 0;
+                if (texture != nullptr && thumbnails != nullptr && *thumbnails)
+                {
+                    preview = (*thumbnails)(handle, type);
+                }
+
+                const bool clicked = preview != 0
+                    ? ImGui::ImageButton("##slot", preview, kTextureSlotSize)
+                    : ImGui::Button(texture != nullptr ? "?" : "+", kTextureSlotSize);
+
+                if (clicked && picker != nullptr)
+                {
+                    picker->open(handle, type);
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                {
+                    ImGui::SetTooltip("%s", texture != nullptr && !texture->path.empty()
+                                                ? texture->path.c_str()
+                                                : "Click to assign a texture");
+                }
+
+                ImGui::SameLine();
+                ImGui::BeginGroup();
+                ImGui::TextUnformatted(textureTypeLabel(type));
+                if (texture == nullptr)
+                {
+                    ImGui::TextDisabled("Empty");
+                }
+                else
+                {
+                    const std::string fileName = texture->path.empty()
+                                                     ? std::string("<embedded>")
+                                                     : Paths::getFileName(texture->path);
+                    ImGui::TextDisabled("%s", fileName.c_str());
+                    if (ImGui::SmallButton("Clear"))
+                    {
+                        clearTexture(material, type);
+                    }
+                }
+                ImGui::EndGroup();
+
+                ImGui::PopID();
+            }
+        }
+
+        void drawMaterialProperties(MaterialHandle handle,
+                                    Material &material,
+                                    std::string_view usageSummary,
+                                    const ComponentDrawContext::TextureThumbnailFn *thumbnails,
+                                    MaterialTemplateRegistry *templateRegistry,
+                                    TexturePickerPopup *picker)
+        {
+            MaterialData &materialData = material.getMaterialData();
+            bool materialChanged = false;
+            std::array<char, 128> nameBuffer{};
+            copyNameToBuffer(materialData.name, nameBuffer);
+
+            const std::string handleTooltip =
+                "Material handle " + std::to_string(handle.value) +
+                (usageSummary.empty() ? std::string{} : ("\nSubmeshes: " + std::string(usageSummary)));
+
+            if (EditorUI::beginProperties("##materialHeader"))
+            {
+                EditorUI::propertyLabel("Name", handleTooltip.c_str());
+                if (ImGui::InputText("##materialName", nameBuffer.data(), nameBuffer.size()))
+                {
+                    materialData.name = nameBuffer.data();
+                    materialChanged = true;
+                }
+
+                // Built-in PBR is index 0; registered templates follow.
+                std::vector<std::pair<MaterialTemplateHandle, std::string>> templateItems;
+                templateItems.push_back({kBuiltinPBRTemplateHandle, "Built-in PBR"});
+                if (templateRegistry != nullptr)
+                {
+                    for (uint32_t h = 1; h <= templateRegistry->count(); ++h)
+                    {
+                        if (const MaterialTemplate *tmpl = templateRegistry->get(h))
+                            templateItems.push_back({h, tmpl->name});
+                    }
+                }
+
+                int currentIndex = 0;
+                for (int i = 0; i < static_cast<int>(templateItems.size()); ++i)
+                {
+                    if (templateItems[i].first == materialData.templateHandle)
+                    {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                const MaterialPipelineConfig &pipelineConfig = material.getPipelineConfig();
+                const std::string shaderTooltip =
+                    "vert: " + pipelineConfig.vertexShaderPath + "\nfrag: " + pipelineConfig.fragmentShaderPath;
+
+                EditorUI::propertyLabel("Shader", shaderTooltip.c_str());
+                if (ImGui::BeginCombo("##shaderTemplate", templateItems[currentIndex].second.c_str()))
+                {
+                    for (int i = 0; i < static_cast<int>(templateItems.size()); ++i)
+                    {
+                        const bool selected = (i == currentIndex);
+                        if (ImGui::Selectable(templateItems[i].second.c_str(), selected))
+                        {
+                            materialData.templateHandle = templateItems[i].first;
+                            if (templateItems[i].first == kBuiltinPBRTemplateHandle)
+                            {
+                                material.setPipelineConfig({"shader.vert", "shader.frag"});
+                            }
+                            else if (templateRegistry != nullptr)
+                            {
+                                if (const MaterialTemplate *tmpl = templateRegistry->get(templateItems[i].first))
+                                    material.setPipelineConfig({tmpl->vertShaderPath, tmpl->fragShaderPath});
+                            }
+                            materialChanged = true;
+                        }
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+
+                EditorUI::endProperties();
+            }
+
+            const MaterialTemplate *activeTemplate = (templateRegistry != nullptr)
+                                                         ? templateRegistry->get(materialData.templateHandle)
+                                                         : nullptr;
+
+            // Collapsed by default: the full PBR set is fourteen rows, and the
+            // name/shader rows above are what you need to identify a material.
+            if (EditorUI::subSection("Properties###materialProperties", false) &&
+                EditorUI::beginProperties("##materialProperties"))
+            {
+                if (activeTemplate != nullptr && !activeTemplate->properties.empty())
+                {
+                    // Custom template: only the properties it declares.
+                    for (const auto &desc : activeTemplate->properties)
+                    {
+                        EditorUI::propertyLabel(desc.label.c_str());
+                        if (desc.field == "baseColorFactor" && desc.type == ShaderMember::Type::Vec4)
+                        {
+                            if (ImGui::ColorEdit4("##baseColorFactor", &materialData.baseColorFactor.x))
+                            {
+                                materialData.opacity = materialData.baseColorFactor.a;
+                                materialChanged = true;
+                            }
+                        }
+                        else if (desc.field == "metallicFactor" && desc.type == ShaderMember::Type::Float)
+                        {
+                            materialChanged |= ImGui::DragFloat("##metallicFactor", &materialData.metallicFactor,
+                                                                0.01f, desc.minVal, desc.maxVal);
+                        }
+                        else if (desc.field == "roughnessFactor" && desc.type == ShaderMember::Type::Float)
+                        {
+                            materialChanged |= ImGui::DragFloat("##roughnessFactor", &materialData.roughnessFactor,
+                                                                0.01f, desc.minVal, desc.maxVal);
+                        }
+                        else if (desc.field == "emissive" && desc.type == ShaderMember::Type::Vec3)
+                        {
+                            materialChanged |= ImGui::ColorEdit3("##emissive", &materialData.emissive.x);
+                        }
+                        else if (desc.field == "emissiveIntensity" && desc.type == ShaderMember::Type::Float)
+                        {
+                            materialChanged |= ImGui::DragFloat("##emissiveIntensity", &materialData.emissiveIntensity,
+                                                                0.1f, desc.minVal, desc.maxVal);
+                        }
+                        else if (desc.field == "shininess" && desc.type == ShaderMember::Type::Float)
+                        {
+                            materialChanged |= ImGui::DragFloat("##shininess", &materialData.shininess,
+                                                                1.0f, desc.minVal, desc.maxVal);
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled("(unsupported property type)");
+                        }
+                    }
+                }
+                else
+                {
+                    EditorUI::propertyLabel("Color");
+                    materialChanged |= ImGui::ColorEdit3("##color", &materialData.color.x);
+
+                    EditorUI::propertyLabel("Base Color");
+                    if (ImGui::ColorEdit4("##baseColor", &materialData.baseColorFactor.x))
+                    {
+                        materialData.opacity = materialData.baseColorFactor.a;
+                        materialChanged = true;
+                    }
+
+                    EditorUI::propertyLabel("Metallic");
+                    materialChanged |= ImGui::DragFloat("##metallic", &materialData.metallicFactor, 0.01f, 0.0f, 1.0f);
+
+                    EditorUI::propertyLabel("Roughness");
+                    materialChanged |= ImGui::DragFloat("##roughness", &materialData.roughnessFactor, 0.01f, 0.0f, 1.0f);
+
+                    EditorUI::propertyLabel("Normal Scale");
+                    materialChanged |= ImGui::DragFloat("##normalScale", &materialData.normalScale, 0.01f, 0.0f, 8.0f);
+
+                    EditorUI::propertyLabel("Occlusion");
+                    materialChanged |= ImGui::DragFloat("##occlusion", &materialData.occlusionStrength, 0.01f, 0.0f, 1.0f);
+
+                    EditorUI::propertyLabel("Opacity");
+                    if (ImGui::DragFloat("##opacity", &materialData.opacity, 0.01f, 0.0f, 1.0f))
+                    {
+                        materialData.baseColorFactor.a = materialData.opacity;
+                        materialChanged = true;
+                    }
+
+                    EditorUI::propertyLabel("Alpha Mode");
+                    int alphaModeIndex = static_cast<int>(materialData.alphaMode);
+                    const char *alphaModeLabels[] = {
+                        materialAlphaModeLabel(MaterialAlphaMode::Opaque),
+                        materialAlphaModeLabel(MaterialAlphaMode::Mask)};
+                    if (ImGui::Combo("##alphaMode", &alphaModeIndex, alphaModeLabels, IM_ARRAYSIZE(alphaModeLabels)))
+                    {
+                        materialData.alphaMode = static_cast<MaterialAlphaMode>(alphaModeIndex);
+                        materialChanged = true;
+                    }
+
+                    if (materialData.alphaMode == MaterialAlphaMode::Mask)
+                    {
+                        EditorUI::propertyLabel("Alpha Cutoff");
+                        materialChanged |= ImGui::DragFloat("##alphaCutoff", &materialData.alphaCutoff, 0.01f, 0.0f, 1.0f);
+                    }
+
+                    EditorUI::propertyLabel("Shininess");
+                    materialChanged |= ImGui::DragFloat("##shininess", &materialData.shininess, 0.1f, 0.0f, 256.0f);
+
+                    EditorUI::propertyLabel("Emissive");
+                    materialChanged |= ImGui::ColorEdit3("##emissive", &materialData.emissive.x);
+
+                    EditorUI::propertyLabel("Emissive Intensity");
+                    materialChanged |= ImGui::DragFloat("##emissiveIntensity", &materialData.emissiveIntensity, 0.01f, 0.0f, 10.0f);
+
+                    EditorUI::propertyLabel("Double Sided");
+                    materialChanged |= ImGui::Checkbox("##doubleSided", &materialData.doubleSided);
+                }
+
+                EditorUI::endProperties();
+            }
+
+            if (materialChanged)
+            {
+                // Bumps the revision, which is what makes MaterialCache rebuild
+                // the parameter UBO and bindless slots on the next frame.
+                material.markDirty();
+            }
+
+            drawTextureSlots(handle, material, thumbnails, picker);
+        }
+
+        void drawMaterialEntry(const char *label,
+                               MaterialHandle handle,
+                               MaterialRegistry *materialRegistry,
+                               std::string_view usageSummary,
+                               const ComponentDrawContext::TextureThumbnailFn *thumbnails,
+                               MaterialTemplateRegistry *templateRegistry,
+                               TexturePickerPopup *picker)
+        {
+            ImGui::PushID(static_cast<int>(handle.value));
+
+            Material *material = materialRegistry->getMaterial(handle);
+            const char *materialName = material != nullptr && !material->getName().empty()
+                                           ? material->getName().c_str()
+                                           : "Unnamed Material";
+
+            if (ImGui::TreeNodeEx("##MaterialEntry", ImGuiTreeNodeFlags_DefaultOpen, "%s: %s", label, materialName))
+            {
+                if (material == nullptr)
+                {
+                    ImGui::TextDisabled("Material %u is missing from the registry.", handle.value);
+                }
+                else
+                {
+                    drawMaterialProperties(handle, *material, usageSummary, thumbnails, templateRegistry, picker);
+                }
+
+                ImGui::TreePop();
+            }
+
+            ImGui::PopID();
+        }
+    }
+
     // ---- Component drawers -------------------------------------------
     // One free function per component type, registered in the draw table
-    // below. The inspector loop draws the CollapsingHeader (from the type
+    // below. The inspector loop draws the card header (from the type
     // registry's name) and the remove button; drawers only draw widgets.
+    // Widget labels are "##hidden" — the visible label is the property row's.
 
     void drawTransform(const ComponentDrawContext &, TransformComponent &transform)
     {
-        ImGui::DragFloat3("Translation", &transform.translation.x, 0.05f);
-        ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.01f);
-        ImGui::DragFloat3("Scale", &transform.scale.x, 0.05f, 0.01f, 100.0f);
+        if (!EditorUI::beginProperties("##transform"))
+            return;
+
+        EditorUI::propertyLabel("Position");
+        ImGui::DragFloat3("##position", &transform.translation.x, 0.05f);
+
+        // Stored in radians; shown in degrees because nobody authors rotations
+        // in radians. The round-trip is lossy only below float precision.
+        EditorUI::propertyLabel("Rotation", "Degrees. Stored internally as radians.");
+        glm::vec3 rotationDegrees = glm::degrees(transform.rotation);
+        if (ImGui::DragFloat3("##rotation", &rotationDegrees.x, 0.5f))
+        {
+            transform.rotation = glm::radians(rotationDegrees);
+        }
+
+        EditorUI::propertyLabel("Scale");
+        ImGui::DragFloat3("##scale", &transform.scale.x, 0.05f, 0.01f, 100.0f);
+
+        EditorUI::endProperties();
     }
 
-    void drawMesh(const ComponentDrawContext &, MeshRendererComponent &mesh)
+    void drawMesh(const ComponentDrawContext &context, MeshRendererComponent &mesh)
     {
-        ImGui::Text("Model Handle: %u", mesh.modelHandle.value);
-        ImGui::Text("Material Handle: %u", mesh.materialHandle.value);
-        ImGui::Checkbox("Visible", &mesh.view);
+        if (EditorUI::beginProperties("##mesh"))
+        {
+            EditorUI::propertyLabel("Visible");
+            ImGui::Checkbox("##visible", &mesh.view);
+
+            // Models have no name of their own; the root node's name is what
+            // the hierarchy shows, so reuse it here.
+            const Model *model = context.models != nullptr ? context.models->getModel(mesh.modelHandle) : nullptr;
+            std::string modelName = "None";
+            if (model != nullptr)
+            {
+                const auto &nodes = model->getMeshNodes();
+                const uint32_t rootIndex = model->getRootNodeIndex();
+                if (rootIndex < nodes.size() && !nodes[rootIndex].name.empty())
+                    modelName = nodes[rootIndex].name;
+                else
+                    modelName = "Model " + std::to_string(mesh.modelHandle.value);
+            }
+            const std::string modelTooltip = "Model handle " + std::to_string(mesh.modelHandle.value);
+            EditorUI::propertyText("Model", modelName.c_str(), modelTooltip.c_str());
+
+            if (context.materials != nullptr)
+            {
+                EditorUI::propertyLabel(
+                    "Material",
+                    "Overrides the materials imported with the model.\nLeave as None to keep the imported ones.");
+
+                Material *current = context.materials->getMaterial(mesh.materialHandle);
+                const char *preview = current != nullptr && !current->getName().empty()
+                                          ? current->getName().c_str()
+                                          : (mesh.materialHandle.isValid() ? "Unnamed Material" : "None");
+
+                // Reserve room for the "New" button so the combo does not run
+                // under it when the panel is narrow.
+                const float newButtonWidth = ImGui::CalcTextSize("New").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+                ImGui::SetNextItemWidth(-(newButtonWidth + ImGui::GetStyle().ItemSpacing.x));
+                if (ImGui::BeginCombo("##material", preview))
+                {
+                    if (ImGui::Selectable("None", !mesh.materialHandle.isValid()))
+                    {
+                        mesh.materialHandle = {};
+                    }
+
+                    for (const MaterialHandle handle : context.materials->getAllHandles())
+                    {
+                        const Material *candidate = context.materials->getMaterial(handle);
+                        const std::string label =
+                            (candidate != nullptr && !candidate->getName().empty() ? candidate->getName()
+                                                                                   : std::string("Unnamed Material")) +
+                            "##" + std::to_string(handle.value);
+                        if (ImGui::Selectable(label.c_str(), handle.value == mesh.materialHandle.value))
+                        {
+                            mesh.materialHandle = handle;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("New"))
+                {
+                    MaterialData created{};
+                    created.name = "New Material";
+                    mesh.materialHandle = context.materials->registerMaterial(std::move(created));
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                {
+                    ImGui::SetTooltip("Register a new default PBR material and assign it");
+                }
+            }
+
+            EditorUI::endProperties();
+        }
+
+        // The assigned material is edited in place, right under the row that
+        // assigned it, instead of in a separate section further down the panel.
+        if (context.materials != nullptr && mesh.materialHandle.isValid())
+        {
+            if (Material *material = context.materials->getMaterial(mesh.materialHandle))
+            {
+                ImGui::PushID("assignedMaterial");
+                drawMaterialProperties(mesh.materialHandle, *material, {}, context.thumbnails,
+                                       context.materialTemplates, context.texturePicker);
+                ImGui::PopID();
+            }
+        }
     }
 
     void drawCamera(const ComponentDrawContext &context, CameraComponent &camera)
     {
-        ImGui::TextUnformatted(camera.primary ? "Primary Camera" : "Camera");
-        if (!camera.primary && ImGui::Button("Set As Primary"))
+        if (!EditorUI::beginProperties("##camera"))
+            return;
+
+        EditorUI::propertyLabel("Primary", "The camera the runtime renders through. Only one can be primary.");
+        bool primary = camera.primary;
+        if (ImGui::Checkbox("##primary", &primary) && primary)
         {
+            // Clearing the flag directly would leave the scene with no camera,
+            // so only promotion is offered; the scene demotes the previous one.
             context.entity.setPrimaryCamera();
         }
+
+        EditorUI::endProperties();
     }
 
     void drawPointLight(const ComponentDrawContext &, PointLightComponent &pointLight)
     {
-        ImGui::ColorEdit3("Light Color", &pointLight.color.x);
-        ImGui::DragFloat("Intensity", &pointLight.intensity, 0.05f, 0.0f, 100.0f);
-        ImGui::DragFloat("Radius", &pointLight.radius, 0.01f, 0.01f, 10.0f);
+        if (!EditorUI::beginProperties("##pointLight"))
+            return;
+
+        EditorUI::propertyLabel("Color");
+        ImGui::ColorEdit3("##color", &pointLight.color.x);
+
+        EditorUI::propertyLabel("Intensity");
+        ImGui::DragFloat("##intensity", &pointLight.intensity, 0.05f, 0.0f, 100.0f);
+
+        EditorUI::propertyLabel("Radius");
+        ImGui::DragFloat("##radius", &pointLight.radius, 0.01f, 0.01f, 10.0f);
+
+        EditorUI::endProperties();
     }
 
     void drawDirectionalLight(const ComponentDrawContext &, DirectionalLightComponent &light)
     {
+        if (!EditorUI::beginProperties("##directionalLight"))
+            return;
+
+        EditorUI::propertyLabel("Color");
+        ImGui::ColorEdit3("##color", &light.color.x);
+
+        EditorUI::propertyLabel("Intensity");
+        ImGui::DragFloat("##intensity", &light.intensity, 0.05f, 0.0f, 100.0f);
+
         // Direction comes from the entity's Transform rotation — rotate the
         // entity to aim the sun.
-        ImGui::ColorEdit3("Light Color", &light.color.x);
-        ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 100.0f);
-        ImGui::TextDisabled("Direction follows the Transform rotation");
+        EditorUI::propertyText("Direction", "From Transform rotation",
+                               "Rotate the entity's Transform to aim this light.");
+
+        EditorUI::endProperties();
     }
 
     void drawWater(const ComponentDrawContext &, WaterComponent &water)
     {
+        if (!EditorUI::beginProperties("##water"))
+            return;
+
+        EditorUI::propertyLabel("Subdivisions",
+                                "Applied automatically by the WaterSubdivision script each frame.");
         int divs = static_cast<int>(water.subdivisions);
-        if (ImGui::DragInt("Subdivisions", &divs, 1.0f, 4, 256, "%d"))
+        if (ImGui::DragInt("##subdivisions", &divs, 1.0f, 4, 256, "%d"))
         {
             water.subdivisions = static_cast<uint32_t>(std::clamp(divs, 4, 256));
         }
-        ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Changes are applied automatically by\nthe WaterSubdivision script each frame.");
+
+        EditorUI::endProperties();
     }
 
     void drawPostProcessStack(const ComponentDrawContext &, PostProcessStackComponent &postProcessStack)
     {
-        ImGui::Checkbox("Enabled", &postProcessStack.enabled);
-        ImGui::Separator();
+        if (EditorUI::beginProperties("##postProcess"))
+        {
+            EditorUI::propertyLabel("Enabled");
+            ImGui::Checkbox("##enabled", &postProcessStack.enabled);
+            EditorUI::endProperties();
+        }
 
         int moveUpIndex = -1;
         int moveDownIndex = -1;
@@ -973,79 +1374,89 @@ namespace Faye
             auto &effect = postProcessStack.effects[i];
             ImGui::PushID(static_cast<int>(i));
 
+            const float lineStartX = ImGui::GetCursorPosX();
+            const float availableWidth = ImGui::GetContentRegionAvail().x;
+
+            // AllowOverlap, or the full-width tree node swallows the hover for
+            // the buttons drawn on top of it and none of them ever click.
+            ImGui::SetNextItemAllowOverlap();
             const bool open = ImGui::TreeNodeEx(
                 "Effect",
-                ImGuiTreeNodeFlags_DefaultOpen,
-                "%zu. %s",
-                i + 1,
-                effectDisplayName(effect));
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap,
+                "%zu. %s", i + 1, effectDisplayName(effect));
+
+            // Reordering and removal live on the effect's own row so they read
+            // as controls for that effect rather than for the whole stack.
+            const float buttonWidth = ImGui::GetFrameHeight();
+            ImGui::SameLine(lineStartX + availableWidth - buttonWidth * 3.0f);
+            if (ImGui::Button("^", ImVec2(buttonWidth, 0.0f)) && i > 0)
+                moveUpIndex = static_cast<int>(i);
+            ImGui::SameLine(0.0f, 0.0f);
+            if (ImGui::Button("v", ImVec2(buttonWidth, 0.0f)) && i + 1 < postProcessStack.effects.size())
+                moveDownIndex = static_cast<int>(i);
+            ImGui::SameLine(0.0f, 0.0f);
+            if (ImGui::Button("x", ImVec2(buttonWidth, 0.0f)))
+                removeIndex = static_cast<int>(i);
 
             if (open)
             {
                 const auto *effectDefinition = findPostProcessEffectDefinition(effect.definitionId);
 
-                if (ImGui::BeginCombo("Type", effectDisplayName(effect)))
+                if (EditorUI::beginProperties("##effect"))
                 {
-                    for (const auto &definition : getPostProcessEffectDefinitions())
+                    EditorUI::propertyLabel("Type");
+                    if (ImGui::BeginCombo("##type", effectDisplayName(effect)))
                     {
-                        if (!definition.showInEditor)
+                        for (const auto &definition : getPostProcessEffectDefinitions())
                         {
-                            continue;
-                        }
+                            if (!definition.showInEditor)
+                                continue;
 
-                        const bool isSelected = definition.id == effect.definitionId;
-                        if (ImGui::Selectable(definition.displayName.c_str(), isSelected))
-                        {
-                            const bool wasEnabled = effect.enabled;
-                            effect = makeDefaultPostProcessEffect(definition.id);
-                            effect.enabled = wasEnabled;
-                            effectDefinition = findPostProcessEffectDefinition(effect.definitionId);
-                        }
+                            const bool isSelected = definition.id == effect.definitionId;
+                            if (ImGui::Selectable(definition.displayName.c_str(), isSelected))
+                            {
+                                const bool wasEnabled = effect.enabled;
+                                effect = makeDefaultPostProcessEffect(definition.id);
+                                effect.enabled = wasEnabled;
+                                effectDefinition = findPostProcessEffectDefinition(effect.definitionId);
+                            }
 
-                        if (isSelected)
+                            if (isSelected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    EditorUI::propertyLabel("Enabled");
+                    ImGui::Checkbox("##effectEnabled", &effect.enabled);
+
+                    if (effectDefinition == nullptr)
+                    {
+                        EditorUI::propertyText("Definition", "missing");
+                    }
+                    else
+                    {
+                        for (const auto &parameter : effectDefinition->parameters)
                         {
-                            ImGui::SetItemDefaultFocus();
+                            EditorUI::propertyLabel(parameter.label.c_str());
+                            if (parameter.controlType == PostProcessParameterControlType::Color4)
+                            {
+                                ImGui::ColorEdit4("##color", &effect.parameters.color.x);
+                                continue;
+                            }
+
+                            if (float *value = getPostProcessFloatParameter(effect, parameter.binding))
+                            {
+                                ImGui::SliderFloat("##value", value, parameter.minValue, parameter.maxValue);
+                            }
+                            else
+                            {
+                                ImGui::TextDisabled("(unbound)");
+                            }
                         }
                     }
-                    ImGui::EndCombo();
-                }
 
-                ImGui::Checkbox("Effect Enabled", &effect.enabled);
-
-                if (effectDefinition == nullptr)
-                {
-                    ImGui::TextUnformatted("Effect definition is missing.");
-                }
-                else
-                {
-                    for (const auto &parameter : effectDefinition->parameters)
-                    {
-                        if (parameter.controlType == PostProcessParameterControlType::Color4)
-                        {
-                            ImGui::ColorEdit4(parameter.label.c_str(), &effect.parameters.color.x);
-                            continue;
-                        }
-
-                        if (float *value = getPostProcessFloatParameter(effect, parameter.binding))
-                        {
-                            ImGui::SliderFloat(parameter.label.c_str(), value, parameter.minValue, parameter.maxValue);
-                        }
-                    }
-                }
-
-                if (ImGui::Button("Move Up") && i > 0)
-                {
-                    moveUpIndex = static_cast<int>(i);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Move Down") && i + 1 < postProcessStack.effects.size())
-                {
-                    moveDownIndex = static_cast<int>(i);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Remove"))
-                {
-                    removeIndex = static_cast<int>(i);
+                    EditorUI::endProperties();
                 }
 
                 ImGui::TreePop();
@@ -1067,14 +1478,12 @@ namespace Faye
             std::swap(postProcessStack.effects[moveDownIndex], postProcessStack.effects[moveDownIndex + 1]);
         }
 
-        if (ImGui::BeginCombo("Add Effect", "Select Effect"))
+        if (ImGui::BeginCombo("##addEffect", "Add Effect"))
         {
             for (const auto &definition : getPostProcessEffectDefinitions())
             {
                 if (!definition.showInEditor)
-                {
                     continue;
-                }
 
                 if (ImGui::Selectable(definition.displayName.c_str()))
                 {
@@ -1087,18 +1496,31 @@ namespace Faye
 
     // Scripts became real components in Phase 5: they show up here like
     // any other type, read-only (attach/detach still goes through
-    // ScriptSystem/LuaScriptSystem, not the generic add/remove menu).
+    // ScriptSystem/LuaScriptSystem, not the generic add/remove menu). One row
+    // each — the path is diagnostic, so it lives in the tooltip.
     void drawNativeScript(const ComponentDrawContext &, NativeScriptComponent &script)
     {
-        ImGui::Text("Name: %s", script.scriptName.c_str());
-        ImGui::TextWrapped("Path: %s", script.scriptPath.c_str());
+        if (!EditorUI::beginProperties("##nativeScript"))
+            return;
+
+        EditorUI::propertyText("Script",
+                               script.scriptName.empty() ? "<unbound>" : script.scriptName.c_str(),
+                               script.scriptPath.empty() ? nullptr : script.scriptPath.c_str());
+
+        EditorUI::endProperties();
     }
 
     void drawLuaScript(const ComponentDrawContext &, LuaScriptComponent &script)
     {
+        if (!EditorUI::beginProperties("##luaScript"))
+            return;
+
         const std::string name = std::filesystem::path(script.scriptPath).stem().string();
-        ImGui::Text("Name: %s", name.c_str());
-        ImGui::TextWrapped("Path: %s", script.scriptPath.c_str());
+        EditorUI::propertyText("Script",
+                               name.empty() ? "<unbound>" : name.c_str(),
+                               script.scriptPath.empty() ? nullptr : script.scriptPath.c_str());
+
+        EditorUI::endProperties();
     }
 
     ComponentDrawRegistry makeEditorDrawRegistry()
@@ -1124,6 +1546,7 @@ namespace Faye
         const char *getName() const override { return "Inspector"; }
         bool isOpen() const override { return open; }
         void setOpen(bool isOpen) override { open = isOpen; }
+        void setIconLibrary(const EditorIconLibrary *library) override { icons = library; }
 
         void draw(ImGuiFrameData &frameData,
                     Scene *scene,
@@ -1147,10 +1570,22 @@ namespace Faye
                 }
                 else
                 {
+                    const ComponentDrawContext context{
+                        selectedEntity,
+                        materialRegistry,
+                        modelRegistry,
+                        textureThumbnailCallback,
+                        materialTemplateRegistry,
+                        &texturePicker};
+
                     drawEntityMetadata(selectedEntity);
-                    drawComponents(*scene, selectedEntity);
-                    drawMaterial(selectedEntity, selectedMeshNodeIndex, materialRegistry, modelRegistry, textureThumbnailCallback, materialTemplateRegistry);
+                    drawComponents(*scene, context);
+                    drawModelMaterials(selectedEntity, selectedMeshNodeIndex, context);
                     drawAddComponentMenu(*scene, selectedEntity);
+
+                    // Drawn last and at the window's top level: a modal opened
+                    // from inside a card's child window would be scoped to it.
+                    drawTexturePicker(materialRegistry);
                 }
             }
             ImGui::End();
@@ -1158,20 +1593,25 @@ namespace Faye
 
     private:
         ComponentDrawRegistry drawers = makeEditorDrawRegistry();
+        TexturePickerPopup texturePicker;
+        const EditorIconLibrary *icons = nullptr;
 
         // The join of the two reflection tables: core's type registry
         // supplies name/has/tryGetRaw/remove per ComponentId, the editor's
         // draw registry supplies the widgets for the same id. Iterating
         // the registry means a newly registered component type shows up
         // here (and in the add menu) with zero editor edits.
-        void drawComponents(Scene &scene, const Entity &entity)
+        void drawComponents(Scene &scene, const ComponentDrawContext &context)
         {
             Ecs::World &world = scene.getWorld();
-            const Ecs::Entity handle = entity.handle();
+            const Ecs::Entity handle = context.entity.handle();
             if (!world.alive(handle))
                 return;
 
-            const ComponentDrawContext context{entity};
+            // Removal is deferred: info.remove swap-and-pops the pool, which
+            // invalidates every component pointer this loop is holding.
+            const Ecs::ComponentTypeInfo *pendingRemoval = nullptr;
+
             for (const Ecs::ComponentTypeInfo &info : world.types().all())
             {
                 if (info.name == nullptr)              // unregistered id gap: skip
@@ -1180,23 +1620,29 @@ namespace Faye
                 if (component == nullptr)              // entity lacks this type
                     continue;
 
+                // Transform is not removable: every system that positions an
+                // entity assumes it, and there is no way to add it back that
+                // restores the previous values.
+                const bool removable = info.id != Ecs::componentId<TransformComponent>();
+
                 ImGui::PushID(int(info.id));
-                const bool headerOpen =
-                    ImGui::CollapsingHeader(info.name, ImGuiTreeNodeFlags_DefaultOpen);
-                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20.0f);
-                const bool removeRequested = ImGui::SmallButton("x");
-                if (headerOpen && !removeRequested)
+                const EditorUI::ComponentCard card = EditorUI::beginComponentCard(info.name, removable);
+                if (card.open)
+                {
                     drawers.draw(info.id, context, component);
+                }
+                EditorUI::endComponentCard(card);
                 ImGui::PopID();
 
-                if (removeRequested)
+                if (card.removeRequested)
                 {
-                    // Legal immediately (main thread, no view iteration
-                    // running), but the swap-and-pop invalidated pool
-                    // pointers — stop iterating this frame.
-                    info.remove(world, handle);
-                    break;
+                    pendingRemoval = &info;
                 }
+            }
+
+            if (pendingRemoval != nullptr)
+            {
+                pendingRemoval->remove(world, handle);
             }
         }
 
@@ -1208,13 +1654,25 @@ namespace Faye
                 return;
 
             ImGui::Separator();
-            if (ImGui::Button("Add Component"))
+            if (ImGui::Button("Add Component", ImVec2(-FLT_MIN, 0.0f)))
+            {
+                addComponentFilter.fill('\0');
                 ImGui::OpenPopup("AddComponent");
+            }
+
             if (ImGui::BeginPopup("AddComponent"))
             {
+                ImGui::SetNextItemWidth(220.0f);
+                if (ImGui::IsWindowAppearing())
+                    ImGui::SetKeyboardFocusHere();
+                ImGui::InputTextWithHint("##filter", "Filter", addComponentFilter.data(), addComponentFilter.size());
+                ImGui::Separator();
+
                 for (const Ecs::ComponentTypeInfo &info : world.types().all())
                 {
                     if (info.name == nullptr || info.has(world, handle))
+                        continue;
+                    if (!matchesFilter(info.name))
                         continue;
                     if (ImGui::MenuItem(info.name))
                         info.addDefault(world, handle);
@@ -1222,18 +1680,57 @@ namespace Faye
                 ImGui::EndPopup();
             }
         }
+
+        bool matchesFilter(const char *name) const
+        {
+            if (addComponentFilter[0] == '\0')
+                return true;
+
+            // Case-insensitive substring match, so "light" finds "Point Light".
+            std::string lowerName(name);
+            std::string lowerFilter(addComponentFilter.data());
+            const auto toLower = [](std::string &value) {
+                std::transform(value.begin(), value.end(), value.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            };
+            toLower(lowerName);
+            toLower(lowerFilter);
+            return lowerName.find(lowerFilter) != std::string::npos;
+        }
+
         void drawEntityMetadata(const Entity &entity)
         {
             std::array<char, 128> nameBuffer{};
             copyNameToBuffer(entity.getName(), nameBuffer);
 
-            if (ImGui::InputText("Name", nameBuffer.data(), nameBuffer.size()))
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputTextWithHint("##entityName", "Entity name", nameBuffer.data(), nameBuffer.size()))
             {
                 entity.setName(nameBuffer.data());
             }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+            {
+                ImGui::SetTooltip("Entity index %u", entity.handle().index);
+            }
 
-            ImGui::Text("Entity Index: %u", entity.handle().index);
-            ImGui::Separator();
+            ImGui::Spacing();
+        }
+
+        void drawTexturePicker(MaterialRegistry *materialRegistry)
+        {
+            if (icons == nullptr)
+                return;
+
+            if (!texturePicker.draw(*icons))
+                return;
+
+            if (materialRegistry == nullptr)
+                return;
+
+            if (Material *material = materialRegistry->getMaterial(texturePicker.requestedMaterial()))
+            {
+                assignTexture(*material, texturePicker.requestedType(), texturePicker.acceptedPath());
+            }
         }
 
         struct ModelMaterialUsage
@@ -1242,395 +1739,81 @@ namespace Faye
             std::vector<size_t> submeshIndices;
         };
 
-        void drawTexturePreview(MaterialHandle handle, const Texture &texture, const TextureThumbnailCallback *textureThumbnailCallback)
+        // Materials that came in with the model, grouped by the submeshes that
+        // use them. Scoped to the mesh node selected in the hierarchy, if any.
+        void drawModelMaterials(const Entity &entity,
+                                uint32_t selectedMeshNodeIndex,
+                                const ComponentDrawContext &context)
         {
-            constexpr ImVec2 previewSize{72.0f, 72.0f};
-
-            ImTextureID previewTexture = 0;
-            if (textureThumbnailCallback != nullptr && *textureThumbnailCallback)
-            {
-                previewTexture = (*textureThumbnailCallback)(handle, texture.type);
-            }
-
-            if (previewTexture != 0)
-            {
-                ImGui::Image(previewTexture, previewSize);
+            if (context.materials == nullptr)
                 return;
-            }
-
-            ImGui::BeginChild("##TexturePreviewPlaceholder", previewSize, true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-            ImGui::TextUnformatted("No");
-            ImGui::TextUnformatted("Preview");
-            ImGui::EndChild();
-        }
-
-        void drawTextureList(MaterialHandle handle,
-                                const MaterialData &materialData,
-                                const TextureThumbnailCallback *textureThumbnailCallback)
-        {
-            if (materialData.textures.empty())
-            {
-                ImGui::TextUnformatted("Textures: none");
-                return;
-            }
-
-            ImGui::SeparatorText("Textures");
-            for (size_t i = 0; i < materialData.textures.size(); ++i)
-            {
-                const Texture &texture = materialData.textures[i];
-                ImGui::PushID(static_cast<int>(i));
-
-                drawTexturePreview(handle, texture, textureThumbnailCallback);
-                ImGui::SameLine();
-
-                ImGui::BeginGroup();
-                ImGui::Text("%s", textureTypeLabel(texture.type));
-                ImGui::TextWrapped("%s", texture.path.empty() ? "<embedded texture>" : texture.path.c_str());
-                ImGui::Text("Asset ID: %u", texture.id);
-                if (texture.hasPixelData())
-                {
-                    ImGui::Text("Size: %dx%d (%d channels)", texture.width, texture.height, texture.channels);
-                }
-                else
-                {
-                    ImGui::TextUnformatted("Pixel data unavailable.");
-                }
-                ImGui::EndGroup();
-
-                ImGui::Separator();
-                ImGui::PopID();
-            }
-        }
-
-        void drawMaterialProperties(MaterialHandle handle,
-                                    Material &material,
-                                    std::string_view usageSummary,
-                                    const TextureThumbnailCallback *textureThumbnailCallback,
-                                    MaterialTemplateRegistry *templateRegistry)
-        {
-            MaterialData &materialData = material.getMaterialData();
-            bool materialChanged = false;
-            std::array<char, 128> nameBuffer{};
-            copyNameToBuffer(materialData.name, nameBuffer);
-
-            ImGui::Text("Material Handle: %u", handle.value);
-            if (!usageSummary.empty())
-            {
-                ImGui::TextWrapped("Used by submeshes: %s", std::string(usageSummary).c_str());
-            }
-
-            if (ImGui::InputText("Material Name", nameBuffer.data(), nameBuffer.size()))
-            {
-                materialData.name = nameBuffer.data();
-                materialChanged = true;
-            }
-
-            // ---- Shader template selector -----------------------------------
-            if (ImGui::CollapsingHeader("Shader", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                // Build combo list: index 0 = built-in PBR, then registered templates.
-                std::vector<std::pair<MaterialTemplateHandle, std::string>> templateItems;
-                templateItems.push_back({kBuiltinPBRTemplateHandle, "Built-in PBR"});
-                if (templateRegistry != nullptr)
-                {
-                    for (uint32_t h = 1; h <= templateRegistry->count(); ++h)
-                    {
-                        const MaterialTemplate *tmpl = templateRegistry->get(h);
-                        if (tmpl != nullptr)
-                            templateItems.push_back({h, tmpl->name});
-                    }
-                }
-
-                // Find current combo index.
-                int currentIndex = 0;
-                for (int i = 0; i < static_cast<int>(templateItems.size()); ++i)
-                {
-                    if (templateItems[i].first == materialData.templateHandle)
-                    {
-                        currentIndex = i;
-                        break;
-                    }
-                }
-
-                const char *previewLabel = templateItems[currentIndex].second.c_str();
-                if (ImGui::BeginCombo("Shader Template", previewLabel))
-                {
-                    for (int i = 0; i < static_cast<int>(templateItems.size()); ++i)
-                    {
-                        bool selected = (i == currentIndex);
-                        if (ImGui::Selectable(templateItems[i].second.c_str(), selected))
-                        {
-                            materialData.templateHandle = templateItems[i].first;
-                            if (templateItems[i].first == kBuiltinPBRTemplateHandle)
-                            {
-                                material.setPipelineConfig({"shader.vert", "shader.frag"});
-                            }
-                            else if (templateRegistry != nullptr)
-                            {
-                                const MaterialTemplate *tmpl = templateRegistry->get(templateItems[i].first);
-                                if (tmpl != nullptr)
-                                    material.setPipelineConfig({tmpl->vertShaderPath, tmpl->fragShaderPath});
-                            }
-                            materialChanged = true;
-                        }
-                        if (selected)
-                            ImGui::SetItemDefaultFocus();
-                    }
-                    ImGui::EndCombo();
-                }
-
-                // Show compiled shader paths for reference.
-                const MaterialPipelineConfig &pipelineConfig = material.getPipelineConfig();
-                ImGui::TextDisabled("vert: %s", pipelineConfig.vertexShaderPath.c_str());
-                ImGui::TextDisabled("frag: %s", pipelineConfig.fragmentShaderPath.c_str());
-            }
-
-            // ---- Template-specific or standard properties -------------------
-            const MaterialTemplate *activeTemplate = (templateRegistry != nullptr)
-                                                            ? templateRegistry->get(materialData.templateHandle)
-                                                            : nullptr;
-
-            if (activeTemplate != nullptr && !activeTemplate->properties.empty())
-            {
-                // Custom template: show only the properties declared in the template.
-                if (ImGui::CollapsingHeader("Properties", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    for (const auto &desc : activeTemplate->properties)
-                    {
-                        if (desc.field == "baseColorFactor" && desc.type == ShaderMember::Type::Vec4)
-                        {
-                            if (ImGui::ColorEdit4(desc.label.c_str(), &materialData.baseColorFactor.x))
-                            {
-                                materialData.opacity = materialData.baseColorFactor.a;
-                                materialChanged = true;
-                            }
-                        }
-                        else if (desc.field == "metallicFactor" && desc.type == ShaderMember::Type::Float)
-                        {
-                            materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.metallicFactor,
-                                                                0.01f, desc.minVal, desc.maxVal);
-                        }
-                        else if (desc.field == "roughnessFactor" && desc.type == ShaderMember::Type::Float)
-                        {
-                            materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.roughnessFactor,
-                                                                0.01f, desc.minVal, desc.maxVal);
-                        }
-                        else if (desc.field == "emissive" && desc.type == ShaderMember::Type::Vec3)
-                        {
-                            materialChanged |= ImGui::ColorEdit3(desc.label.c_str(), &materialData.emissive.x);
-                        }
-                        else if (desc.field == "emissiveIntensity" && desc.type == ShaderMember::Type::Float)
-                        {
-                            materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.emissiveIntensity,
-                                                                0.1f, desc.minVal, desc.maxVal);
-                        }
-                        else if (desc.field == "shininess" && desc.type == ShaderMember::Type::Float)
-                        {
-                            materialChanged |= ImGui::DragFloat(desc.label.c_str(), &materialData.shininess,
-                                                                1.0f, desc.minVal, desc.maxVal);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // Built-in PBR: show full standard property set.
-                if (ImGui::CollapsingHeader("Properties", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    materialChanged |= ImGui::ColorEdit3("Color", &materialData.color.x);
-
-                    if (ImGui::ColorEdit4("Base Color", &materialData.baseColorFactor.x))
-                    {
-                        materialData.opacity = materialData.baseColorFactor.a;
-                        materialChanged = true;
-                    }
-
-                    materialChanged |= ImGui::DragFloat("Metallic", &materialData.metallicFactor, 0.01f, 0.0f, 1.0f);
-                    materialChanged |= ImGui::DragFloat("Roughness", &materialData.roughnessFactor, 0.01f, 0.0f, 1.0f);
-                    materialChanged |= ImGui::DragFloat("Normal Scale", &materialData.normalScale, 0.01f, 0.0f, 8.0f);
-                    materialChanged |= ImGui::DragFloat("Occlusion Strength", &materialData.occlusionStrength, 0.01f, 0.0f, 1.0f);
-
-                    if (ImGui::DragFloat("Opacity", &materialData.opacity, 0.01f, 0.0f, 1.0f))
-                    {
-                        materialData.baseColorFactor.a = materialData.opacity;
-                        materialChanged = true;
-                    }
-
-                    int alphaModeIndex = static_cast<int>(materialData.alphaMode);
-                    const char *alphaModeLabels[] = {
-                        materialAlphaModeLabel(MaterialAlphaMode::Opaque),
-                        materialAlphaModeLabel(MaterialAlphaMode::Mask)};
-                    if (ImGui::Combo("Alpha Mode", &alphaModeIndex, alphaModeLabels, IM_ARRAYSIZE(alphaModeLabels)))
-                    {
-                        materialData.alphaMode = static_cast<MaterialAlphaMode>(alphaModeIndex);
-                        materialChanged = true;
-                    }
-
-                    if (materialData.alphaMode == MaterialAlphaMode::Mask)
-                    {
-                        materialChanged |= ImGui::DragFloat("Alpha Cutoff", &materialData.alphaCutoff, 0.01f, 0.0f, 1.0f);
-                    }
-
-                    materialChanged |= ImGui::DragFloat("Shininess", &materialData.shininess, 0.1f, 0.0f, 256.0f);
-                    materialChanged |= ImGui::ColorEdit3("Emissive Color", &materialData.emissive.x);
-                    materialChanged |= ImGui::DragFloat("Emissive Intensity", &materialData.emissiveIntensity, 0.01f, 0.0f, 10.0f);
-                    materialChanged |= ImGui::Checkbox("Double Sided", &materialData.doubleSided);
-                }
-            }
-
-            if (materialChanged)
-            {
-                material.markDirty();
-            }
-
-            drawTextureList(handle, materialData, textureThumbnailCallback);
-        }
-
-        void drawMaterialEntry(const char *label,
-                                MaterialHandle handle,
-                                MaterialRegistry *materialRegistry,
-                                std::string_view usageSummary,
-                                const TextureThumbnailCallback *textureThumbnailCallback,
-                                MaterialTemplateRegistry *templateRegistry)
-        {
-            ImGui::PushID(static_cast<int>(handle.value));
-
-            Material *material = materialRegistry->getMaterial(handle);
-            const char *materialName = material != nullptr && !material->getName().empty()
-                                            ? material->getName().c_str()
-                                            : "Unnamed Material";
-
-            if (ImGui::TreeNodeEx("##MaterialEntry", ImGuiTreeNodeFlags_DefaultOpen, "%s: %s", label, materialName))
-            {
-                if (material == nullptr)
-                {
-                    ImGui::Text("Material Handle: %u", handle.value);
-                    ImGui::TextUnformatted("Material data is missing from the registry.");
-                }
-                else
-                {
-                    drawMaterialProperties(handle, *material, usageSummary, textureThumbnailCallback, templateRegistry);
-                }
-
-                ImGui::TreePop();
-            }
-
-            ImGui::PopID();
-        }
-
-        void drawMaterial(const Entity &entity,
-                            uint32_t selectedMeshNodeIndex,
-                            MaterialRegistry *materialRegistry,
-                            ModelRegistry *modelRegistry,
-                            const TextureThumbnailCallback *textureThumbnailCallback,
-                            MaterialTemplateRegistry *templateRegistry)
-        {
-            if (materialRegistry == nullptr)
-            {
-                return;
-            }
 
             auto *mesh = entity.tryGet<MeshRendererComponent>();
             if (mesh == nullptr)
-            {
                 return;
-            }
 
-            if (!ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
-            {
+            const Model *model = context.models != nullptr ? context.models->getModel(mesh->modelHandle) : nullptr;
+            if (model == nullptr)
                 return;
-            }
 
-            bool drewAnyMaterial = false;
+            const auto &allSubmeshes = model->getSubmeshes();
+            const auto &meshNodes = model->getMeshNodes();
 
-            if (mesh->materialHandle.isValid())
+            std::vector<uint32_t> activeSubmeshIndices;
+            std::string sectionLabel = "Model Materials";
+            if (selectedMeshNodeIndex != Model::kInvalidNodeIndex && selectedMeshNodeIndex < meshNodes.size())
             {
-                drawMaterialEntry(
-                    "Mesh Material Override",
-                    mesh->materialHandle,
-                    materialRegistry,
-                    {},
-                    textureThumbnailCallback,
-                    templateRegistry);
-                drewAnyMaterial = true;
+                collectNodeSubmeshIndices(meshNodes, selectedMeshNodeIndex, activeSubmeshIndices);
+                const auto &node = meshNodes[selectedMeshNodeIndex];
+                sectionLabel = node.name.empty() ? ("Mesh Node " + std::to_string(selectedMeshNodeIndex)) : node.name;
             }
-
-            const Model *model = modelRegistry != nullptr ? modelRegistry->getModel(mesh->modelHandle) : nullptr;
-            if (model != nullptr)
+            else
             {
-                const auto &allSubmeshes = model->getSubmeshes();
-                const auto &meshNodes = model->getMeshNodes();
-
-                // Determine which submesh indices to show based on selection.
-                std::vector<uint32_t> activeSubmeshIndices;
-                if (selectedMeshNodeIndex != Model::kInvalidNodeIndex &&
-                    selectedMeshNodeIndex < meshNodes.size())
-                {
-                    collectNodeSubmeshIndices(meshNodes, selectedMeshNodeIndex, activeSubmeshIndices);
-                    const auto &node = meshNodes[selectedMeshNodeIndex];
-                    const std::string nodeLabel = node.name.empty()
-                                                        ? ("Mesh Node " + std::to_string(selectedMeshNodeIndex))
-                                                        : node.name;
-                    ImGui::SeparatorText(nodeLabel.c_str());
-                }
-                else
-                {
-                    // No node selected — show all submeshes.
-                    activeSubmeshIndices.reserve(allSubmeshes.size());
-                    for (uint32_t i = 0; i < static_cast<uint32_t>(allSubmeshes.size()); ++i)
-                        activeSubmeshIndices.push_back(i);
-
-                    if (!meshNodes.empty())
-                        ImGui::SeparatorText("Model Materials");
-                }
-
-                // Build per-material usage from the active submesh set.
-                std::vector<ModelMaterialUsage> usages;
-                std::unordered_map<uint32_t, size_t> usageIndexByHandle;
-                for (uint32_t submeshIdx : activeSubmeshIndices)
-                {
-                    if (submeshIdx >= allSubmeshes.size())
-                        continue;
-                    const auto &submesh = allSubmeshes[submeshIdx];
-                    if (!submesh.materialHandle.isValid())
-                        continue;
-                    auto [it, inserted] = usageIndexByHandle.try_emplace(
-                        submesh.materialHandle.value, usages.size());
-                    if (inserted)
-                        usages.push_back(ModelMaterialUsage{submesh.materialHandle, {}});
-                    usages[it->second].submeshIndices.push_back(submeshIdx);
-                }
-
-                if (!usages.empty())
-                {
-                    ImGui::Text("Unique materials: %zu", usages.size());
-                    ImGui::Text("Submeshes shown: %zu", activeSubmeshIndices.size());
-
-                    for (size_t usageIndex = 0; usageIndex < usages.size(); ++usageIndex)
-                    {
-                        const ModelMaterialUsage &usage = usages[usageIndex];
-                        const std::string usageSummary = formatSubmeshList(usage.submeshIndices);
-                        const std::string label = "Material " + std::to_string(usageIndex);
-                        drawMaterialEntry(
-                            label.c_str(),
-                            usage.handle,
-                            materialRegistry,
-                            usageSummary,
-                            textureThumbnailCallback,
-                            templateRegistry);
-                        drewAnyMaterial = true;
-                    }
-                }
+                activeSubmeshIndices.reserve(allSubmeshes.size());
+                for (uint32_t i = 0; i < static_cast<uint32_t>(allSubmeshes.size()); ++i)
+                    activeSubmeshIndices.push_back(i);
             }
 
-            if (!drewAnyMaterial)
+            std::vector<ModelMaterialUsage> usages;
+            std::unordered_map<uint32_t, size_t> usageIndexByHandle;
+            for (uint32_t submeshIdx : activeSubmeshIndices)
             {
-                ImGui::TextUnformatted("No materials are attached to this mesh or model.");
+                if (submeshIdx >= allSubmeshes.size())
+                    continue;
+                const auto &submesh = allSubmeshes[submeshIdx];
+                if (!submesh.materialHandle.isValid())
+                    continue;
+                auto [it, inserted] = usageIndexByHandle.try_emplace(submesh.materialHandle.value, usages.size());
+                if (inserted)
+                    usages.push_back(ModelMaterialUsage{submesh.materialHandle, {}});
+                usages[it->second].submeshIndices.push_back(submeshIdx);
             }
+
+            if (usages.empty())
+                return;
+
+            const EditorUI::ComponentCard card = EditorUI::beginComponentCard(sectionLabel.c_str(), false);
+            if (card.open)
+            {
+                if (mesh->materialHandle.isValid())
+                {
+                    ImGui::TextDisabled("Overridden by the Mesh Renderer's material.");
+                }
+
+                for (size_t usageIndex = 0; usageIndex < usages.size(); ++usageIndex)
+                {
+                    const ModelMaterialUsage &usage = usages[usageIndex];
+                    const std::string label = "Material " + std::to_string(usageIndex);
+                    drawMaterialEntry(label.c_str(), usage.handle, context.materials,
+                                      formatSubmeshList(usage.submeshIndices), context.thumbnails,
+                                      context.materialTemplates, context.texturePicker);
+                }
+            }
+            EditorUI::endComponentCard(card);
         }
 
+        std::array<char, 64> addComponentFilter{};
         bool open = true;
-
     };
 
 
@@ -1643,6 +1826,13 @@ namespace Faye
         panels.push_back(std::make_unique<InspectorPanel>());
         panels.push_back(std::make_unique<RuntimeViewPanel>());
         panels.push_back(std::make_unique<AssetExplorerPanel>());
+
+        // One icon upload shared by every file view (asset explorer grid,
+        // inspector texture picker).
+        for (const auto &panel : panels)
+        {
+            panel->setIconLibrary(&icons);
+        }
     }
 
     EditorPanels::~EditorPanels() = default;

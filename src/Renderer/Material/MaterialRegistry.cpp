@@ -1,5 +1,6 @@
 #include "MaterialRegistry.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 using namespace Faye;
@@ -42,6 +43,21 @@ const Faye::Material *Faye::MaterialRegistry::getMaterial(MaterialHandle handle)
 {
     auto iterator = materials.find(handle.value);
     return iterator != materials.end() ? iterator->second.get() : nullptr;
+}
+
+std::vector<Faye::MaterialHandle> Faye::MaterialRegistry::getAllHandles() const
+{
+    std::vector<MaterialHandle> handles;
+    handles.reserve(materials.size());
+    for (const auto &[value, material] : materials)
+    {
+        handles.push_back(MaterialHandle{value});
+    }
+
+    std::sort(handles.begin(), handles.end(), [](MaterialHandle a, MaterialHandle b) {
+        return a.value < b.value;
+    });
+    return handles;
 }
 
 Faye::Material *Faye::MaterialRegistry::getMaterialOrDefault(MaterialHandle handle)

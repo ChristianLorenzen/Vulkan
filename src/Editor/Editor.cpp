@@ -34,8 +34,12 @@ namespace Faye {
         engine.reloadSystem().getHotReloadManager().subscribe([assetPanel](const HotReloadEvent &event) {
             assetPanel->FileChangeCallback(event);
         }, {"project-files"});
+        assetPanel->setEntityCreateCallback([this](const std::filesystem::path &path) {
+            return engine.importAndCreateModel(path);
+        });
         assetPanel->setInitialFileWatch(engine.reloadSystem().getHotReloadManager().getWatch("project-files"));
-        assetPanel->setIconTextureCallback([this](const std::filesystem::path &path) -> ImTextureID {
+
+        panels.setIconTextureCallback([this](const std::filesystem::path &path) -> ImTextureID {
             try {
                 const MaterialTextureView tex = engine.renderer().getOrCreateTexture(
                     loadTextureFromFile(path.string(), TextureType::Albedo));
@@ -45,7 +49,7 @@ namespace Faye {
                 return 0;
             }
         });
-        assetPanel->loadIcons();
+        panels.loadIcons();
 
         panels.setMaterialRegistry(&engine.materials());
         panels.setModelRegistry(&engine.models());
@@ -81,10 +85,8 @@ namespace Faye {
         if (frame->swapchainRecreated) {
             layer.onSwapchainRecreated(engine.window(), r.targets());
             // The layer dropped its thumbnail descriptors, so the cached icon
-            // texture ids in the asset panel are stale — re-register them.
-            if (auto *assetPanel = panels.getPanelByType<AssetExplorerPanel>()) {
-                assetPanel->loadIcons();
-            }
+            // texture ids are stale — re-register them.
+            panels.loadIcons();
         }
 
         engine.renderSceneInto(*frame, view);

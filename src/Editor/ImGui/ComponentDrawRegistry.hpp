@@ -1,20 +1,36 @@
 #pragma once
 
+#include <functional>
 #include <unordered_map>
 
 #include <imgui.h>
 
 #include "Core/ECS/ComponentPool.hpp"
+#include "Editor/ImGui/AssetBrowser.hpp"
 #include "Scene/Entities/Entity.hpp"
 
 namespace Faye
 {
+    class MaterialRegistry;
+    class MaterialTemplateRegistry;
+    class ModelRegistry;
+
     // Context handed to every component drawer: the scene facade for the
     // drawn entity, for the rare drawer that needs more than the component
-    // data itself (e.g. Camera's "Set As Primary" button).
+    // data itself (e.g. Camera's "Set As Primary" button), plus the asset
+    // registries a drawer needs to resolve handles into something a human can
+    // read and edit (Mesh Renderer's model name and material picker).
     struct ComponentDrawContext
     {
+        using TextureThumbnailFn = std::function<ImTextureID(MaterialHandle, TextureType)>;
+
         Entity entity;
+        MaterialRegistry *materials = nullptr;
+        ModelRegistry *models = nullptr;
+        const TextureThumbnailFn *thumbnails = nullptr;
+        MaterialTemplateRegistry *materialTemplates = nullptr;
+        // Owned by the inspector; a drawer only requests that it open.
+        TexturePickerPopup *texturePicker = nullptr;
     };
 
     // Editor half of the split reflection design: core keeps the type table

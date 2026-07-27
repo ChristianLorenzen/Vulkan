@@ -5,6 +5,8 @@
 #include "Editor/ImGui/EditorRenderLayer.hpp"
 #include "Scene/SceneQueries.hpp"
 
+#include <filesystem>
+
 namespace Faye {
     class Editor {
         public:

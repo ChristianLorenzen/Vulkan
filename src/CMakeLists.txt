@@ -9,8 +9,10 @@ set(FAYE_ENGINE_SOURCES
     Core/Path/Paths.cpp
     Core/Time/Timer.cpp
     Editor/Editor.cpp
+    Editor/ImGui/AssetBrowser.cpp
     Editor/ImGui/EditorPanels.cpp
     Editor/ImGui/EditorRenderLayer.cpp
+    Editor/ImGui/EditorWidgets.cpp
     Editor/ImGui/ImGuiCustomStyle.cpp
     Editor/ImGui/ImGuiRenderer.cpp
     Platform/GLFW/VKGLFW.cpp
