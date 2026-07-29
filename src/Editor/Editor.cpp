@@ -36,7 +36,12 @@ namespace Faye::Editor {
             assetPanel->FileChangeCallback(event);
         }, {"project-files"});
         assetPanel->setEntityCreateCallback([this](const std::filesystem::path &path) {
-            return engine.importAndCreateModel(path);
+            try {
+                engine.importAndCreateModel(path);
+            }
+            catch (const std::exception &e) {
+                LOG_ERROR(Logger::get(), "Failed to create entity for file {}: {}", path.string(), e.what());
+            }
         });
         assetPanel->setInitialFileWatch(engine.reloadSystem().getHotReloadManager().getWatch("project-files"));
 

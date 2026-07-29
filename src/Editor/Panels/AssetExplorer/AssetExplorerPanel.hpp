@@ -15,7 +15,7 @@ namespace Faye::Editor::Panels
     class AssetExplorerPanel final : public IEditorPanel
     {
     public:
-        using EntityCreateCallback = std::function<Entity(const std::filesystem::path &)>;
+        using EntityCreateCallback = std::function<void(const std::filesystem::path &)>;
 
         const char *getName() const override { return "Asset Explorer"; }
         bool isOpen() const override { return open; }

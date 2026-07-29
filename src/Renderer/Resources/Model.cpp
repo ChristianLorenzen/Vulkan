@@ -597,8 +597,9 @@ namespace Faye
 
         if (scene == nullptr)
         {
-            LOG_INFO(Logger::get(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
-            throw std::runtime_error("Failed to load model at path " + modelPath);
+            LOG_ERROR(Logger::get(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
+            throw std::runtime_error("Failed to load model at path " + modelPath +
+                                     ": " + importer.GetErrorString());
         }
 
         materials.clear();

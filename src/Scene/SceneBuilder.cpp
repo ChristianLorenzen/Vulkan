@@ -104,14 +104,22 @@ Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveTy
 Entity Faye::SceneBuilder::importAndCreateModel(Scene &scene, std::filesystem::path path)
 {
     // Implementation for importing and creating a model entity
-    Entity entity = scene.createEntity(path.filename().string());
-    auto &t = entity.add<TransformComponent>();
-    const ImportedModelRegistration reg = registerImportedModelWithBounds(path);
-    entity.addMesh(reg.handle);
-    t.translation = {0.f, 0.f, 0.f};
-    t.rotation = {0.f, 0.f, 0.f};
-    t.scale = {1.0f, 1.01f, 1.0f};
-    return entity;
+    try 
+    {
+        const ImportedModelRegistration reg = registerImportedModelWithBounds(path);
+        Entity entity = scene.createEntity(path.filename().string());
+        auto &t = entity.add<TransformComponent>();
+        entity.addMesh(reg.handle);
+        t.translation = {0.f, 0.f, 0.f};
+        t.rotation = {0.f, 0.f, 0.f};
+        t.scale = {1.0f, 1.01f, 1.0f};
+        return entity;
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR(Logger::get(), "Failed to import model at path {}. Error: {}", path.string(), e.what());
+        throw;
+    }
 }
 
 void Faye::SceneBuilder::populateDefaultScene(Scene &scene)
@@ -186,11 +194,15 @@ void Faye::SceneBuilder::populateDefaultScene(Scene &scene)
     // modelAdamTransform.rotation = {0.f, 0.f, 0.f};
     // modelAdamTransform.scale = {1.0f, 1.0f, 1.0f};
 
-    Entity shipModel = importAndCreateModel(scene, defaultAssetPath.string() + "/projects/models/stylized-pirate-ship/source/Ship_Scene.fbx");
-    shipModel.tryGet<TransformComponent>()->scale = {0.01f, 0.01f, 0.01f};
+    try {
+        Entity shipModel = importAndCreateModel(scene, defaultAssetPath.string() + "/projects/models/stylized-pirate-ship/source/Ship_Scene.fbx");
+        shipModel.tryGet<TransformComponent>()->scale = {0.01f, 0.01f, 0.01f};
 
-    Entity rock = importAndCreateModel(scene, defaultAssetPath.string() + "/projects/models/stylized-stones-minipack/source/model/stones_v2.fbx");
-    rock.tryGet<TransformComponent>()->scale = {0.01f, 0.01f, 0.01f};
+        Entity rock = importAndCreateModel(scene, defaultAssetPath.string() + "/projects/models/stylized-stones-minipack/source/model/stones_v2.fbx");
+        rock.tryGet<TransformComponent>()->scale = {0.01f, 0.01f, 0.01f};
+    } catch (const std::exception &e) {
+        LOG_ERROR(Logger::get(), "Failed to import a default model. Error: {}", e.what());
+    }
 
     // Demo scripts: the scripting systems have already bound this scene in
     // OnPostInit, so onStart fires correctly here.
