@@ -33,5 +33,7 @@ namespace Faye::Editor::Panels
                               uint32_t nodeIndex,
                               Entity &selectedEntity,
                               uint32_t &selectedMeshNodeIndex);
+        bool matchesFilter(const char *name) const;
+        std::array<char, 64> entityFilter{};
     };
 }

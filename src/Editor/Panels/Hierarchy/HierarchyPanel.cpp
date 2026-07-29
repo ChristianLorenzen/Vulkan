@@ -27,6 +27,24 @@ namespace Faye::Editor::Panels
             }
             return false;
         }
+
+    }
+
+    bool HierarchyPanel::matchesFilter(const char *name) const
+    {
+        if (entityFilter[0] == '\0')
+            return true;
+
+        // Case-insensitive substring match, so "light" finds "Point Light".
+        std::string lowerName(name);
+        std::string lowerFilter(entityFilter.data());
+        const auto toLower = [](std::string &value) {
+            std::transform(value.begin(), value.end(), value.begin(),
+                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        };
+        toLower(lowerName);
+        toLower(lowerFilter);
+        return lowerName.find(lowerFilter) != std::string::npos;
     }
 
     void HierarchyPanel::draw(ImGuiFrameData &frameData,
@@ -54,10 +72,17 @@ namespace Faye::Editor::Panels
             }
             else
             {
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+                ImGui::InputTextWithHint("##heirarchyfilter", "Filter", entityFilter.data(), entityFilter.size());
+                ImGui::Separator();
+
                 for (Ecs::Entity entityHandle : scene->getEntities())
                 {
                     Entity entity = scene->getEntity(entityHandle);
                     const std::string_view name = entity.getName();
+
+                    if (!matchesFilter(name.data()))
+                        continue;
 
                     const Model *model = nullptr;
                     if (modelRegistry != nullptr)
