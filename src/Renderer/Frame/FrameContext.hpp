@@ -48,8 +48,11 @@ namespace Faye
         // re-evaluate Gerstner displacement at the prior frame's time so
         // motion vectors account for wave movement.
         float deltaTime = 0.0f; // offset 260
-        float _pad1 = 0.0f;     // offset 264
-        float _pad2 = 0.0f;     // offset 268 -> pads inverseProjection to byte 272
+        // Offscreen scene render extent in pixels -- NOT the swapchain extent; the
+        // two differ in the editor, where the viewport panel resizes this on drag.
+        // Sits in the two floats that previously padded inverseProjection to 272,
+        // so adding it shifted no existing offset.
+        glm::vec2 resolution{0.f}; // offset 264
         // Used by water.frag to convert prepass NDC depth to view-space distance
         // exactly, independent of the projection convention.
         glm::mat4 inverseProjection{1.f}; // offset 272

@@ -404,6 +404,8 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     ubo.view = primaryCamera->getView();
     ubo.inverseView = primaryCamera->getInverseView();
     ubo.time = totalElapsedTime;
+    const VkExtent2D sceneExtent = getSceneRenderExtent();
+    ubo.resolution = glm::vec2(static_cast<float>(sceneExtent.width), static_cast<float>(sceneExtent.height));
     ubo.deltaTime = static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
     ubo.inverseProjection = primaryCamera->getInverseProjection();
 
