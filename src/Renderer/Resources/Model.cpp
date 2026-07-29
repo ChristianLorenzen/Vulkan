@@ -14,6 +14,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <unordered_map>
@@ -704,6 +705,62 @@ namespace Faye
         return meshData;
     }
 
+    namespace
+    {
+        // Assimp returns whatever the exporter baked in, which for Windows-authored
+        // FBX/OBJ is routinely a backslash path. std::filesystem on POSIX treats '\'
+        // as an ordinary filename character, not a separator, so an un-normalised
+        // reference collapses into an invalid filename.
+        std::string normalizeSeparators(std::string path)
+        {
+            std::replace(path.begin(), path.end(), '\\', '/');
+            return path;
+        }
+
+        // The embedded path is only a hint: exporters routinely bake absolute or
+        // machine-specific paths (the stylized-tropical pack points into the FBX
+        // Converter's own install directory). So try the reference as given, then
+        // fall back to the basename beside the model and in nearby `textures/`
+        // folders -- packs commonly ship `fbx/`, `obj/` and `textures/` as siblings.
+        //
+        // Returns an empty path when nothing matches; the caller warns and continues.
+        std::filesystem::path resolveTexturePath(const std::string &rawPath, const std::string &directory)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path normalized{normalizeSeparators(rawPath)};
+            const fs::path modelDir{directory};
+
+            std::vector<fs::path> candidates;
+            candidates.push_back((modelDir / normalized).lexically_normal());
+            if (normalized.is_absolute())
+            {
+                candidates.push_back(normalized);
+            }
+
+            const fs::path basename = normalized.filename();
+            if (!basename.empty())
+            {
+                candidates.push_back(modelDir / basename);
+                for (const fs::path &root : {modelDir, modelDir / "..", modelDir / ".." / ".."})
+                {
+                    candidates.push_back((root / "textures" / basename).lexically_normal());
+                    candidates.push_back((root / "Textures" / basename).lexically_normal());
+                }
+            }
+
+            std::error_code ec;
+            for (const fs::path &candidate : candidates)
+            {
+                if (fs::is_regular_file(candidate, ec))
+                {
+                    return candidate;
+                }
+            }
+            return {};
+        }
+    }
+
     MaterialData Builder::processMaterial(aiMaterial *material, const aiScene *scene)
     {
         MaterialData result{};
@@ -833,10 +890,28 @@ namespace Faye
 
                 material->GetTexture(static_cast<aiTextureType>(textureType), textureIndex, &texturePath);
 
-                // Load the texture and add it to the material
-                LOG_INFO(Logger::get(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.name);
-                std::filesystem::path fullTexturePath = std::filesystem::path(directory) / texturePath.C_Str();
-                LOG_INFO(Logger::get(), "Full texture path resolved to {}.", fullTexturePath.string());
+                LOG_INFO(Logger::get(), "Found texture reference '{}' for material {}.", texturePath.C_Str(), result.name);
+
+                // check for embedded texture before trying to resolve in filesystem
+                if (scene->GetEmbeddedTexture(texturePath.C_Str()) != nullptr)
+                {
+                    result.textures.push_back(loadTexture(texturePath.C_Str(), scene, *resolvedTextureType));
+                    continue;
+                }
+
+                const std::filesystem::path fullTexturePath = resolveTexturePath(texturePath.C_Str(), directory);
+                if (fullTexturePath.empty())
+                {
+                    LOG_WARNING(
+                        Logger::get(),
+                        "Could not resolve texture '{}' for material '{}' relative to '{}'. Continuing without it.",
+                        texturePath.C_Str(),
+                        result.name,
+                        directory);
+                    continue;
+                }
+
+                LOG_INFO(Logger::get(), "Resolved texture to {}.", fullTexturePath.string());
                 result.textures.push_back(loadTexture(
                     fullTexturePath.string(),
                     scene,
