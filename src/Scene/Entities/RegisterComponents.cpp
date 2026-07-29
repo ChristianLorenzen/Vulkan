@@ -11,7 +11,7 @@ namespace Faye
         auto &registry = world.types();
         registry.registerType<TransformComponent>("Transform");
         registry.registerType<MeshRendererComponent>("Mesh");
-        registry.registerType<CameraComponent>("Camera");
+        registry.registerType<CameraComponent, Ecs::Clone::skip>("Camera");
         registry.registerType<WaterComponent>("Water");
         registry.registerType<PointLightComponent>("Point Light");
         registry.registerType<DirectionalLightComponent>("Directional Light");

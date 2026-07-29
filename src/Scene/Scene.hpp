@@ -35,6 +35,7 @@ namespace Faye
 
         Entity createEntity(std::string name = {});
         Entity getEntity(Ecs::Entity entity);
+        Entity duplicateEntity(Ecs::Entity entity);
         Entity getPrimaryCameraEntity();
         void destroyEntity(Ecs::Entity entity);
         void destroyEntity(Entity entity);

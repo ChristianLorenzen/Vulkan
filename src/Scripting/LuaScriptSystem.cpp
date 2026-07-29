@@ -33,7 +33,8 @@ namespace Faye
         }
 
         auto &world = scene->getWorld();
-        world.types().registerType<LuaScriptComponent>("Lua Script");
+
+        world.types().registerType<LuaScriptComponent, Ecs::Clone::skip>("Lua Script");
 
         // Teardown channel: fires on unloadScript, entity destruction, the
         // editor's type-registry remove, and scene teardown. Calling onDestroy

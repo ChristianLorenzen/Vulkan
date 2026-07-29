@@ -28,6 +28,8 @@ namespace Faye::Ecs
     class Serializer;
     class Deserializer;
 
+    enum class Clone { copy, skip };
+
     struct ComponentTypeInfo
     {
         ComponentId id = 0;
@@ -53,7 +55,10 @@ namespace Faye::Ecs
         // Names are for humans and persistence: ComponentId is first-use
         // ordered and unstable across runs, so anything persistent must key
         // on the registered name, never the id.
-        template <class T>
+        // Clone is a TEMPLATE argument, not a runtime one: Clone::skip must
+        // stop the copy from being instantiated at all, which is the only way
+        // a move-only component (CameraComponent) can be registered.
+        template <class T, Clone C = Clone::copy>
         void registerType(const char *name);
 
         const ComponentTypeInfo &info(ComponentId id) const { return types[id]; }
@@ -159,6 +164,15 @@ namespace Faye::Ecs
             return pool ? pool->set.tryGet(e) : nullptr;
         }
 
+        // Explicit read-only access from a non-const World. Systems hold
+        // World& but most only read, and overload resolution would otherwise
+        // silently pick the mutable tryGet and demand write<T>.
+        template <class T>
+        const T *tryRead(Entity e) const
+        {
+            return tryGet<T>(e);   // const overload: read-checked
+        }
+
         template <class T>
         bool has(Entity e) const
         {
@@ -242,8 +256,35 @@ namespace Faye::Ecs
     };
 
     // ---- ComponentTypeRegistry implementation ----------------------------
+
+    // Yields the per-T copy thunk, or nullptr for Clone::skip. The branch must
+    // be `if constexpr`: a captured `clone` flag would make the lambda non-
+    // captureless (no conversion to a function pointer) AND would still
+    // instantiate world.add<T>(dst, *c) for skipped types, which is exactly
+    // what a move-only component cannot survive.
+    template <class T, Clone C>
+    constexpr auto makeCopyTo() -> void (*)(World &, Entity, Entity)
+    {
+        if constexpr (C == Clone::copy)
+        {
+            static_assert(std::is_copy_constructible_v<T>,
+                          "component registered with Clone::copy must be copy-constructible: "
+                          "register it with Clone::skip, or make the type copyable");
+            return [](World &world, Entity src, Entity dst)
+            {
+                if (const T *component = world.tryRead<T>(src))
+                    world.add<T>(dst, *component);
+            };
+        }
+        else
+        {
+            // Callers MUST null-check copyTo; skipped types have no thunk.
+            return nullptr;
+        }
+    }
+
     // Out of line because the lambdas need World's full definition.
-    template <class T>
+    template <class T, Clone C>
     void ComponentTypeRegistry::registerType(const char *name)
     {
         const ComponentId id = componentId<T>();
@@ -256,6 +297,7 @@ namespace Faye::Ecs
             .remove = [](World &world, Entity e) { world.remove<T>(e); },
             .tryGetRaw = [](World &world, Entity e) -> void * { return world.tryGet<T>(e); },
             .has = [](World &world, Entity e) { return world.has<T>(e); },
+            .copyTo = makeCopyTo<T, C>(),
         };
     }
 

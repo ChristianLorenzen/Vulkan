@@ -51,6 +51,30 @@ namespace Faye
         return Entity{this, isValid(entity) ? entity : Ecs::Entity::null()};
     }
 
+    Entity Scene::duplicateEntity(Ecs::Entity entity)
+    {
+        if (!isValid(entity))
+        {
+            return Entity{this, Ecs::Entity::null()};
+        }
+
+        // EntityMetadata is not part of the type registry at this point
+        // so unless a name is explicitly given, the copy will be unnamed.
+        // So basically don't use world.create().
+        const Entity copiedEntity = createEntity(std::string(getEntityName(entity)));
+
+        for (const Ecs::ComponentTypeInfo &component : world.types().all())
+        {
+            // copyTo is null for types registered with Clone::skip.
+            if (component.name && component.copyTo && component.has(world, entity))
+            {
+                component.copyTo(world, entity, copiedEntity.handle());
+            }
+        }
+
+        return copiedEntity;
+    }
+
     Entity Scene::getPrimaryCameraEntity()
     {
         return getEntity(primaryCameraEntity);

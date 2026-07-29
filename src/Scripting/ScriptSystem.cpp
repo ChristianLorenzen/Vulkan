@@ -57,7 +57,8 @@ void ScriptSystem::bindScene(Scene *scene)
     }
 
     auto &world = scene->getWorld();
-    world.types().registerType<NativeScriptComponent>("Native Script");
+
+    world.types().registerType<NativeScriptComponent, Ecs::Clone::skip>("Native Script");
 
     // The channel that fixes the orphaned-script leak: every removal route —
     // unloadScript, entity destruction, the editor's type-registry remove,
