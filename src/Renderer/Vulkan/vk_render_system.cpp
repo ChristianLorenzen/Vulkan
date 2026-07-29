@@ -321,10 +321,15 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
 
         for (const auto &submesh : submeshes)
         {
+            // The MeshRenderer's material is an override: when the editor (or a
+            // script) sets one it wins over the materials that came in with the
+            // model. Imported submesh materials are the fallback, which is what
+            // every model gets until something assigns a handle.
             MaterialHandle resolvedHandle = renderable.materialHandle;
             const Material *resolvedMaterial = renderable.material;
 
-            if (submesh.materialHandle.isValid() && renderable.materialRegistry != nullptr)
+            if (!resolvedHandle.isValid() && submesh.materialHandle.isValid() &&
+                renderable.materialRegistry != nullptr)
             {
                 if (const Material *importedMaterial = renderable.materialRegistry->getMaterial(submesh.materialHandle))
                 {
