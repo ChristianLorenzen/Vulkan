@@ -116,6 +116,21 @@ namespace Faye::Editor::Panels
                         selectedMeshNodeIndex = Model::kInvalidNodeIndex;
                     }
 
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(15.0f, 15.0f));
+                    if (ImGui::BeginPopupContextItem())
+                    {
+                        if (ImGui::MenuItem("Delete"))
+                        {
+                            this->entityContext = { entityHandle, ContextType::deleteEntity };
+                        }
+                        if (ImGui::MenuItem("Duplicate"))
+                        {
+                            this->entityContext = { entityHandle, ContextType::duplicateEntity };
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::PopStyleVar();
+
                     if (nodeOpen && hasNodeTree)
                     {
                         drawMeshNodeTree(entity, *model, model->getRootNodeIndex(),
@@ -128,6 +143,19 @@ namespace Faye::Editor::Panels
             }
         }
         ImGui::End();
+
+        if (this->entityContext)
+        {
+            if (this->entityContext->contextType == ContextType::deleteEntity)
+            {
+                scene->destroyEntity(this->entityContext->contextEntity);
+            }
+            else if (this->entityContext->contextType == ContextType::duplicateEntity)
+            {
+                scene->duplicateEntity(this->entityContext->contextEntity);
+            }
+            this->entityContext = {};
+        }
     }
 
     void HierarchyPanel::drawMeshNodeTree(const Entity &entity,
