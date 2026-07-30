@@ -405,7 +405,7 @@ void Faye::VulkanRenderer::createSceneRenderTargets()
     {
         sceneRenderExtent = vk_swapchain->getSwapChainExtent();
     }
-    sceneColorFormat = vk_swapchain->getSwapChainImageFormat();
+    sceneColorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;// vk_swapchain->getSwapChainImageFormat();
     sceneMotionFormat = VK_FORMAT_R16G16_SFLOAT;
     sceneDepthFormat = vk_swapchain->findDepthFormat();
 

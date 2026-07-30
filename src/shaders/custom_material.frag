@@ -83,31 +83,29 @@ void main()
     // Lighting (same Blinn-Phong as built-in PBR shader, via FayeLighting.glsl).
     vec3 cameraPosWorld=fayeCameraPosWorld();
     vec3 viewDir=normalize(cameraPosWorld-fragPosWorld);
-    vec3 specularColor=mix(materialParams.specularShininess.rgb,albedo,metallic);
-    float specularPower=mix(max(materialParams.specularShininess.w,1.),4.,roughness);
     
-    vec3 diffuseLight=fayeAmbient();
+    vec3 diffuseLight=vec3(0.);
     vec3 specularLight=vec3(0.);
     
     for(int i=0;i<lights.numPointLights;i++)
     {
         fayeAccumulatePointLight(lights.pointLights[i],fragPosWorld,surfaceNormal,viewDir,
-        specularColor,specularPower,diffuseLight,specularLight);
+        albedo,metallic,roughness,diffuseLight,specularLight);
     }
     for(int i=0;i<lights.numDirectionalLights;i++)
     {
         fayeAccumulateDirectionalLight(lights.directionalLights[i],surfaceNormal,viewDir,
-        specularColor,specularPower,diffuseLight,specularLight);
+        albedo,metallic,roughness,diffuseLight,specularLight);
     }
     
-    vec3 diffuseColor=albedo*(1.-metallic);
+    vec3 ambient=fayeAmbient()*albedo*(1.-metallic)*occlusion;
     vec3 emissive=materialParams.emissiveFactors.rgb*materialParams.emissiveFactors.a;
     
-    outColor=vec4((diffuseLight*diffuseColor+specularLight)*occlusion+emissive,
-materialParams.baseColorFactor.a);
-
-// Motion vector output.
-vec2 currentNDC=fragCurrentClip.xy/fragCurrentClip.w;
-vec2 priorNDC=fragPriorClip.xy/fragPriorClip.w;
-outMotion=(currentNDC-priorNDC)*.5;
+    outColor=vec4(ambient+diffuseLight+specularLight+emissive,
+    materialParams.baseColorFactor.a);
+    
+    // Motion vector output.
+    vec2 currentNDC=fragCurrentClip.xy/fragCurrentClip.w;
+    vec2 priorNDC=fragPriorClip.xy/fragPriorClip.w;
+    outMotion=(currentNDC-priorNDC)*.5;
 }

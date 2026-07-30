@@ -244,7 +244,7 @@ namespace Faye
             // TODO VK_FORMAT_B8G8R8A8_SRGB gives better color for rendered items
             // but a UNORM swapchain is needed for the (gamma-unaware) UI overlay.
             // Figure out something for this...
-            if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            if (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
             {
                 return availableFormat;
             }

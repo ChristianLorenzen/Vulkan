@@ -135,117 +135,117 @@ void main()
     
     // ---- Lighting -----------------------------------------------------------
     // Untinted specular (vec3(1)) here; Fresnel scales the summed highlight below.
-    vec3 diffuseLight=fayeAmbient();
+    vec3 diffuseLight=vec3(0.);
     vec3 specularLight=vec3(0.);
     for(int i=0;i<lights.numPointLights;i++)
     {
         fayeAccumulatePointLight(lights.pointLights[i],fragPosWorld,surfaceNormal,viewDir,
-            vec3(1.),specPower,diffuseLight,specularLight);
-        }
-        for(int i=0;i<lights.numDirectionalLights;i++)
-        {
-            fayeAccumulateDirectionalLight(lights.directionalLights[i],surfaceNormal,viewDir,
-                vec3(1.),specPower,diffuseLight,specularLight);
-            }
-            
-            // ---- Foam masks ----------------------------------------------------------
-            // fragFoamCrest = raw wave height (metres) above the rest plane.
-            float h=fragFoamCrest;
-            
-            // Bell-curve mask:
-            //   - Pre-crest fringe (h 0.05-0.24): subtle brightening of water surface
-            //     to bridge the gap between plain water and visible foam.
-            //   - Main foam (h 0.22-0.64): rises with a smooth onset, falls at high
-            //     crests so the tip thins slightly (more natural whitecap look).
-            float fringe=smoothstep(.05,.24,h);
-            float foamRise=smoothstep(.22,.38,h);
-            float foamFall=1.-smoothstep(.44,.68,h);
-            float crestFoamMask=foamRise*foamFall;
-            
-            // ---- Contact foam (depth prepass intersection) ---------------------------
-            // Compare LINEAR view-space distances (metres), not raw NDC depth: NDC
-            // depth is non-linear and bunches near 1.0 with distance, which made any
-            // geometry behind the water register as "contact". gl_FragCoord-based UVs
-            // match the prepass framebuffer exactly (same extent, no Y-flip concerns).
-            vec2 screenUV=gl_FragCoord.xy/vec2(textureSize(prepassDepth,0));
-            float opaqueD=texture(prepassDepth,screenUV).r;
-            
-            float contactFoamMask=0.;
-            if(opaqueD<1.)// 1.0 = clear value = nothing behind this pixel
-            {
-                float opaqueDist=linearizeDepth(opaqueD);
-                float waterDist=linearizeDepth(gl_FragCoord.z);
-                float gap=opaqueDist-waterDist;// metres of water above geometry
-                float contactWidth=.35;// metres
-                float contactMask=1.-clamp(gap/contactWidth,0.,1.);
-                contactFoamMask=contactMask*contactMask;// squared = tighter ring
-            }
-            
-            float foamAmount=max(crestFoamMask,contactFoamMask);
-            
-            // ---- Foam texture breakup ------------------------------------------------
-            // Self-normalising breakup: the fine sample is compared against a coarse
-            // sample of the SAME texture (a proxy for its local average), so the
-            // result is independent of the texture's absolute brightness. A
-            // nearly-white foam texture saturated the previous fixed thresholds and
-            // turned every masked fragment into full foam. This is also mip-stable:
-            // under heavy minification both samples converge to the mean, the ratio
-            // approaches 1, and the breakup fades out instead of exploding.
-            vec2 foamUV=fragTexCoord*12.+vec2(.02,.01)*t;
-            vec2 foamUV2=fragTexCoord*3.-vec2(.011,.017)*t;
-            vec4 foamSamp=texture(allTextures[nonuniformEXT(push.metallicSlot)],foamUV);
-            float foamFine=foamSamp.r;
-            float foamCoarse=texture(allTextures[nonuniformEXT(push.metallicSlot)],foamUV2).r;
-            
-            float ratio=foamFine/max(foamCoarse,.05);
-            float breakup=smoothstep(1.,1.25,ratio);
-            
-            // Coverage is anchored to the geometric mask (foamAmount): the texture
-            // only modulates between a soft base and full foam, so foam density is
-            // driven by wave height / contact distance -- never by the texture's
-            // overall brightness or the viewing distance.
-            float foamBlend=foamAmount*mix(.3,1.,breakup);
-            
-            // ---- Composite ------------------------------------------------------------
-            // 1. Water lit by diffuse light, specular scaled by fresnel reflectance.
-            // 2. Fringe zone: slightly lighten the water approaching the crest.
-            // 3. Foam zone: lit, texture-tinted foam; foam is rough so it suppresses
-            //    the specular highlight.
-            vec3 foamAlbedo=mix(vec3(.9),foamSamp.rgb*1.1,.5);
-            vec3 litWater=waterColor.rgb*diffuseLight;
-            vec3 litFoam=foamAlbedo*diffuseLight;
-            specularLight*=fresnel;
-            vec3 fringeColor=mix(litWater,litFoam,fringe*.18);
-            vec3 combined=mix(fringeColor+specularLight,litFoam,foamBlend);
-            float alpha=mix(waterColor.a,1.,foamBlend);
-            
-            outColor=vec4(combined,alpha);
-            
-            // ---- Debug visualisation --------------------------------------------------
-            // Set to a non-zero mode and rebuild the shader to inspect a single term.
-            // All modes must look STABLE as the camera moves toward/away from the water:
-            //   1: contact foam mask (red)   -- fixed-width ring hugging intersections
-            //   2: crest foam mask (green)   -- bands on wave crests
-            //   3: foam texture breakup      -- greyscale; patchy detail, fades at range
-            //   4: linearised water depth    -- 5 m bands, must stay fixed in world space
-            //   5: linearised prepass depth  -- 5 m bands on geometry seen through water
-            #define WATER_DEBUG 0
-            #if WATER_DEBUG==1
-            outColor=vec4(contactFoamMask,0.,0.,1.);
-            #elif WATER_DEBUG==2
-            outColor=vec4(0.,crestFoamMask,0.,1.);
-            #elif WATER_DEBUG==3
-            outColor=vec4(vec3(breakup),1.);
-            #elif WATER_DEBUG==4
-            outColor=vec4(vec3(fract(linearizeDepth(gl_FragCoord.z)/5.)),1.);
-            #elif WATER_DEBUG==5
-            outColor=(opaqueD<1.)
-            ?vec4(vec3(fract(linearizeDepth(opaqueD)/5.)),1.)
-            :vec4(0.,0.,1.,1.);// blue = nothing behind
-            #endif
-            
-            vec2 currentNDC=fragCurrentClip.xy/fragCurrentClip.w;
-            vec2 priorNDC=fragPriorClip.xy/fragPriorClip.w;
-            outMotion=(currentNDC-priorNDC)*.5;
-        }
-        
+        waterColor.rgb,0.,.06,diffuseLight,specularLight);
+    }
+    for(int i=0;i<lights.numDirectionalLights;i++)
+    {
+        fayeAccumulateDirectionalLight(lights.directionalLights[i],surfaceNormal,viewDir,
+        waterColor.rgb,0.,.06,diffuseLight,specularLight);
+    }
+    vec3 ambient=fayeAmbient()*waterColor.rgb;
+    
+    // ---- Foam masks ----------------------------------------------------------
+    // fragFoamCrest = raw wave height (metres) above the rest plane.
+    float h=fragFoamCrest;
+    
+    // Bell-curve mask:
+    //   - Pre-crest fringe (h 0.05-0.24): subtle brightening of water surface
+    //     to bridge the gap between plain water and visible foam.
+    //   - Main foam (h 0.22-0.64): rises with a smooth onset, falls at high
+    //     crests so the tip thins slightly (more natural whitecap look).
+    float fringe=smoothstep(.05,.24,h);
+    float foamRise=smoothstep(.22,.38,h);
+    float foamFall=1.-smoothstep(.44,.68,h);
+    float crestFoamMask=foamRise*foamFall;
+    
+    // ---- Contact foam (depth prepass intersection) ---------------------------
+    // Compare LINEAR view-space distances (metres), not raw NDC depth: NDC
+    // depth is non-linear and bunches near 1.0 with distance, which made any
+    // geometry behind the water register as "contact". gl_FragCoord-based UVs
+    // match the prepass framebuffer exactly (same extent, no Y-flip concerns).
+    vec2 screenUV=gl_FragCoord.xy/vec2(textureSize(prepassDepth,0));
+    float opaqueD=texture(prepassDepth,screenUV).r;
+    
+    float contactFoamMask=0.;
+    if(opaqueD<1.)// 1.0 = clear value = nothing behind this pixel
+    {
+        float opaqueDist=linearizeDepth(opaqueD);
+        float waterDist=linearizeDepth(gl_FragCoord.z);
+        float gap=opaqueDist-waterDist;// metres of water above geometry
+        float contactWidth=.35;// metres
+        float contactMask=1.-clamp(gap/contactWidth,0.,1.);
+        contactFoamMask=contactMask*contactMask;// squared = tighter ring
+    }
+    
+    float foamAmount=max(crestFoamMask,contactFoamMask);
+    
+    // ---- Foam texture breakup ------------------------------------------------
+    // Self-normalising breakup: the fine sample is compared against a coarse
+    // sample of the SAME texture (a proxy for its local average), so the
+    // result is independent of the texture's absolute brightness. A
+    // nearly-white foam texture saturated the previous fixed thresholds and
+    // turned every masked fragment into full foam. This is also mip-stable:
+    // under heavy minification both samples converge to the mean, the ratio
+    // approaches 1, and the breakup fades out instead of exploding.
+    vec2 foamUV=fragTexCoord*12.+vec2(.02,.01)*t;
+    vec2 foamUV2=fragTexCoord*3.-vec2(.011,.017)*t;
+    vec4 foamSamp=texture(allTextures[nonuniformEXT(push.metallicSlot)],foamUV);
+    float foamFine=foamSamp.r;
+    float foamCoarse=texture(allTextures[nonuniformEXT(push.metallicSlot)],foamUV2).r;
+    
+    float ratio=foamFine/max(foamCoarse,.05);
+    float breakup=smoothstep(1.,1.25,ratio);
+    
+    // Coverage is anchored to the geometric mask (foamAmount): the texture
+    // only modulates between a soft base and full foam, so foam density is
+    // driven by wave height / contact distance -- never by the texture's
+    // overall brightness or the viewing distance.
+    float foamBlend=foamAmount*mix(.3,1.,breakup);
+    
+    // ---- Composite ------------------------------------------------------------
+    // 1. Water lit by diffuse light, specular scaled by fresnel reflectance.
+    // 2. Fringe zone: slightly lighten the water approaching the crest.
+    // 3. Foam zone: lit, texture-tinted foam; foam is rough so it suppresses
+    //    the specular highlight.
+    vec3 foamAlbedo=mix(vec3(.9),foamSamp.rgb*1.1,.5);
+    vec3 litWater=waterColor.rgb*diffuseLight;
+    vec3 litFoam=foamAlbedo*diffuseLight;
+    specularLight*=fresnel;
+    vec3 fringeColor=mix(litWater,litFoam,fringe*.18);
+    vec3 combined=mix(fringeColor+specularLight,litFoam,foamBlend);
+    float alpha=mix(waterColor.a,1.,foamBlend);
+    
+    outColor=vec4(combined,alpha);
+    
+    // ---- Debug visualisation --------------------------------------------------
+    // Set to a non-zero mode and rebuild the shader to inspect a single term.
+    // All modes must look STABLE as the camera moves toward/away from the water:
+    //   1: contact foam mask (red)   -- fixed-width ring hugging intersections
+    //   2: crest foam mask (green)   -- bands on wave crests
+    //   3: foam texture breakup      -- greyscale; patchy detail, fades at range
+    //   4: linearised water depth    -- 5 m bands, must stay fixed in world space
+    //   5: linearised prepass depth  -- 5 m bands on geometry seen through water
+    #define WATER_DEBUG 0
+    #if WATER_DEBUG==1
+    outColor=vec4(contactFoamMask,0.,0.,1.);
+    #elif WATER_DEBUG==2
+    outColor=vec4(0.,crestFoamMask,0.,1.);
+    #elif WATER_DEBUG==3
+    outColor=vec4(vec3(breakup),1.);
+    #elif WATER_DEBUG==4
+    outColor=vec4(vec3(fract(linearizeDepth(gl_FragCoord.z)/5.)),1.);
+    #elif WATER_DEBUG==5
+    outColor=(opaqueD<1.)
+    ?vec4(vec3(fract(linearizeDepth(opaqueD)/5.)),1.)
+    :vec4(0.,0.,1.,1.);// blue = nothing behind
+    #endif
+    
+    vec2 currentNDC=fragCurrentClip.xy/fragCurrentClip.w;
+    vec2 priorNDC=fragPriorClip.xy/fragPriorClip.w;
+    outMotion=(currentNDC-priorNDC)*.5;
+}

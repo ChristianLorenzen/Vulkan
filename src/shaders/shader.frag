@@ -47,7 +47,7 @@ const float kWaterFieldDebugMix=.5;
 void main(){
     vec4 baseColor=texture(allTextures[nonuniformEXT(push.albedoSlot)],fragTexCoord);
     vec3 albedo=baseColor.rgb*materialParams.baseColorFactor.rgb*fragColor;
-    float metallic=clamp(baseColor.a*materialParams.surfaceFactors.x,0.,1.);
+    float metallic=clamp(texture(allTextures[nonuniformEXT(push.metallicSlot)],fragTexCoord).r*materialParams.surfaceFactors.x,0.,1.);
     float roughness=clamp(texture(allTextures[nonuniformEXT(push.roughnessSlot)],fragTexCoord).r*materialParams.surfaceFactors.y,.04,1.);
     float occlusion=clamp(mix(1.,texture(allTextures[nonuniformEXT(push.aoSlot)],fragTexCoord).r,materialParams.surfaceFactors.w),0.,1.);
     
@@ -55,7 +55,7 @@ void main(){
         discard;
     }
     
-    vec3 diffuseLight=fayeAmbient();
+    vec3 diffuseLight=vec3(0.);
     vec3 specularLight=vec3(0.);
     vec3 surfaceNormal=normalize(fragNormalWorld);
     
@@ -68,27 +68,29 @@ void main(){
     
     vec3 cameraPosWorld=fayeCameraPosWorld();
     vec3 viewDir=normalize(cameraPosWorld-fragPosWorld);
-    vec3 specularColor=mix(materialParams.specularShininess.rgb,albedo,metallic);
-    float specularPower=mix(max(materialParams.specularShininess.w,1.),4.,roughness);
+    
+    vec3 diffuseColor=albedo*(1.-metallic);
     
     for(int i=0;i<lights.numPointLights;i++){
         fayeAccumulatePointLight(lights.pointLights[i],fragPosWorld,surfaceNormal,viewDir,
-        specularColor,specularPower,diffuseLight,specularLight);
-    }
-    for(int i=0;i<lights.numDirectionalLights;i++){
-        fayeAccumulateDirectionalLight(lights.directionalLights[i],surfaceNormal,viewDir,
-        specularColor,specularPower,diffuseLight,specularLight);
+        albedo,metallic,roughness,diffuseLight,specularLight);
     }
     
-    vec3 diffuseColor=albedo*(1.-metallic);
+    for(int i=0;i<lights.numDirectionalLights;i++){
+        fayeAccumulateDirectionalLight(lights.directionalLights[i],surfaceNormal,viewDir,
+        albedo,metallic,roughness,diffuseLight,specularLight);
+    }
+    
+    vec3 ambient=fayeAmbient()*albedo*(1-metallic)*occlusion;
     vec3 emissive=materialParams.emissiveFactors.rgb*materialParams.emissiveFactors.a;
-    outColor=vec4((diffuseLight*diffuseColor+specularLight)*occlusion+emissive,materialParams.baseColorFactor.a);
+    //outColor=vec4((diffuseLight*diffuseColor+specularLight)*occlusion+emissive,materialParams.baseColorFactor.a);
+    outColor=vec4(ambient+diffuseLight+specularLight+emissive,materialParams.baseColorFactor.a);
     
     // Cross-stage test: tint by the compute-written image. Projected on world XZ and
     // tiled with fract() rather than sampled in screen space, because there is no
     // resolution uniform in FayeGlobal and the sampler is CLAMP_TO_EDGE.
-    vec2 waterFieldUv=fract(fragPosWorld.xz*.15);
-    outColor.rgb=mix(outColor.rgb,texture(waterFieldDebug,waterFieldUv).rgb,kWaterFieldDebugMix);
+    // vec2 waterFieldUv=fract(fragPosWorld.xz*.15);
+    // outColor.rgb=mix(outColor.rgb,texture(waterFieldDebug,waterFieldUv).rgb,kWaterFieldDebugMix);
     
     if(materialParams.alphaModeCutoff.x>.5&&outColor.a<materialParams.alphaModeCutoff.y){
         discard;

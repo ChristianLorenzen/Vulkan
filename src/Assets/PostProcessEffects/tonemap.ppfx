@@ -1,0 +1,6 @@
+id=toneMap
+displayName=Tone Map
+vertexShader=post_process.vert.spv
+fragmentShader=post_process_tonemap.frag.spv
+showInEditor=true
+input=sourceColor,0
