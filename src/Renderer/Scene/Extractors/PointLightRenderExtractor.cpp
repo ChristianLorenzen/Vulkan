@@ -14,8 +14,8 @@ namespace Faye
     void PointLightRenderExtractor::run(Ecs::World &world, const EngineContext &,
                                         Jobs::JobSystem &, Ecs::CommandBuffer &)
     {
-        world.view<TransformComponent, PointLightComponent>().each(
-            [&](Ecs::Entity entity, TransformComponent &transform, PointLightComponent &pointLight)
+        world.view<const TransformComponent, const PointLightComponent>().each(
+            [&](Ecs::Entity entity, const TransformComponent &transform, const PointLightComponent &pointLight)
             {
                 snapshot.pointLights.push_back(PointLightInstance{
                     entity,

@@ -2,6 +2,8 @@
 // the fixed-timestep accumulator. Everything here is headless and fast.
 #include <doctest/doctest.h>
 
+#include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -135,4 +137,86 @@ TEST_CASE("fixed stepper: tick counts and clamping")
     CHECK(stepper.advance(0.008) == 0);        // fast frame: accumulate...
     CHECK(stepper.advance(0.009) == 1);        // ...and fire on the next
     CHECK(stepper.advance(10.0) == 15);        // clamped to 0.25s => 15 ticks, not 600
+}
+
+// --- Concurrent read-only systems on a cold World (F1, F2) ------------------
+// This is the shape that raced: several reader systems, scheduled with no
+// edges between them (readers never conflict), all touching component types
+// whose pools and ids do not exist yet. Under TSan this reproduces both the
+// World::pools reallocation and the componentId counter increment.
+
+namespace
+{
+    struct ColdA { int v = 0; };
+    struct ColdB { int v = 0; };
+    struct ColdC { int v = 0; };
+
+    // Reader over one cold type. Declares read<T> and iterates with
+    // view<const T>, so checkComponentWrite must not fire.
+    template <class T>
+    class ColdReaderSystem final : public ISystem
+    {
+    public:
+        explicit ColdReaderSystem(std::atomic<int> &visits) : visits(visits) {}
+
+        const char *name() const override { return "ColdReader"; }
+        SystemAccess access() const override { return SystemAccess{}.read<T>(); }
+        void run(World &world, const Faye::EngineContext &, Faye::Jobs::JobSystem &,
+                 CommandBuffer &) override
+        {
+            world.view<const T>().each(
+                [&](Entity, const T &) { visits.fetch_add(1, std::memory_order_relaxed); });
+        }
+
+    private:
+        std::atomic<int> &visits;
+    };
+}
+
+TEST_CASE("concurrent readers over cold component types do not race")
+{
+    Faye::Jobs::JobSystem jobs(4);
+
+    for (int run = 0; run < 200; ++run)
+    {
+        World world;                 // fresh: no pools exist yet
+        std::atomic<int> visits{0};
+
+        SystemSchedule schedule;
+        schedule.addSystem(Stage::Extract, std::make_unique<ColdReaderSystem<ColdA>>(visits));
+        schedule.addSystem(Stage::Extract, std::make_unique<ColdReaderSystem<ColdB>>(visits));
+        schedule.addSystem(Stage::Extract, std::make_unique<ColdReaderSystem<ColdC>>(visits));
+
+        Faye::EngineContext ctx;
+        schedule.runStage(Stage::Extract, world, ctx, jobs);
+
+        CHECK(visits.load() == 0);   // no entities; the point is that it is race-free
+        // Iteration must not have created pools for types nothing ever added.
+        CHECK(world.poolIfExists<ColdA>() == nullptr);
+        CHECK(world.poolIfExists<ColdB>() == nullptr);
+        CHECK(world.poolIfExists<ColdC>() == nullptr);
+    }
+}
+
+TEST_CASE("concurrent readers see the data they declare")
+{
+    Faye::Jobs::JobSystem jobs(4);
+
+    World world;
+    for (int i = 0; i < 50; ++i)
+    {
+        const Entity e = world.create();
+        world.add<ColdA>(e);
+        world.add<ColdB>(e);
+    }
+
+    std::atomic<int> visits{0};
+    SystemSchedule schedule;
+    schedule.addSystem(Stage::Extract, std::make_unique<ColdReaderSystem<ColdA>>(visits));
+    schedule.addSystem(Stage::Extract, std::make_unique<ColdReaderSystem<ColdB>>(visits));
+
+    Faye::EngineContext ctx;
+    schedule.runStage(Stage::Extract, world, ctx, jobs);
+
+    CHECK(visits.load() == 100);   // both readers walked all 50 entities
 }

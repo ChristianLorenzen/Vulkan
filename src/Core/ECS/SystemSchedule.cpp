@@ -6,6 +6,35 @@
 
 namespace Faye::Ecs
 {
+    namespace
+    {
+        // Counts the nesting of "systems are in flight" for the component-id
+        // tripwire in detail::nextComponentId. Disarm() is explicit rather than
+        // scope-based because the window ends at the barrier, not at the end of
+        // runStage — the command-buffer flush that follows is single-threaded
+        // and may legitimately mint an id.
+        struct ScheduleDepthGuard
+        {
+            ScheduleDepthGuard() { detail::scheduleDepth.fetch_add(1, std::memory_order_relaxed); }
+            ~ScheduleDepthGuard() { disarm(); }
+
+            ScheduleDepthGuard(const ScheduleDepthGuard &) = delete;
+            ScheduleDepthGuard &operator=(const ScheduleDepthGuard &) = delete;
+
+            // Idempotent, so the destructor is safe after an explicit disarm and
+            // still fires if a system throws out of the scheduling loop.
+            void disarm()
+            {
+                if (!armed)
+                    return;
+                armed = false;
+                detail::scheduleDepth.fetch_sub(1, std::memory_order_relaxed);
+            }
+
+            bool armed = true;
+        };
+    }
+
     void SystemSchedule::addSystem(Stage stage, std::unique_ptr<ISystem> system)
     {
         auto &list = stages[size_t(stage)];
@@ -34,6 +63,14 @@ namespace Faye::Ecs
             commandBuffers.resize(list.size());
 
         std::vector<Jobs::JobHandle> handles(list.size());
+
+        // Arms the debug tripwire in detail::nextComponentId for the duration of
+        // the parallel section: a component type first touched from inside
+        // parallel work is the shape that precedes a pool being created
+        // underneath a concurrent reader. Register types at startup instead.
+        // Explicitly disarmed after the barrier, because flush() replays
+        // structural changes single-threaded and may legitimately create a pool.
+        ScheduleDepthGuard scheduleDepthGuard;
 
         for (size_t i = 0; i < list.size(); ++i)
         {
@@ -82,6 +119,7 @@ namespace Faye::Ecs
         // queue and executes worker jobs itself — the main thread is a full
         // participant, not an idle waiter.
         jobs.waitAll(handles);
+        scheduleDepthGuard.disarm();
 
         // Structural changes: single-threaded replay, registration order —
         // deterministic by construction.

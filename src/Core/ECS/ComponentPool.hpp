@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 
@@ -17,11 +18,27 @@ namespace Faye::Ecs
 
     namespace detail
     {
+        // Debug-only tripwire: set while a stage's systems are in flight. Minting
+        // an id there means a component type is being touched for the first time
+        // from inside parallel work — legal now that the counter is atomic, but
+        // it is the shape that precedes real trouble (a pool created under a
+        // reader, see World::poolFor), so we make it loud instead of latent.
+        inline std::atomic<int> scheduleDepth{0};
+
+        // The per-T `static const id` below is thread-safe on its own — magic
+        // statics guarantee one thread runs each initializer. What is NOT safe
+        // is two threads initialising DIFFERENT Ts at once: both land here, and
+        // a plain `counter++` can hand them the same id. Two component types
+        // then share a bit in both the entity mask and the scheduler's access
+        // masks, which silently breaks conflict detection and view matching.
         inline ComponentId nextComponentId()
         {
-            static ComponentId counter = 0;
-            assert(counter < kMaxComponentTypes && "raise kMaxComponentTypes / widen masks");
-            return counter++;
+            static std::atomic<ComponentId> counter{0};
+            const ComponentId id = counter.fetch_add(1, std::memory_order_relaxed);
+            assert(id < kMaxComponentTypes && "raise kMaxComponentTypes / widen masks");
+            assert(scheduleDepth.load(std::memory_order_relaxed) == 0 &&
+                   "component id minted while a schedule is running: register the type at startup");
+            return id;
         }
     }
 

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <random>
+#include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -192,4 +194,127 @@ TEST_CASE("componentId is stable per type and distinct across types")
     CHECK(componentId<Position>() == componentId<Position>());
     CHECK(componentId<Position>() != componentId<Velocity>());
     CHECK(componentId<Velocity>() != componentId<Health>());
+}
+
+// --- Iteration must not mutate the World (F2) -------------------------------
+// View::each used to fetch spans through poolFor, which lazily resizes and
+// inserts into World::pools. Concurrent read-only extractors therefore
+// reallocated shared state underneath each other on first touch of a type.
+
+namespace
+{
+    struct NeverPooled
+    {
+        int v = 0;
+    };
+}
+
+TEST_CASE("iterating a never-registered component type does not create its pool")
+{
+    World world;
+    const Entity e = world.create();
+    world.add<Position>(e);
+
+    int visits = 0;
+    world.view<const Position, const NeverPooled>().each(
+        [&](Entity, const Position &, const NeverPooled &) { ++visits; });
+
+    CHECK(visits == 0);
+    CHECK(world.poolIfExists<NeverPooled>() == nullptr);   // iteration stayed read-only
+}
+
+TEST_CASE("a const view still visits exactly the intersection")
+{
+    World world;
+    const Entity both = world.create();
+    world.add<Position>(both).x = 3.0f;
+    world.add<Velocity>(both).dx = 4.0f;
+    const Entity positionOnly = world.create();
+    world.add<Position>(positionOnly);
+
+    std::vector<Entity> seen;
+    world.view<const Position, const Velocity>().each(
+        [&](Entity e, const Position &p, const Velocity &v) {
+            seen.push_back(e);
+            CHECK(p.x == doctest::Approx(3.0f));
+            CHECK(v.dx == doctest::Approx(4.0f));
+        });
+
+    REQUIRE(seen.size() == 1);
+    CHECK(seen[0].index == both.index);
+}
+
+TEST_CASE("const and non-const views of the same type share one component id")
+{
+    // componentId<const T> is a DIFFERENT static from componentId<T>; if View
+    // failed to strip const it would mint a second id for the same component
+    // and every mask it appears in would disagree.
+    CHECK(componentId<Position>() == componentId<std::remove_const_t<const Position>>());
+
+    World world;
+    const Entity e = world.create();
+    world.add<Position>(e);
+
+    int constVisits = 0;
+    world.view<const Position>().each([&](Entity, const Position &) { ++constVisits; });
+    int mutableVisits = 0;
+    world.view<Position>().each([&](Entity, Position &) { ++mutableVisits; });
+
+    CHECK(constVisits == 1);
+    CHECK(mutableVisits == 1);
+}
+
+// --- componentId assignment must be atomic (F1) -----------------------------
+// componentId<T>'s function-local static is thread-safe PER T, but two threads
+// first-initialising DIFFERENT Ts both reach nextComponentId(). A plain
+// counter++ there can hand them the same id, aliasing two component types onto
+// one bit in every mask. Routed through the scheduler this stays latent
+// (addSystem mints ids on the main thread), so exercise it directly.
+
+namespace
+{
+    template <int N>
+    struct RaceProbe
+    {
+        int v = 0;
+    };
+
+    template <int... Ns>
+    std::vector<ComponentId> mintConcurrently(std::integer_sequence<int, Ns...>)
+    {
+        constexpr size_t kCount = sizeof...(Ns);
+        std::atomic<int> ready{0};
+        std::atomic<bool> go{false};
+        std::vector<ComponentId> ids(kCount);
+        std::vector<std::thread> threads;
+
+        const auto mint = [&](size_t slot, ComponentId (*fn)()) {
+            ready.fetch_add(1);
+            while (!go.load(std::memory_order_acquire))
+                std::this_thread::yield();   // release all threads together
+            ids[slot] = fn();
+        };
+
+        size_t slot = 0;
+        (threads.emplace_back(mint, slot++, +[] { return componentId<RaceProbe<Ns>>(); }), ...);
+
+        while (size_t(ready.load()) < kCount)
+            std::this_thread::yield();
+        go.store(true, std::memory_order_release);
+        for (std::thread &t : threads)
+            t.join();
+        return ids;
+    }
+}
+
+TEST_CASE("concurrent first-touch of distinct component types yields distinct ids")
+{
+    const std::vector<ComponentId> ids =
+        mintConcurrently(std::integer_sequence<int, 0, 1, 2, 3, 4, 5, 6, 7>{});
+
+    std::vector<ComponentId> unique = ids;
+    std::sort(unique.begin(), unique.end());
+    unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
+
+    CHECK(unique.size() == ids.size());   // no two types share a bit
 }

@@ -15,8 +15,8 @@ namespace Faye
     void MeshRenderExtractor::run(Ecs::World &world, const EngineContext &,
                                   Jobs::JobSystem &, Ecs::CommandBuffer &)
     {
-        world.view<TransformComponent, MeshRendererComponent>().each(
-            [&](Ecs::Entity entity, TransformComponent &transform, MeshRendererComponent &mesh)
+        world.view<const TransformComponent, const MeshRendererComponent>().each(
+            [&](Ecs::Entity entity, const TransformComponent &transform, const MeshRendererComponent &mesh)
             {
                 if (!mesh.view)
                 {
@@ -38,9 +38,9 @@ namespace Faye
                 const glm::mat4 modelMatrix = transform.mat4();
                 glm::mat4 priorModelMatrix = modelMatrix;
 
-                // Read last frame's transform (read-only: tryGet never creates a
-                // pool, so this stays safe inside the view iteration).
-                if (const auto *history = world.tryGet<PreviousTransformComponent>(entity);
+                // Read last frame's transform (tryRead never creates a pool, so
+                // this stays safe inside the view iteration).
+                if (const auto *history = world.tryRead<PreviousTransformComponent>(entity);
                     history != nullptr && history->lastSeenExtraction + 1 == extractionIndex)
                 {
                     priorModelMatrix = history->modelMatrix;

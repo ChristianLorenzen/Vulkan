@@ -44,20 +44,40 @@ namespace Faye::Ecs
         const ActiveAccess *previous = nullptr;
     };
 
-    // v1 checks TOUCH (read or write declared). Distinguishing true read-only
-    // access would need const-qualified views (view<const T>) — a later
-    // refinement; the scheduler is already conservative because an undeclared
-    // component aborts here.
-    inline void checkComponentTouch(uint64_t componentBit)
+    inline void reportAccessViolation(const char *what)
+    {
+        std::fprintf(stderr, "FATAL: system '%s' %s\n",
+                     tlsActiveAccess->systemName ? tlsActiveAccess->systemName : "<unnamed>",
+                     what);
+        std::abort();
+    }
+
+    // Read access: satisfied by declaring EITHER read<T> or write<T>, since a
+    // writer may obviously also read.
+    inline void checkComponentRead(uint64_t componentBit)
     {
         if (tlsActiveAccess == nullptr)
             return;   // outside any policed system (editor UI, flush, startup)
         if (((tlsActiveAccess->readMask | tlsActiveAccess->writeMask) & componentBit) != 0)
             return;
-        std::fprintf(stderr,
-                     "FATAL: system '%s' touched a component it did not declare in access()\n",
-                     tlsActiveAccess->systemName ? tlsActiveAccess->systemName : "<unnamed>");
-        std::abort();
+        reportAccessViolation("read a component it did not declare in access()");
+    }
+
+    // Write access: satisfied ONLY by write<T>. This is the check that makes
+    // the scheduler's central assumption enforceable — conflicts() lets any
+    // number of readers run concurrently, so a system that declares read<T> and
+    // then mutates T races every one of them. Reaching here means the caller
+    // obtained a mutable reference; whether it actually stored through it is
+    // not knowable, so we treat acquiring the capability as the violation.
+    inline void checkComponentWrite(uint64_t componentBit)
+    {
+        if (tlsActiveAccess == nullptr)
+            return;
+        if ((tlsActiveAccess->writeMask & componentBit) != 0)
+            return;
+        reportAccessViolation(
+            "took a mutable reference to a component it only declared as read<> "
+            "(use view<const T> for read-only iteration)");
     }
 #endif
 }

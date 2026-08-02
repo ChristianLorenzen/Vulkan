@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,7 @@ namespace Faye::Ecs
         void (*remove)(World &, Entity) = nullptr;       // "Remove Component" button
         void *(*tryGetRaw)(World &, Entity) = nullptr;   // component ptr for drawing
         bool (*has)(World &, Entity) = nullptr;
+        void (*copyTo)(World &, Entity, Entity) = nullptr;  // for duplication
 
         void (*serialize)(const void *component, Serializer &) = nullptr;     // reserved
         void (*deserialize)(void *component, Deserializer &) = nullptr;       // reserved
@@ -69,6 +71,12 @@ namespace Faye::Ecs
     };
 
     // Multi-component query; implementation after World (it needs the full type).
+    //
+    // A type may be const-qualified: view<const Transform, Velocity> yields
+    // (Entity, const Transform&, Velocity&). Constness is not cosmetic — it
+    // selects which AccessCheck fires, so a system declaring read<Transform>
+    // must spell it view<const Transform> or abort. That is what lets the
+    // scheduler trust reader/reader non-conflict.
     template <class... Ts>
     class View
     {
@@ -140,11 +148,14 @@ namespace Faye::Ecs
             componentMasks[e.index] &= ~componentBit<T>();
         }
 
+        // Hands out a MUTABLE reference, so a system must have declared write<T>
+        // — see checkComponentWrite. Read-only callers inside a system want
+        // tryRead() or view<const T> instead.
         template <class T>
         T *tryGet(Entity e)
         {
 #if FAYE_ECS_CHECK_ACCESS
-            checkComponentTouch(componentBit<T>());   // views iterate through here
+            checkComponentWrite(componentBit<T>());   // mutable views iterate through here
 #endif
             if (!alive(e))
                 return nullptr;
@@ -156,7 +167,7 @@ namespace Faye::Ecs
         const T *tryGet(Entity e) const
         {
 #if FAYE_ECS_CHECK_ACCESS
-            checkComponentTouch(componentBit<T>());
+            checkComponentRead(componentBit<T>());
 #endif
             if (!alive(e))
                 return nullptr;
@@ -302,19 +313,53 @@ namespace Faye::Ecs
     }
 
     // ---- View implementation ---------------------------------------------
+
+    // Read-only accessor for a pool's dense entity list. Returns an empty span
+    // when the type has no pool yet, so callers never have to create one just
+    // to discover it is empty. See the note in View::each.
+    template <class T>
+    inline std::span<const uint32_t> denseEntitiesOf(World &world)
+    {
+        const ComponentPool<T> *pool = world.poolIfExists<T>();
+        return pool ? pool->set.entities() : std::span<const uint32_t>{};
+    }
+
+    // Fetches one component for View::each with the right constness, and
+    // therefore the right AccessCheck: a const T reaches the read-checked
+    // accessor, a mutable T the write-checked one.
+    template <class T>
+    inline auto *viewComponentOf(World &world, Entity e)
+    {
+        if constexpr (std::is_const_v<T>)
+            return world.tryRead<std::remove_const_t<T>>(e);
+        else
+            return world.tryGet<T>(e);
+    }
+
     template <class... Ts>
     template <class Fn>
     void View<Ts...>::each(Fn &&fn)
     {
         static_assert(sizeof...(Ts) > 0, "a view needs at least one component type");
-        const uint64_t requiredMask = (componentBit<Ts>() | ...);
+
+        // Every id/pool lookup strips const: componentId<const T> is a DIFFERENT
+        // static from componentId<T>, so leaving it on would mint a second id
+        // for the same component and corrupt every mask it appears in.
+        const uint64_t requiredMask = (componentBit<std::remove_const_t<Ts>>() | ...);
 
         // Pick the smallest pool as the driver: it bounds the work. If 200
         // entities have Transform but 5 have Water, view<Transform, Water>
-        // must walk 5, not 200. (poolFor creates missing pools as empty —
-        // an empty driver then correctly visits nothing.)
+        // must walk 5, not 200.
+        //
+        // poolIfExists, NOT poolFor: iterating must never mutate the World.
+        // poolFor lazily resizes `pools` and inserts, so a read-only view over
+        // a not-yet-created type would reallocate shared state underneath the
+        // other systems reading it through tryGet — an unsynchronised race the
+        // access masks cannot see, because it is pool-vector mutation rather
+        // than a component touch. A missing pool yields an empty span, which
+        // wins the smallest-pool contest and correctly visits nothing.
         const std::array<std::span<const uint32_t>, sizeof...(Ts)> entitySpans{
-            world.poolFor<Ts>().set.entities()...};
+            denseEntitiesOf<std::remove_const_t<Ts>>(world)...};
         size_t driver = 0;
         for (size_t i = 1; i < entitySpans.size(); ++i)
             if (entitySpans[i].size() < entitySpans[driver].size())
@@ -325,9 +370,9 @@ namespace Faye::Ecs
             // One AND rejects non-matches instead of N-1 paged sparse probes.
             if ((world.maskOf(entityIndex) & requiredMask) != requiredMask)
                 continue;
-            // Mask passed => every tryGet below succeeds (single-threaded).
+            // Mask passed => every lookup below succeeds (single-threaded).
             const Entity e = world.entityAt(entityIndex);
-            fn(e, *world.tryGet<Ts>(e)...);
+            fn(e, *viewComponentOf<Ts>(world, e)...);
         }
     }
 }

@@ -2,6 +2,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -201,4 +203,202 @@ TEST_CASE("stress: random DAG of jobs completes with correct dependency ordering
     jobs.waitAll(handles);
     for (int i = 0; i < kJobs; ++i)
         CHECK(done[size_t(i)].load());
+}
+
+// --- Failure handling (F3) -------------------------------------------------
+// Before this, an exception escaping a job body reached workerMain and was
+// std::terminate — and because finishJob was skipped, every waiter hung.
+
+TEST_CASE("a throwing job does not terminate, and its waiter still returns")
+{
+    JobSystem jobs(4);
+    const uint64_t before = jobs.failureCount();
+
+    JobHandle handle = jobs.schedule([] { throw std::runtime_error("boom"); }, {}, "thrower");
+    jobs.wait(handle);   // must not hang
+
+    CHECK(jobs.failureCount() == before + 1);
+}
+
+TEST_CASE("a non-std exception is caught too")
+{
+    JobSystem jobs(4);
+    const uint64_t before = jobs.failureCount();
+
+    JobHandle handle = jobs.schedule([] { throw 42; }, {}, "int thrower");
+    jobs.wait(handle);
+
+    CHECK(jobs.failureCount() == before + 1);
+}
+
+TEST_CASE("failure poisons dependents: they are skipped, not run on absent inputs")
+{
+    JobSystem jobs(4);
+    std::atomic<bool> dependentRan{false};
+
+    JobHandle producer = jobs.schedule([] { throw std::runtime_error("no output"); }, {}, "producer");
+    JobHandle consumer = jobs.schedule([&dependentRan] { dependentRan.store(true); },
+                                       {{producer}}, "consumer");
+    jobs.wait(consumer);   // completes despite the failure upstream
+
+    CHECK_FALSE(dependentRan.load());
+}
+
+TEST_CASE("poison propagates transitively down a chain")
+{
+    JobSystem jobs(4);
+    std::atomic<int> ran{0};
+
+    JobHandle a = jobs.schedule([] { throw std::runtime_error("boom"); }, {}, "a");
+    JobHandle b = jobs.schedule([&ran] { ran.fetch_add(1); }, {{a}}, "b");
+    JobHandle c = jobs.schedule([&ran] { ran.fetch_add(1); }, {{b}}, "c");
+    jobs.wait(c);
+
+    CHECK(ran.load() == 0);
+}
+
+TEST_CASE("a failure does not poison unrelated jobs")
+{
+    JobSystem jobs(4);
+    std::atomic<bool> siblingRan{false};
+
+    JobHandle failing = jobs.schedule([] { throw std::runtime_error("boom"); }, {}, "failing");
+    JobHandle sibling = jobs.schedule([&siblingRan] { siblingRan.store(true); }, {}, "sibling");
+    jobs.wait(failing);
+    jobs.wait(sibling);
+
+    CHECK(siblingRan.load());
+}
+
+TEST_CASE("recycled slots do not inherit stale poison")
+{
+    JobSystem jobs(4);
+
+    // Fail, then reuse the pool heavily; every later job must still run.
+    jobs.wait(jobs.schedule([] { throw std::runtime_error("boom"); }, {}, "failing"));
+
+    std::atomic<int> counter{0};
+    std::vector<JobHandle> handles;
+    handles.reserve(2000);
+    for (int i = 0; i < 2000; ++i)
+        handles.push_back(jobs.schedule([&counter] { counter.fetch_add(1); }));
+    jobs.waitAll(handles);
+
+    CHECK(counter.load() == 2000);
+}
+
+// --- parallelFor chunk clamp (F5) ------------------------------------------
+// A caller-supplied grain of 1 over a large count used to request one slot per
+// element in a single burst, blowing past kMaxJobs.
+
+TEST_CASE("parallelFor with grain 1 over a count far exceeding the pool completes")
+{
+    JobSystem jobs(4);
+    constexpr size_t kCount = 100000;   // >> kMaxJobs (4096)
+
+    std::vector<std::atomic<int>> visits(kCount);
+    JobHandle handle = jobs.parallelFor(kCount, 1, [&visits](size_t begin, size_t end) {
+        for (size_t i = begin; i < end; ++i)
+            visits[i].fetch_add(1, std::memory_order_relaxed);
+    });
+    jobs.wait(handle);
+
+    for (size_t i = 0; i < kCount; ++i)
+        REQUIRE(visits[i].load() == 1);   // every element covered exactly once
+}
+
+// --- Pool exhaustion is diagnosable, not UB (F5) ----------------------------
+// allocateSlot used to assert-then-index, so under NDEBUG the check vanished
+// and back()/pop_back() ran on an empty vector: silent pool corruption. It is
+// now a logged abort in every build.
+//
+// Skipped by default because it deliberately kills the process. Run it on its
+// own, in whichever build type you want to verify:
+//   faye_tests --no-skip -tc="pool exhaustion aborts with a diagnostic"
+// Expect exit 134 (SIGABRT) and a "Job pool exhausted" line on stderr.
+TEST_CASE("pool exhaustion aborts with a diagnostic" * doctest::skip())
+{
+    JobSystem jobs(4);
+    std::atomic<bool> gate{false};
+
+    // Every job blocks, so no slot is ever recycled.
+    std::vector<JobHandle> handles;
+    for (uint32_t i = 0; i < JobSystem::kMaxJobs + 1000; ++i)
+        handles.push_back(jobs.schedule([&gate] {
+            while (!gate.load(std::memory_order_acquire))
+                std::this_thread::yield();
+        }));
+
+    gate.store(true, std::memory_order_release);   // unreachable: abort happens above
+    jobs.waitAll(handles);
+}
+
+TEST_CASE("a throwing parallelFor chunk still completes the parent, not a hang")
+{
+    JobSystem jobs(4);
+    const uint64_t before = jobs.failureCount();
+
+    // The chunk body reports into the parent counter AFTER the user code, so a
+    // throw there used to leave the parent unfinished and wait() would hang.
+    //
+    // Trigger on the range COVERING an index, not on a chunk boundary: serial
+    // mode collapses the whole span into one [0, count) call, so `begin == 500`
+    // would never fire there and the test would silently pass for free.
+    JobHandle handle = jobs.parallelFor(1000, 10, [](size_t begin, size_t end) {
+        if (begin <= 500 && 500 < end)
+            throw std::runtime_error("bad chunk");
+    });
+    jobs.wait(handle);   // must return
+
+    CHECK(jobs.failureCount() > before);
+}
+
+TEST_CASE("a failed parallelFor poisons what depends on it")
+{
+    JobSystem jobs(4);
+    std::atomic<bool> consumerRan{false};
+
+    JobHandle produce = jobs.parallelFor(1000, 10, [](size_t begin, size_t) {
+        if (begin == 0)
+            throw std::runtime_error("bad chunk");
+    });
+    JobHandle consume = jobs.schedule([&consumerRan] { consumerRan.store(true); },
+                                      {{produce}}, "consumer");
+    jobs.wait(consume);
+
+    CHECK_FALSE(consumerRan.load());
+}
+
+TEST_CASE("poison does not depend on link order: a dep that already failed still poisons")
+{
+    JobSystem jobs(4);
+    std::atomic<bool> consumerRan{false};
+
+    JobHandle producer = jobs.schedule([] { throw std::runtime_error("boom"); }, {}, "producer");
+    jobs.wait(producer);   // fully complete AND recycled before we link anything
+
+    JobHandle consumer = jobs.schedule([&consumerRan] { consumerRan.store(true); },
+                                       {{producer}}, "consumer");
+    jobs.wait(consumer);
+
+    CHECK_FALSE(consumerRan.load());
+}
+
+TEST_CASE("a successful dep completed long ago does not poison")
+{
+    JobSystem jobs(4);
+    std::atomic<bool> consumerRan{false};
+
+    // Force a failure first so the record is non-empty (exercising the slow
+    // path), then verify a clean dep is still treated as clean.
+    jobs.wait(jobs.schedule([] { throw std::runtime_error("unrelated"); }, {}, "unrelated"));
+
+    JobHandle producer = jobs.schedule([] {}, {}, "producer");
+    jobs.wait(producer);
+
+    JobHandle consumer = jobs.schedule([&consumerRan] { consumerRan.store(true); },
+                                       {{producer}}, "consumer");
+    jobs.wait(consumer);
+
+    CHECK(consumerRan.load());
 }

@@ -14,8 +14,8 @@ namespace Faye
     void DirectionalLightRenderExtractor::run(Ecs::World &world, const EngineContext &,
                                               Jobs::JobSystem &, Ecs::CommandBuffer &)
     {
-        world.view<TransformComponent, DirectionalLightComponent>().each(
-            [&](Ecs::Entity entity, TransformComponent &transform, DirectionalLightComponent &light)
+        world.view<const TransformComponent, const DirectionalLightComponent>().each(
+            [&](Ecs::Entity entity, const TransformComponent &transform, const DirectionalLightComponent &light)
             {
                 snapshot.directionalLights.push_back(DirectionalLightInstance{
                     entity,
