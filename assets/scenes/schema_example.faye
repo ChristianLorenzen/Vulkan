@@ -1,0 +1,152 @@
+# Faye scene file — schemaVersion 1.
+# Conformance fixture for docs/serialization/schemas.md. Parsed by the
+# Phase-3 conformance test (src/Scene/Tests/). Fields are C++ member names.
+schemaVersion: 1
+
+scene:
+  uuid: f47ac10b-58cc-4372-a567-0e02b2c3d479
+  name: Schema Example
+
+# Asset records referenced by this scene (v1: inline).
+assets:
+  - id: 11111111-1111-1111-1111-111111111111   # well-known built-in cube primitive
+    type: model
+    name: Cube
+    primitive: cube
+  - id: 22222222-2222-2222-2222-222222222222   # well-known built-in plane primitive
+    type: model
+    name: Plane
+    primitive: plane
+  # File-sourced model. Deterministic v5 id = name_generator("faye:" + uri).
+  - id: 8a1c6e5f-0000-0000-0000-000000000001
+    type: model
+    name: Ship_Scene.fbx
+    uri: assets/projects/models/stylized-pirate-ship/source/Ship_Scene.fbx
+    flags: [imported]
+  # Runtime-created material → random v4 id.
+  - id: b3d90a2e-0000-0000-0000-000000000002
+    type: material
+    name: Red Material
+    data:
+      color: [1, 0, 0]
+      baseColorFactor: [1, 0, 0, 1]
+      metallicFactor: 0.0
+      roughnessFactor: 1.0
+      alphaMode: opaque
+      alphaCutoff: 0.5
+      doubleSided: false
+    pipeline:
+      vertexShaderPath: shader.vert
+      fragmentShaderPath: shader.frag
+      enableAlphaBlending: false
+      domain: opaque
+  - id: 7c11b3d0-0000-0000-0000-000000000003
+    type: material
+    name: Water Material
+    data:
+      color: [0.2, 0.5, 0.9]
+      textures:
+        - type: equirectangular
+          path: assets/textures/water_env.hdr
+    pipeline:
+      vertexShaderPath: shaders/water.vert
+      fragmentShaderPath: shaders/water.frag
+      domain: water
+
+entities:
+  # HARD REQUIREMENT: exactly one primary camera.
+  - id: 1b9e4a2f-0000-0000-0000-000000000101
+    name: Editor Camera
+    components:
+      - type: Transform
+        translation: [0, 0, 0]
+        rotation: [0, 0, 0]
+        scale: [1, 1, 1]
+      - type: Camera
+        primary: true
+
+  # HARD REQUIREMENT: post-process stack entity.
+  - id: 2c5f8b31-0000-0000-0000-000000000102
+    name: Post Processing
+    components:
+      - type: Post Process Stack
+        enabled: true
+        effects:
+          - definitionId: tone_map
+            enabled: true
+            parameters:
+              color: [1, 1, 1, 1]
+              params: [0, 0, 0, 0]
+
+  - id: 3d6a0c42-0000-0000-0000-000000000103
+    name: Cube 1
+    components:
+      - type: Transform
+        translation: [-1, 0, -1]
+        rotation: [0, 0, 0]
+        scale: [1, 1, 1]
+      - type: Mesh
+        modelHandle: 11111111-1111-1111-1111-111111111111
+        materialHandle: b3d90a2e-0000-0000-0000-000000000002
+        view: true
+      - type: Native Script
+        scriptPath: bin/libfaye_rotator_script.so
+        scriptName: Rotator
+
+  - id: 4e7b1d53-0000-0000-0000-000000000104
+    name: Cube 2
+    components:
+      - type: Transform
+        translation: [1, 0, -1]
+      - type: Mesh
+        modelHandle: 11111111-1111-1111-1111-111111111111
+        materialHandle: 00000000-0000-0000-0000-000000000000   # null UUID → default material
+        view: true
+      - type: Lua Script
+        scriptPath: src/Scripting/ExampleScripts/rotator.lua
+
+  - id: 5f8c2e64-0000-0000-0000-000000000105
+    name: Floor
+    components:
+      - type: Transform
+        translation: [0, -1, 0]
+        scale: [5, 1, 5]
+      - type: Mesh
+        modelHandle: 22222222-2222-2222-2222-222222222222
+        materialHandle: b3d90a2e-0000-0000-0000-000000000002
+        view: true
+      - type: RigidBody2D
+        velocity: [0, 0]
+        mass: 1
+
+  - id: 60a9d375-0000-0000-0000-000000000106
+    name: Point Light 1
+    components:
+      - type: Transform
+        translation: [2, 3, 2]
+      - type: Point Light
+        color: [1, 1, 1]
+        intensity: 1
+        radius: 0.25
+
+  - id: 71ba0e86-0000-0000-0000-000000000107
+    name: Sun
+    components:
+      - type: Transform
+        rotation: [-0.7, 0, 0]
+      - type: Directional Light
+        color: [1, 0.95, 0.9]
+        intensity: 1
+
+  - id: 82cb1f97-0000-0000-0000-000000000108
+    name: Water
+    components:
+      - type: Transform
+        translation: [0, -0.5, 0]
+        scale: [8, 1, 8]
+      - type: Mesh
+        modelHandle: 22222222-2222-2222-2222-222222222222
+        materialHandle: 7c11b3d0-0000-0000-0000-000000000003
+        view: true
+      - type: Water
+        subdivisions: 64
