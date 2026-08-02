@@ -5,7 +5,8 @@
 
 using namespace Faye;
 
-Faye::MaterialRegistry::MaterialRegistry()
+Faye::MaterialRegistry::MaterialRegistry(AssetDatabase &assetDatabase)
+    : assetDatabase(assetDatabase)
 {
     MaterialData fallback{};
     fallback.name = "Default Material";
@@ -13,15 +14,27 @@ Faye::MaterialRegistry::MaterialRegistry()
     fallback.baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
     fallback.metallicFactor = 0.0f;
     fallback.roughnessFactor = 1.0f;
-    defaultHandle = registerMaterial(std::move(fallback));
+    const AssetId defaultAssetId = AssetDatabase::idForBuiltIn("Default Material");
+    defaultHandle = registerMaterial(std::make_unique<Material>(std::move(fallback)), defaultAssetId);
+    assetDatabase.registerAsset(AssetRecord{
+        .id = defaultAssetId,
+        .type = AssetType::Material,
+        .name = "Default Material",
+        .persistence = AssetPersistenceMode::BuiltIn,
+    });
+}
+
+Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(MaterialData materialData, MaterialPipelineConfig pipelineConfig, AssetId assetId)
+{
+    return registerMaterial(std::make_unique<Material>(std::move(materialData), std::move(pipelineConfig)), assetId);
 }
 
 Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(MaterialData materialData, MaterialPipelineConfig pipelineConfig)
 {
-    return registerMaterial(std::make_unique<Material>(std::move(materialData), std::move(pipelineConfig)));
+    return registerMaterial(std::make_unique<Material>(std::move(materialData), std::move(pipelineConfig)), Uuid::generateV4());
 }
 
-Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(std::unique_ptr<Faye::Material> material)
+Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(std::unique_ptr<Faye::Material> material, AssetId assetId)
 {
     if (material == nullptr)
     {
@@ -30,7 +43,20 @@ Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(std::unique_ptr<Fa
 
     const MaterialHandle handle{nextHandleValue++};
     materials.emplace(handle.value, std::move(material));
+    assetToHandle[assetId] = handle;
+    handleToAsset[handle.value] = assetId;
+
+    assetDatabase.registerAsset(AssetRecord{
+        .id = assetId,
+        .type = AssetType::Material,
+        .persistence = AssetPersistenceMode::Transient,
+    });
     return handle;
+}
+
+Faye::MaterialHandle Faye::MaterialRegistry::registerMaterial(std::unique_ptr<Faye::Material> material)
+{
+    return registerMaterial(std::move(material), Uuid::generateV4());
 }
 
 Faye::Material *Faye::MaterialRegistry::getMaterial(MaterialHandle handle)
@@ -76,4 +102,16 @@ const Faye::Material *Faye::MaterialRegistry::getMaterialOrDefault(MaterialHandl
         return material;
     }
     return getMaterial(defaultHandle);
+}
+
+std::optional<Faye::AssetId> Faye::MaterialRegistry::assetIdOf(MaterialHandle handle) const
+{
+    const auto it = handleToAsset.find(handle.value);
+    return it != handleToAsset.end() ? std::optional<AssetId>{it->second} : std::nullopt;
+}
+
+std::optional<Faye::MaterialHandle> Faye::MaterialRegistry::findByAssetId(const AssetId &assetId) const
+{
+    const auto it = assetToHandle.find(assetId);
+    return it != assetToHandle.end() ? std::optional<MaterialHandle>{it->second} : std::nullopt;
 }

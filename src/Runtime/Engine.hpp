@@ -7,6 +7,7 @@
 #include <exception>
 #include <filesystem>
 
+#include "Assets/AssetDatabase.hpp"
 #include "Assets/ModelRegistry.hpp"
 #include "Core/EngineContext.hpp"
 #include "Core/ITick.hpp"
@@ -67,6 +68,7 @@ namespace Faye {
         Entity              activeCamera()      { return activeCameraEntity; }
         ModelRegistry&      models()            { return *modelRegistry; }
         MaterialRegistry&   materials()         { return *materialRegistry; }
+        AssetDatabase&      assets()            { return *assetDatabase; }
         ScriptSystem&       scripts()           { return scriptingSystem->getScriptSystem(); }
         Jobs::JobSystem&    jobs()              { return *jobSystem; }
         HotReloadSystem&    reloadSystem()      { return *hotReloadSystem; }
@@ -115,6 +117,7 @@ namespace Faye {
         // Asset registries.
         std::unique_ptr<ModelRegistry> modelRegistry;
         std::unique_ptr<MaterialRegistry> materialRegistry;
+        std::unique_ptr<AssetDatabase> assetDatabase;
 
         // Scene content coordinator.
         std::unique_ptr<SceneBuilder> sceneBuilder;

@@ -5,6 +5,7 @@
 #include <string>
 #include <filesystem>
 
+#include "Assets/AssetDatabase.hpp"
 #include "Assets/ModelRegistry.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Resources/Model.hpp"
@@ -35,6 +36,7 @@ namespace Faye
 
         SceneBuilder(ModelRegistry &models,
                      MaterialRegistry &materials,
+                     AssetDatabase &assetDatabase,
                      ScriptSystem &scripts,
                      LuaScriptSystem &luaScripts,
                      Jobs::JobSystem &jobSystem
@@ -71,6 +73,7 @@ namespace Faye
 
         ModelRegistry &models;
         MaterialRegistry &materials;
+        AssetDatabase &assetDatabase;
         ScriptSystem &scripts;
         LuaScriptSystem &luaScripts;
         Jobs::JobSystem &jobSystem;

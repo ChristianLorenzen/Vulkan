@@ -1,5 +1,6 @@
 set(FAYE_ENGINE_SOURCES
     Assets/ModelRegistry.cpp
+    Assets/AssetDatabase.cpp
     Core/HotReload/HotReloadManager.cpp
     Core/HotReload/HotReloadSystem.cpp
     Core/IO/FileSystem.cpp
@@ -229,6 +230,8 @@ add_executable(faye_tests
     Core/Path/Paths.cpp
     Core/Serialization/Uuid.cpp
     Core/Serialization/Tests/UuidTests.cpp
+    Assets/AssetDatabase.cpp
+    Assets/Tests/AssetDatabaseTests.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp

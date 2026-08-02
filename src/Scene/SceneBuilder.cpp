@@ -19,10 +19,12 @@ using namespace Faye;
 
 Faye::SceneBuilder::SceneBuilder(ModelRegistry &models,
                                  MaterialRegistry &materials,
+                                 AssetDatabase &assetDatabase,
                                  ScriptSystem &scripts,
                                  LuaScriptSystem &luaScripts,
                                  Jobs::JobSystem &jobSystem)
-    : models(models), materials(materials), scripts(scripts), luaScripts(luaScripts), jobSystem(jobSystem) {}
+    : models(models), materials(materials), assetDatabase(assetDatabase),
+      scripts(scripts), luaScripts(luaScripts), jobSystem(jobSystem) {}
 
 Faye::ModelHandle Faye::SceneBuilder::ensurePrimitiveHandle(PrimitiveType primitiveType)
 {
@@ -38,25 +40,36 @@ Faye::ModelHandle Faye::SceneBuilder::ensurePrimitiveHandle(PrimitiveType primit
 Faye::SceneBuilder::ImportedModelRegistration Faye::SceneBuilder::registerImportedModelWithBounds(
     const std::string &modelPath, MaterialPipelineConfig pipelineConfig)
 {
-    std::unique_ptr<Model> model = models.makeModelFromFile(modelPath);
+    // Dedup by deterministic asset id: a second import of the same uri reuses
+    // the already-imported model (and skips re-registering its materials).
+    const AssetId assetId = AssetDatabase::idForSourceUri(modelPath);
+    const bool alreadyImported = models.findByAssetId(assetId).has_value();
+
+    const ModelHandle handle = models.getOrImportByUri(modelPath);
+    Model *model = models.getModel(handle);
     const Model::Bounds bounds = model->getLocalBounds();
 
-    const auto &importedMaterials = model->getImportedMaterials();
-    if (!importedMaterials.empty())
+    // Imported (embedded) materials are registered once, on the first import,
+    // and assigned to the model's submeshes.
+    if (!alreadyImported)
     {
-        std::vector<MaterialHandle> importedMaterialHandles;
-        importedMaterialHandles.reserve(importedMaterials.size());
-
-        for (const MaterialData &materialData : importedMaterials)
+        const auto &importedMaterials = model->getImportedMaterials();
+        if (!importedMaterials.empty())
         {
-            importedMaterialHandles.push_back(materials.registerMaterial(materialData, pipelineConfig));
-        }
+            std::vector<MaterialHandle> importedMaterialHandles;
+            importedMaterialHandles.reserve(importedMaterials.size());
 
-        model->assignImportedMaterialHandles(importedMaterialHandles);
+            for (const MaterialData &materialData : importedMaterials)
+            {
+                importedMaterialHandles.push_back(materials.registerMaterial(materialData, pipelineConfig));
+            }
+
+            model->assignImportedMaterialHandles(importedMaterialHandles);
+        }
     }
 
     return ImportedModelRegistration{
-        models.registerModel(std::move(model)),
+        handle,
         bounds};
 }
 
@@ -245,9 +258,17 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
     waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
     waterPipelineConfig.domain = MaterialDomain::Water; // excluded from depth prepass
+    const AssetId waterAssetId = AssetDatabase::idForBuiltIn("Water Material");
     waterMaterialHandle = materials.registerMaterial(
         std::move(waterMaterialData),
-        std::move(waterPipelineConfig));
+        std::move(waterPipelineConfig),
+        waterAssetId);
+    assetDatabase.registerAsset(AssetRecord{
+        .id = waterAssetId,
+        .type = AssetType::Material,
+        .name = "Water Material",
+        .persistence = AssetPersistenceMode::BuiltIn,
+    });
 
     populateDefaultScene(scene);
 

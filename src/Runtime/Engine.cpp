@@ -12,8 +12,9 @@ namespace Faye {
         LOG_INFO(Logger::get(), "Init Vulkan...");
 
         vkData = std::make_unique<Vulkan>(*glfwWindow);
-        modelRegistry = std::make_unique<ModelRegistry>(*vkData->getVkDevice());
-        materialRegistry = std::make_unique<MaterialRegistry>();
+        assetDatabase = std::make_unique<AssetDatabase>();
+        modelRegistry = std::make_unique<ModelRegistry>(*vkData->getVkDevice(), *assetDatabase);
+        materialRegistry = std::make_unique<MaterialRegistry>(*assetDatabase);
 
         // Constructed on the main thread: the JobSystem captures this thread's
         // id as the main-thread affinity for scheduleMainThread/pumpMainThread.
@@ -39,7 +40,7 @@ namespace Faye {
         postInit();
 
         sceneBuilder = std::make_unique<SceneBuilder>(
-            *modelRegistry, *materialRegistry,
+            *modelRegistry, *materialRegistry, *assetDatabase,
             scriptingSystem->getScriptSystem(), scriptingSystem->getLuaScriptSystem(), *jobSystem);
         
         Jobs::JobHandle handle = jobSystem->schedule([this]() {
