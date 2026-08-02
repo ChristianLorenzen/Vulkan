@@ -65,6 +65,12 @@ namespace Faye
         ModelHandle ensurePrimitiveHandle(PrimitiveType primitiveType);
         ImportedModelRegistration registerImportedModelWithBounds(const std::string &modelPath,
                                                                    MaterialPipelineConfig pipelineConfig = {});
+        // Lazily provides the water material: reuses the already-registered
+        // built-in (e.g. one loaded from a scene file), else builds + registers
+        // the default water material (alpha-blended, water domain, real maps).
+        // Safe to call when the scene was loaded from disk (populate() never
+        // ran, so waterMaterialHandle is unset).
+        MaterialHandle ensureWaterMaterial();
 
         static constexpr std::size_t primitiveIndex(PrimitiveType primitiveType)
         {

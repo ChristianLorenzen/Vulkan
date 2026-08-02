@@ -28,6 +28,12 @@ namespace Faye
         // to the same AssetId and the same handle (dedup).
         ModelHandle createPrimitive(PrimitiveType primitiveType, uint32_t subdivisions = 64);
 
+        // Build a FRESH primitive (no dedup) with the given subdivisions —
+        // used by mesh-regeneration scripts (WaterSubdivision) that vary the
+        // tessellation. Reuses the primitive's deterministic AssetId; the
+        // newest handle wins the asset->handle map.
+        ModelHandle recreatePrimitive(PrimitiveType primitiveType, uint32_t subdivisions = 64);
+
         std::unique_ptr<Model> makeModelFromFile(const std::string &modelPath);
 
         ModelHandle registerModel(std::unique_ptr<Model> model);

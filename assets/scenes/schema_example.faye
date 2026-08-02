@@ -40,7 +40,7 @@ assets:
       fragmentShaderPath: shader.frag
       enableAlphaBlending: false
       domain: opaque
-  - id: 7c11b3d0-0000-0000-0000-000000000003
+  - id: 05d97bf5-4095-5ad3-bbf7-210a9f5513f8
     type: material
     name: Water Material
     data:
@@ -55,6 +55,7 @@ assets:
     pipeline:
       vertexShaderPath: shaders/water.vert
       fragmentShaderPath: shaders/water.frag
+      enableAlphaBlending: true
       domain: water
 
 entities:
@@ -150,7 +151,7 @@ entities:
         scale: [8, 1, 8]
       - type: Mesh
         modelHandle: 81dd5381-dd53-56d6-b36c-500f2310d7b9
-        materialHandle: 7c11b3d0-0000-0000-0000-000000000003
+        materialHandle: 05d97bf5-4095-5ad3-bbf7-210a9f5513f8
         view: true
       - type: Water
         subdivisions: 64

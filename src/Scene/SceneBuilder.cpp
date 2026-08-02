@@ -37,6 +37,55 @@ Faye::ModelHandle Faye::SceneBuilder::ensurePrimitiveHandle(PrimitiveType primit
     return handle;
 }
 
+Faye::MaterialHandle Faye::SceneBuilder::ensureWaterMaterial()
+{
+    if (waterMaterialHandle.isValid())
+    {
+        return waterMaterialHandle;
+    }
+
+    // A scene loaded from disk registers its water material under the
+    // deterministic built-in id; reuse it so editor-added water planes share
+    // the loaded material instead of falling back to white.
+    if (const auto builtIn = materials.findByAssetId(AssetDatabase::idForBuiltIn("Water Material")))
+    {
+        waterMaterialHandle = *builtIn;
+    }
+    if (waterMaterialHandle.isValid())
+    {
+        return waterMaterialHandle;
+    }
+
+    // Default water material — uses water.vert/water.frag via
+    // MaterialPipelineConfig. The pipeline is selected per-material by
+    // SimpleRenderSystem at draw time. Texture slot mapping (fixed by
+    // MaterialCache::writeDescriptorSet):
+    //   Albedo   (binding 0) → normalMap1 in water.frag → waternormal1.jpg
+    //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
+    //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
+    MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
+    waterMaterialData.shininess = 64.0f;  // specularShininess.w  -- editor: Shininess
+    waterMaterialData.normalScale = 0.4f; // surfaceFactors.z     -- editor: Normal Scale
+    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal1.jpg").string(), TextureType::Albedo));
+    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
+    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
+    MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
+    waterPipelineConfig.enableAlphaBlending = true;    // water alpha is meaningful
+    waterPipelineConfig.domain = MaterialDomain::Water; // excluded from depth prepass
+    const AssetId waterAssetId = AssetDatabase::idForBuiltIn("Water Material");
+    waterMaterialHandle = materials.registerMaterial(
+        std::move(waterMaterialData),
+        std::move(waterPipelineConfig),
+        waterAssetId);
+    assetDatabase.registerAsset(AssetRecord{
+        .id = waterAssetId,
+        .type = AssetType::Material,
+        .name = "Water Material",
+        .persistence = AssetPersistenceMode::BuiltIn,
+    });
+    return waterMaterialHandle;
+}
+
 Faye::SceneBuilder::ImportedModelRegistration Faye::SceneBuilder::registerImportedModelWithBounds(
     const std::string &modelPath, MaterialPipelineConfig pipelineConfig)
 {
@@ -82,7 +131,7 @@ Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveTy
 
     if (primitiveType == PrimitiveType::WaterPlane)
     {
-        mesh.materialHandle = waterMaterialHandle;
+        mesh.materialHandle = ensureWaterMaterial();
 
         // Scale up to a large world-space surface (20×20 metres by default).
         transform.scale = {20.0f, 1.0f, 20.0f};
@@ -95,7 +144,7 @@ Faye::Entity Faye::SceneBuilder::createPrimitiveEntity(Scene &scene, PrimitiveTy
         // and rebuilds the mesh when the value changes.
         scripts.attachBuiltinScript(entity,
                                     new WaterSubdivisionScript([this](uint32_t divs) -> ModelHandle
-                                                               { return models.createPrimitive(PrimitiveType::WaterPlane, divs); }),
+                                                               { return models.recreatePrimitive(PrimitiveType::WaterPlane, divs); }),
                                     "WaterSubdivision");
     }
     else
@@ -243,32 +292,10 @@ Faye::SceneBuilder::SceneSetup Faye::SceneBuilder::populate(Scene &scene)
     editorCamera.add<TransformComponent>();
     editorCamera.addCamera(true);
 
-    // Water material — uses water.vert/water.frag via MaterialPipelineConfig.
-    // The pipeline is selected per-material by SimpleRenderSystem at draw time.
-    // Texture slot mapping (fixed by MaterialCache::writeDescriptorSet):
-    //   Albedo   (binding 0) → normalMap1 in water.frag → waternormal1.jpg
-    //   Normal   (binding 1) → normalMap2 in water.frag → waternormal2.jpg
-    //   Metallic (binding 2) → foamMap    in water.frag → waterfoam1.jpg
-    MaterialData waterMaterialData{"Water", glm::vec3(0.05f, 0.50f, 0.55f)};
-    waterMaterialData.shininess = 64.0f;  // specularShininess.w  -- editor: Shininess
-    waterMaterialData.normalScale = 0.4f; // surfaceFactors.z     -- editor: Normal Scale
-    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal1.jpg").string(), TextureType::Albedo));
-    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waternormal2.jpg").string(), TextureType::Normal));
-    waterMaterialData.textures.push_back(loadTextureFromFile(Paths::resolve("src/textures/waterfoam1.jpg").string(), TextureType::Metallic));
-    MaterialPipelineConfig waterPipelineConfig{"water.vert", "water.frag"};
-    waterPipelineConfig.enableAlphaBlending = true;   // water alpha is meaningful
-    waterPipelineConfig.domain = MaterialDomain::Water; // excluded from depth prepass
-    const AssetId waterAssetId = AssetDatabase::idForBuiltIn("Water Material");
-    waterMaterialHandle = materials.registerMaterial(
-        std::move(waterMaterialData),
-        std::move(waterPipelineConfig),
-        waterAssetId);
-    assetDatabase.registerAsset(AssetRecord{
-        .id = waterAssetId,
-        .type = AssetType::Material,
-        .name = "Water Material",
-        .persistence = AssetPersistenceMode::BuiltIn,
-    });
+    // Water material — created lazily via ensureWaterMaterial() (alpha-blended,
+    // water domain, real maps). populateDefaultScene's water plane and any
+    // editor-added water plane share it.
+    ensureWaterMaterial();
 
     populateDefaultScene(scene);
 

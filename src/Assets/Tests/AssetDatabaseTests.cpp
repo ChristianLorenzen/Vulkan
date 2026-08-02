@@ -55,6 +55,14 @@ TEST_CASE("primitive ids are stable v5 ids (locked to scene-file values)")
           Faye::Uuid::fromString("81dd5381-dd53-56d6-b36c-500f2310d7b9"));
 }
 
+TEST_CASE("built-in ids are stable v5 ids (locked to scene-file values)")
+{
+    CHECK(AssetDatabase::idForBuiltIn("Water Material") ==
+          Faye::Uuid::fromString("05d97bf5-4095-5ad3-bbf7-210a9f5513f8"));
+    CHECK(AssetDatabase::idForBuiltIn("Default Material") ==
+          Faye::Uuid::fromString("2a44d854-7b42-50ca-a0f0-3c7f1825ff80"));
+}
+
 TEST_CASE("primitiveTypeFromName is case-insensitive")
 {
     CHECK(Faye::primitiveTypeFromName("Cube") == PrimitiveType::Cube);

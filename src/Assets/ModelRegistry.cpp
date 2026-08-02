@@ -30,6 +30,20 @@ Faye::ModelHandle Faye::ModelRegistry::createPrimitive(PrimitiveType primitiveTy
     return handle;
 }
 
+Faye::ModelHandle Faye::ModelRegistry::recreatePrimitive(PrimitiveType primitiveType, uint32_t subdivisions)
+{
+    const AssetId assetId = AssetDatabase::idForPrimitive(primitiveType);
+    const ModelHandle handle = registerModel(Model::createPrimitive(device, primitiveType, subdivisions), assetId);
+    assetDatabase.registerAsset(AssetRecord{
+        .id = assetId,
+        .type = AssetType::Model,
+        .name = std::string(primitiveTypeName(primitiveType)),
+        .primitiveName = std::string(primitiveTypeName(primitiveType)),
+        .persistence = AssetPersistenceMode::BuiltIn,
+    });
+    return handle;
+}
+
 std::unique_ptr<Faye::Model> Faye::ModelRegistry::makeModelFromFile(const std::string &modelPath)
 {
     return Model::createModelFromFile(device, modelPath);
