@@ -34,4 +34,32 @@ namespace Faye
 
         return Texture::create(std::move(textureData), width, height, channels, texturePath, textureType);
     }
+
+    HdrImage loadHDRTextureFromFile(const std::string &texturePath, TextureType textureType) {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+
+        float *data = stbi_loadf(texturePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+        if (data == nullptr)
+        {
+            LOG_ERROR(Logger::get(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
+            throw std::runtime_error("Failed to load texture from file: " + texturePath);
+        }
+
+        std::vector<float> textureData(data, data + (width * height * 4));
+        stbi_image_free(data);
+
+        LOG_INFO(
+            Logger::get(),
+            "Loaded runtime texture at path {} with dimensions {}x{} and {} channels.",
+            texturePath,
+            width,
+            height,
+            channels);
+        
+        
+        HdrImage im = {std::move(textureData), width, height};
+        return im;
+    }
 }

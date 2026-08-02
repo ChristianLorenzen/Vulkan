@@ -29,6 +29,7 @@ VkDescriptorType toVkDescriptorType(ShaderBinding::Kind kind)
 
 VulkanComputePipeline::VulkanComputePipeline(VulkanDevice &device, const std::string &computeFilepath) : device(device)
 {
+    
     LOG_INFO(Logger::get(), "Creating Compute Pipeline...");
     
     const std::vector<char> computeShaderBytes = FileSystem::readFile(computeFilepath);
@@ -65,7 +66,7 @@ VulkanComputePipeline::VulkanComputePipeline(VulkanDevice &device, const std::st
     if (vkCreatePipelineLayout(device.getDevice(), &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
         throw std::runtime_error("Failed to create compute pipeline layout");
 
-    VkShaderModule shaderModule = createShaderModule(device, computeShaderBytes); // the fixed, shared helper from §1.1
+    VkShaderModule shaderModule = createShaderModule(device, computeShaderBytes);
 
     VkPipelineShaderStageCreateInfo stageInfo{};
     stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -89,6 +90,10 @@ VulkanComputePipeline::~VulkanComputePipeline()
     if (computePipeline != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device.getDevice(), computePipeline, nullptr);
+    }
+    if (pipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(device.getDevice(), pipelineLayout, nullptr);
     }
 }
 

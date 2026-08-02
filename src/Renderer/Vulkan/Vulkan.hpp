@@ -19,12 +19,14 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
+#include "Renderer/Environment/environment_map.hpp"
 #include "MaterialCache.hpp"
 #include "TextureCache.hpp"
 #include "VulkanBuffer.hpp"
 #include "vk_render_system.hpp"
 #include "point_light_render_system.hpp"
 #include "editor_grid_render_system.hpp"
+#include "skybox_render_system.hpp"
 #include "vk_post_process.hpp"
 #include "vk_device.hpp"
 #include "vk_pipeline.hpp"
@@ -134,9 +136,11 @@ namespace Faye
 		std::unique_ptr<PointLightRenderSystem> pointLightRenderSystem{};
 		std::unique_ptr<VulkanComputePipeline> waterDebugGradient{};
 		VkImageResource waterFieldDebugImage;
+		EnvironmentMap environmentMap;
 		// Editor-only overlay. Constructed unconditionally (one pipeline), but
 		// only recorded when the RenderView opts in — see renderScene.
 		std::unique_ptr<EditorGridRenderSystem> editorGridRenderSystem{};
+		std::unique_ptr<SkyboxRenderSystem> skyboxRenderSystem{};
 		std::unique_ptr<PostProcessChain> postProcessChain{};
 
 		std::vector<std::unique_ptr<VulkanBuffer>> uboBuffers;

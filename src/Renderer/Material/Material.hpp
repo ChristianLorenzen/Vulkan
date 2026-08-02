@@ -40,6 +40,7 @@ namespace Faye
         Roughness,
         AmbientOcclusion,
         Height,
+        Equirectangular,
     };
 
     struct TextureTypeHasher
@@ -49,6 +50,8 @@ namespace Faye
             return std::hash<uint32_t>{}(static_cast<uint32_t>(type));
         }
     };
+
+    struct HdrImage { std::vector<float> pixels; int width = 0; int height = 0; };
 
     struct Texture
     {

@@ -311,6 +311,7 @@ namespace Faye
     {
         PostProcessStackComponent stack{};
         stack.effects.push_back(makeDefaultPostProcessEffect("tint"));
+        stack.effects.push_back(makeDefaultPostProcessEffect("tonemap"));
         return stack;
     }
 

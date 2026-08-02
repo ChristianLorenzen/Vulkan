@@ -44,18 +44,10 @@ namespace Faye
         glm::mat4 inverseView{1.f};         // offset 128
         glm::mat4 priorViewProjection{1.f}; // offset 192
         float time = 0.0f;                  // offset 256
-        // Seconds elapsed since the previous frame. Used by water.vert to
-        // re-evaluate Gerstner displacement at the prior frame's time so
-        // motion vectors account for wave movement.
-        float deltaTime = 0.0f; // offset 260
-        // Offscreen scene render extent in pixels -- NOT the swapchain extent; the
-        // two differ in the editor, where the viewport panel resizes this on drag.
-        // Sits in the two floats that previously padded inverseProjection to 272,
-        // so adding it shifted no existing offset.
-        glm::vec2 resolution{0.f}; // offset 264
-        // Used by water.frag to convert prepass NDC depth to view-space distance
-        // exactly, independent of the projection convention.
-        glm::mat4 inverseProjection{1.f}; // offset 272
+        float deltaTime = 0.0f;             // offset 260
+        // offscreen scene render extent in pixels, not the swapchain extent
+        glm::vec2 resolution{0.f};          // offset 264
+        glm::mat4 inverseProjection{1.f};   // offset 272
     };
 
     // All scene lighting: ambient + directional + point. Bound at set 0,
@@ -64,7 +56,7 @@ namespace Faye
     // buffer range matches the SPIRV block size.
     struct SceneLightingUBO
     {
-        glm::vec4 ambientColor{1.0f, 1.0f, 1.0f, 0.1f};              // rgb + intensity
+        glm::vec4 ambientColor{1.0f, 1.0f, 1.0f, 0.15f};              // rgb + intensity
         GpuDirectionalLight directionalLights[MAX_DIRECTIONAL_LIGHTS]; // offset 16
         GpuPointLight pointLights[MAX_POINT_LIGHTS];                   // offset 144
         int numDirectionalLights = 0;                                 // offset 464
@@ -94,6 +86,7 @@ namespace Faye
         VulkanBuffer *globalBuffer{nullptr};
         VulkanBuffer *lightingBuffer{nullptr};
         VkDescriptorImageInfo prepassDepthInfo{};
+        VkDescriptorImageInfo skyboxInfo{};
     };
 
     using FrameInfo = FrameContext;

@@ -1,4 +1,4 @@
-id=toneMap
+id=tonemap
 displayName=Tone Map
 vertexShader=post_process.vert.spv
 fragmentShader=post_process_tonemap.frag.spv

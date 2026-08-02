@@ -79,6 +79,7 @@ void Faye::Vulkan::initializeFrameResources()
                           .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL_GRAPHICS)
                           .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .addBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                          .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .build();
 
     // Material set (set 1): parameter UBO only — textures are now in the bindless set.
@@ -110,6 +111,7 @@ void Faye::Vulkan::initializeFrameResources()
                                           VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
                                               VK_SHADER_STAGE_FRAGMENT_BIT |
                                               VK_SHADER_STAGE_COMPUTE_BIT)
+                              .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                               .build();
 
     textureCache = std::make_unique<TextureCache>(*vk_device);
@@ -210,6 +212,15 @@ void Faye::Vulkan::initializeFrameResources()
         vk_renderer->getSceneDepthFormat(),
         *globalSetLayout);
 
+    skyboxRenderSystem = std::make_unique<SkyboxRenderSystem>(
+        *vk_device,
+        vk_renderer->getSceneColorFormat(),
+        vk_renderer->getSceneMotionFormat(),
+        vk_renderer->getSceneDepthFormat(),
+        *globalSetLayout);
+
+    environmentMap.load(*vk_device, Paths::projects().append("projects/textures/citrus_orchard_road_puresky_4k.hdr"));
+
     postProcessChain = std::make_unique<PostProcessChain>(
         *vk_device,
         *vk_renderer,
@@ -222,7 +233,7 @@ Faye::Vulkan::~Vulkan()
     vkDeviceWaitIdle(vk_device->getDevice());
     
     waterFieldDebugImage.destroy(vk_device->getDevice());
-
+    environmentMap.destroy(vk_device->getDevice());
     if (sceneDepthSampler != VK_NULL_HANDLE)
     {
         vkDestroySampler(vk_device->getDevice(), sceneDepthSampler, nullptr);
@@ -396,6 +407,8 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
         prepassDepthInfo});
     FrameContext &frameContext = *currentFrame;
 
+    frameContext.skyboxInfo = environmentMap.descriptorInfo();
+
     totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
 
     GlobalUBO ubo{};
@@ -474,6 +487,13 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     if (!frameInput.renderScene.pointLights.empty())
     {
         pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+    }
+
+    // isValid() guards the load having failed: descriptorInfo() would hand the
+    // push-descriptor write a null sampler/view, which is a validation error.
+    if (frameInput.renderView.skybox.enabled && environmentMap.isValid())
+    {
+        skyboxRenderSystem->render(frameContext, frameInput.renderView.skybox);
     }
 
     // Editor reference grid. Last inside the scene pass so it tests against a

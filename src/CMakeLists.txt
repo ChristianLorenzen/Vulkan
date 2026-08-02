@@ -31,6 +31,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Material/TextureRegistry.cpp
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Renderer/Resources/Model.cpp
+    Renderer/Environment/environment_map.cpp
     Renderer/Scene/Extractors/MeshRenderExtractor.cpp
     Renderer/Scene/Extractors/PointLightRenderExtractor.cpp
     Renderer/Scene/Extractors/DirectionalLightRenderExtractor.cpp
@@ -46,6 +47,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_render_system.cpp
     Renderer/Vulkan/point_light_render_system.cpp
     Renderer/Vulkan/editor_grid_render_system.cpp
+    Renderer/Vulkan/skybox_render_system.cpp
     Renderer/Vulkan/vk_post_process.cpp
     Renderer/Vulkan/vk_renderer.cpp
     Renderer/Vulkan/vk_swapchain.cpp

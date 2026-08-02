@@ -67,6 +67,10 @@ namespace Faye
         glm::vec4 zAxisColor{0.24f, 0.50f, 0.92f, 1.0f}; // line along +Z, at X = 0
     };
 
+    struct SkyboxSettings {
+        bool enabled = true;
+    };
+
     struct RenderView
     {
         const Camera *camera = nullptr;
@@ -74,5 +78,6 @@ namespace Faye
         RenderOutputTarget outputTarget = RenderOutputTarget::Swapchain;
         RenderDebugMode debugMode = RenderDebugMode::Lit;
         EditorGridSettings grid{};
+        SkyboxSettings skybox{};
     };
 }
