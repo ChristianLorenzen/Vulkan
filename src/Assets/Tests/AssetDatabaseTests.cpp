@@ -44,6 +44,26 @@ TEST_CASE("idForBuiltIn is deterministic and distinct per name")
     CHECK(a1 != water);
 }
 
+TEST_CASE("primitive ids are stable v5 ids (locked to scene-file values)")
+{
+    // These exact ids are baked into assets/scenes/schema_example.faye. If
+    // the derivation ever changes (namespace uuid, name prefix, hash), the
+    // conformance fixture must be regenerated with the new values.
+    CHECK(AssetDatabase::idForPrimitive(PrimitiveType::Cube) ==
+          Faye::Uuid::fromString("d4acbf7c-bbbe-53b7-8e1b-ac3a789bb6ea"));
+    CHECK(AssetDatabase::idForPrimitive(PrimitiveType::Plane) ==
+          Faye::Uuid::fromString("81dd5381-dd53-56d6-b36c-500f2310d7b9"));
+}
+
+TEST_CASE("primitiveTypeFromName is case-insensitive")
+{
+    CHECK(Faye::primitiveTypeFromName("Cube") == PrimitiveType::Cube);
+    CHECK(Faye::primitiveTypeFromName("cube") == PrimitiveType::Cube);
+    CHECK(Faye::primitiveTypeFromName("PLANE") == PrimitiveType::Plane);
+    CHECK(Faye::primitiveTypeFromName("Water Plane") == PrimitiveType::WaterPlane);
+    CHECK_FALSE(Faye::primitiveTypeFromName("nope").has_value());
+}
+
 TEST_CASE("registerAsset/findByAssetId round-trips")
 {
     AssetDatabase db;

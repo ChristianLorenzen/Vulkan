@@ -85,35 +85,40 @@ namespace Faye
         // Re-attach scripts that were persisted as path-only components. The
         // component deserialize slot fills the path; the runtime state (sol2
         // env / dlopen handle) is rebuilt here, after the entity exists.
+        // NOTE: the path is COPIED to a local first — loadScript() begins by
+        // unloading any existing script, which removes the very component we
+        // are reading, so a reference into it would dangle.
         void reattachScripts(Scene &scene, Entity entity, ScriptSystem &scripts, LuaScriptSystem &luaScripts)
         {
             if (auto *lua = entity.tryGet<LuaScriptComponent>())
             {
-                if (!lua->scriptPath.empty())
+                const std::string scriptPath = lua->scriptPath;   // copy (see note)
+                if (!scriptPath.empty())
                 {
                     try
                     {
-                        luaScripts.loadScript(entity, lua->scriptPath, &scene);
+                        luaScripts.loadScript(entity, scriptPath, &scene);
                     }
                     catch (const std::exception &e)
                     {
                         LOG_WARNING(Logger::get(), "Scene load: failed to re-attach Lua script '{}': {}",
-                                    lua->scriptPath, e.what());
+                                    scriptPath, e.what());
                     }
                 }
             }
             if (auto *native = entity.tryGet<NativeScriptComponent>())
             {
-                if (!native->scriptPath.empty() && native->scriptPath != "<builtin>")
+                const std::string scriptPath = native->scriptPath;   // copy (see note)
+                if (!scriptPath.empty() && scriptPath != "<builtin>")
                 {
                     try
                     {
-                        scripts.loadScript(entity, native->scriptPath);
+                        scripts.loadScript(entity, scriptPath);
                     }
                     catch (const std::exception &e)
                     {
                         LOG_WARNING(Logger::get(), "Scene load: failed to re-attach native script '{}': {}",
-                                    native->scriptPath, e.what());
+                                    scriptPath, e.what());
                     }
                 }
             }

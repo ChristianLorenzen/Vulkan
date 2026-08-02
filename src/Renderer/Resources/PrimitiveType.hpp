@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -37,13 +38,33 @@ namespace Faye
         return "Unknown Primitive";
     }
 
-    // Reverse lookup for scene files (name -> enum). nullopt for unknown names.
+    namespace detail
+    {
+        inline bool equalsIgnoreCase(std::string_view a, std::string_view b)
+        {
+            if (a.size() != b.size())
+                return false;
+            for (size_t i = 0; i < a.size(); ++i)
+            {
+                if (std::tolower(static_cast<unsigned char>(a[i])) !=
+                    std::tolower(static_cast<unsigned char>(b[i])))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    // Reverse lookup for scene files (name -> enum). Case-insensitive so both
+    // the canonical names ("Cube") and the schema's lowercase forms ("cube")
+    // resolve. nullopt for unknown names.
     inline std::optional<PrimitiveType> primitiveTypeFromName(std::string_view name)
     {
         for (int i = 0; i < static_cast<int>(PrimitiveType::Count); ++i)
         {
             const auto type = static_cast<PrimitiveType>(i);
-            if (primitiveTypeName(type) == name)
+            if (detail::equalsIgnoreCase(primitiveTypeName(type), name))
                 return type;
         }
         return std::nullopt;
