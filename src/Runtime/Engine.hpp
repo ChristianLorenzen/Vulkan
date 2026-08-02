@@ -76,6 +76,16 @@ namespace Faye {
         Entity              importAndCreateModel(std::filesystem::path path) { return sceneBuilder->importAndCreateModel(activeScene(), std::move(path)); }
         VkExtent2D          sceneRenderExtent() const { return vkData->getSceneRenderExtent(); }
 
+        // ---- scene files -------------------------------------------------
+        // Startup scene to load on initialize() instead of the default scene.
+        void setStartupScenePath(std::string path) { startupScenePath = std::move(path); }
+        const std::string &currentScenePath() const { return sceneManager->currentScenePath(); }
+
+        // Editor actions (deferred by the editor to end-of-frame).
+        SceneBuilder::SceneSetup newScene();
+        std::string saveScene(const std::string &path);          // "" = success
+        SceneFileLoadResult loadScene(const std::string &path);
+
     private:
         // Register an ITick coordinator. These are the engine's main-thread,
         // per-frame coordination systems (timing, input, hot-reload, scripting,
@@ -118,6 +128,7 @@ namespace Faye {
         std::unique_ptr<ModelRegistry> modelRegistry;
         std::unique_ptr<MaterialRegistry> materialRegistry;
         std::unique_ptr<AssetDatabase> assetDatabase;
+        std::string startupScenePath;
 
         // Scene content coordinator.
         std::unique_ptr<SceneBuilder> sceneBuilder;

@@ -78,6 +78,8 @@ namespace Faye::Editor::Panels
 
         if (ImGui::BeginMenuBar())
         {
+            drawFileMenu();
+
             if (ImGui::BeginMenu("View"))
             {
                 for (const auto &panel : panels)
@@ -104,6 +106,82 @@ namespace Faye::Editor::Panels
         }
 
         ImGui::End();
+    }
+
+    void EditorPanels::drawFileMenu()
+    {
+        if (ImGui::BeginMenu("File"))
+        {
+            if (ImGui::MenuItem("New"))
+            {
+                if (fileActionCallback)
+                    fileActionCallback(FileAction::New, {});
+            }
+            if (ImGui::MenuItem("Save"))
+            {
+                if (fileActionCallback)
+                    fileActionCallback(FileAction::Save, {});
+            }
+            if (ImGui::MenuItem("Save As..."))
+            {
+                saveAsModalOpen = true;
+                pathInputBuffer[0] = '\0';
+            }
+            if (ImGui::MenuItem("Open..."))
+            {
+                openModalOpen = true;
+                pathInputBuffer[0] = '\0';
+            }
+            ImGui::EndMenu();
+        }
+
+        if (saveAsModalOpen)
+        {
+            ImGui::OpenPopup("Save Scene As");
+            saveAsModalOpen = false;
+        }
+        if (ImGui::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::InputText("Path", pathInputBuffer.data(), static_cast<int>(pathInputBuffer.size()));
+            const bool saveClicked = ImGui::Button("Save") || ImGui::IsKeyPressed(ImGuiKey_Enter);
+            ImGui::SameLine();
+            const bool cancelClicked = ImGui::Button("Cancel");
+            if (saveClicked && pathInputBuffer[0] != '\0')
+            {
+                if (fileActionCallback)
+                    fileActionCallback(FileAction::SaveAs, std::filesystem::path(pathInputBuffer.data()));
+                ImGui::CloseCurrentPopup();
+            }
+            else if (cancelClicked)
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        if (openModalOpen)
+        {
+            ImGui::OpenPopup("Open Scene");
+            openModalOpen = false;
+        }
+        if (ImGui::BeginPopupModal("Open Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::InputText("Path", pathInputBuffer.data(), static_cast<int>(pathInputBuffer.size()));
+            const bool openClicked = ImGui::Button("Open") || ImGui::IsKeyPressed(ImGuiKey_Enter);
+            ImGui::SameLine();
+            const bool cancelClicked = ImGui::Button("Cancel");
+            if (openClicked && pathInputBuffer[0] != '\0')
+            {
+                if (fileActionCallback)
+                    fileActionCallback(FileAction::Open, std::filesystem::path(pathInputBuffer.data()));
+                ImGui::CloseCurrentPopup();
+            }
+            else if (cancelClicked)
+            {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
     }
 
     void EditorPanels::drawPrimitiveMenuItem(PrimitiveType primitiveType)

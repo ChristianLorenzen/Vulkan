@@ -26,6 +26,13 @@ namespace Faye
 
     Scene::~Scene()
     {
+        clear();
+    }
+
+    // Fill-in-place load: destroy every entity through the normal path so all
+    // remove hooks fire, then the scene is rebuilt (from file or the builder).
+    void Scene::clear()
+    {
         while (!sceneEntities.empty())
         {
             destroyEntity(sceneEntities.back());

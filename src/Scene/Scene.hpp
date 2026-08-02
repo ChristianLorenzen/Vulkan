@@ -27,6 +27,9 @@ namespace Faye
         // remove hook (scripts, camera) fires while the World is intact.
         ~Scene();
 
+        // Destroy every entity (used by fill-in-place scene loads / New).
+        void clear();
+
         // The World's remove hooks capture `this`; pinning the object is
         // simpler than rebinding them on move.
         Scene(const Scene &) = delete;

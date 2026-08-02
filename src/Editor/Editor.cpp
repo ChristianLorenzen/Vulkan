@@ -10,6 +10,9 @@ namespace Faye::Editor {
 
     void Application::run()
     {
+        if (!startupScenePath.empty())
+            engine.setStartupScenePath(startupScenePath);
+
         Jobs::JobHandle handle = engine.initialize();
         layer.init(engine.window(), engine.renderer().targets());
         wirePanels();
@@ -27,6 +30,10 @@ namespace Faye::Editor {
             RenderView view = buildRenderView();
 
             renderFrame(view);
+
+            // Scene mutations (File menu) run after the frame is fully
+            // submitted, so no in-flight RenderView/snapshot ever dangles.
+            processPendingFileAction();
         }
     }
 
@@ -60,6 +67,9 @@ namespace Faye::Editor {
         panels.setMaterialRegistry(&engine.materials());
         panels.setModelRegistry(&engine.models());
         panels.setPrimitiveCreateCallback([this](PrimitiveType t){ return engine.createPrimitive(t); });
+        panels.setFileActionCallback([this](Panels::FileAction action, const std::filesystem::path &path) {
+            pendingFileAction = PendingFileAction{true, action, path.string()};
+        });
         panels.setTextureThumbnailCallback([this](MaterialHandle h, TextureType t) -> ImTextureID {
             const Material* m = engine.materials().getMaterial(h);
             if (!m) return 0;
@@ -124,6 +134,64 @@ namespace Faye::Editor {
 
         r.endPresentPass(*frame);
         r.endFrame(*frame);
+    }
+
+    void Application::processPendingFileAction()
+    {
+        if (!pendingFileAction.pending)
+        {
+            return;
+        }
+        pendingFileAction.pending = false;
+
+        switch (pendingFileAction.action)
+        {
+        case Panels::FileAction::New:
+            engine.newScene();
+            panels.clearSelection();
+            LOG_INFO(Logger::get(), "Editor: new scene");
+            break;
+
+        case Panels::FileAction::Save:
+        {
+            std::string path = pendingFileAction.path;
+            if (path.empty())
+                path = engine.currentScenePath();
+            if (path.empty())
+                path = "assets/scenes/scene.faye";
+            const std::string error = engine.saveScene(path);
+            if (!error.empty())
+                LOG_ERROR(Logger::get(), "Editor: save failed: {}", error);
+            else
+                LOG_INFO(Logger::get(), "Editor: saved scene to {}", path);
+            break;
+        }
+
+        case Panels::FileAction::SaveAs:
+        {
+            const std::string error = engine.saveScene(pendingFileAction.path);
+            if (!error.empty())
+                LOG_ERROR(Logger::get(), "Editor: save failed: {}", error);
+            else
+                LOG_INFO(Logger::get(), "Editor: saved scene to {}", pendingFileAction.path);
+            break;
+        }
+
+        case Panels::FileAction::Open:
+        {
+            const SceneFileLoadResult result = engine.loadScene(pendingFileAction.path);
+            if (result.success)
+            {
+                panels.clearSelection();
+                LOG_INFO(Logger::get(), "Editor: opened scene {}", pendingFileAction.path);
+            }
+            else
+            {
+                LOG_ERROR(Logger::get(), "Editor: open failed: {}", result.error);
+            }
+            break;
+        }
+        }
     }
 
     void Application::updateEditorCamera(float dt) {

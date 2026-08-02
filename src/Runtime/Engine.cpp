@@ -27,8 +27,12 @@ namespace Faye {
         // Adding systems — registration order == tick order.
         timer = &addSystem<Time::Timer>();
         hotReloadSystem = &addSystem<HotReloadSystem>();
-        sceneManager = &addSystem<SceneManager>(*modelRegistry, *materialRegistry);
+        sceneManager = &addSystem<SceneManager>(*modelRegistry, *materialRegistry, *assetDatabase);
         scriptingSystem = &addSystem<ScriptingSystem>(*sceneManager, hotReloadSystem->getHotReloadManager());
+
+        // Scene loads re-attach scripts by path, so SceneManager needs the
+        // script engines (they only exist once ScriptingSystem is registered).
+        sceneManager->bindScriptEngines(scriptingSystem->getScriptSystem(), scriptingSystem->getLuaScriptSystem());
 
         hotReloadSystem->getHotReloadManager().subscribe(
             [this](const HotReloadEvent &event)
@@ -44,7 +48,27 @@ namespace Faye {
             scriptingSystem->getScriptSystem(), scriptingSystem->getLuaScriptSystem(), *jobSystem);
         
         Jobs::JobHandle handle = jobSystem->schedule([this]() {
-            SceneBuilder::SceneSetup sceneSetup = sceneBuilder->populate(sceneManager->getActiveScene());
+            SceneBuilder::SceneSetup sceneSetup;
+            if (!startupScenePath.empty())
+            {
+                const SceneFileLoadResult result = sceneManager->loadSceneFromFile(startupScenePath);
+                if (result.success)
+                {
+                    sceneSetup.activeCamera = result.activeCamera;
+                    sceneSetup.postProcessSettings = result.postProcessSettings;
+                }
+                else
+                {
+                    LOG_ERROR(Logger::get(),
+                              "Startup scene '{}' failed to load ({}); falling back to the default scene.",
+                              startupScenePath, result.error);
+                    sceneSetup = sceneBuilder->populate(sceneManager->getActiveScene());
+                }
+            }
+            else
+            {
+                sceneSetup = sceneBuilder->populate(sceneManager->getActiveScene());
+            }
             activeCameraEntity = sceneSetup.activeCamera;
             postProcessSettingsEntity = sceneSetup.postProcessSettings;
         });
@@ -106,4 +130,32 @@ namespace Faye {
     GLFWwindow* Engine::window() { return glfwWindow->getWindow(); }
 
     Scene& Engine::activeScene() { return sceneManager->getActiveScene(); }
+
+    SceneBuilder::SceneSetup Engine::newScene()
+    {
+        Scene &scene = sceneManager->getActiveScene();
+        scene.clear();
+        sceneManager->clearScenePath();
+
+        SceneBuilder::SceneSetup setup = sceneBuilder->populate(scene);
+        activeCameraEntity = setup.activeCamera;
+        postProcessSettingsEntity = setup.postProcessSettings;
+        return setup;
+    }
+
+    std::string Engine::saveScene(const std::string &path)
+    {
+        return sceneManager->saveSceneToFile(path);
+    }
+
+    SceneFileLoadResult Engine::loadScene(const std::string &path)
+    {
+        SceneFileLoadResult result = sceneManager->loadSceneFromFile(path);
+        if (result.success)
+        {
+            activeCameraEntity = result.activeCamera;
+            postProcessSettingsEntity = result.postProcessSettings;
+        }
+        return result;
+    }
 }

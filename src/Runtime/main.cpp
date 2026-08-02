@@ -20,6 +20,25 @@ int main(int argc, char **argv)
 
     Faye::Editor::Application editor;
 
+    // Startup scene: --scene <path> wins over the FAYE_SCENE env var. When
+    // neither is given, the default scene (SceneBuilder::populate) is used.
+    std::string scenePath;
+    for (int i = 1; i < argc - 1; ++i)
+    {
+        if (std::string(argv[i]) == "--scene")
+        {
+            scenePath = argv[i + 1];
+            break;
+        }
+    }
+    if (scenePath.empty())
+    {
+        if (const char *envScene = std::getenv("FAYE_SCENE"))
+            scenePath = envScene;
+    }
+    if (!scenePath.empty())
+        editor.setStartupScenePath(scenePath);
+
     try
     {
         editor.run();

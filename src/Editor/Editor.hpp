@@ -12,6 +12,9 @@ namespace Faye::Editor {
         public:
             void run();
 
+            // Startup scene to load instead of the default one (--scene / FAYE_SCENE).
+            void setStartupScenePath(std::string path) { startupScenePath = std::move(path); }
+
         private:
             struct ViewportState {
                 bool hovered = true, focused = true;
@@ -28,6 +31,7 @@ namespace Faye::Editor {
             RenderView buildRenderView();
             void renderFrame(const RenderView& view);
             void onPresent(ImGuiFrameData& frameData);
+            void processPendingFileAction();
 
             Engine            engine;
             Panels::EditorPanels      panels;
@@ -38,5 +42,17 @@ namespace Faye::Editor {
             // applied at the start of the next frame (0 == no pending resize).
             uint32_t pendingViewportWidth = 0;
             uint32_t pendingViewportHeight = 0;
+
+            std::string startupScenePath;
+
+            // File menu request captured during the ImGui pass and applied at
+            // the END of the current frame (after endFrame), so scene
+            // references are never invalidated mid-frame.
+            struct PendingFileAction {
+                bool pending = false;
+                Panels::FileAction action = Panels::FileAction::New;
+                std::string path;
+            };
+            PendingFileAction pendingFileAction;
     };
 }
