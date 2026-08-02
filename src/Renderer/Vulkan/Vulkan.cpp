@@ -407,7 +407,7 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
         prepassDepthInfo});
     FrameContext &frameContext = *currentFrame;
 
-    frameContext.skyboxInfo = environmentMap.descriptorInfo();
+    frameContext.skyboxInfo = environmentMap.isValid() ? environmentMap.descriptorInfo() : VkDescriptorImageInfo{};
 
     totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
 
