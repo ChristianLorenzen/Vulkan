@@ -6,6 +6,7 @@
 #include "Assets/ModelRegistry.hpp"
 #include "Core/Logging/Logger.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
+#include "Renderer/Material/TextureLoader.hpp"
 #include "Renderer/Resources/PrimitiveType.hpp"
 #include "Scene/Scene.hpp"
 #include "Scene/Serialization/Deserializer.hpp"
@@ -62,8 +63,23 @@ namespace Faye
                     const std::string path = Ecs::Deserializer::readStringFrom(textureNode, "path", "");
                     const std::string typeName = Ecs::Deserializer::readStringFrom(textureNode, "type", "");
                     const auto type = textureTypeFromName(typeName);
-                    if (!path.empty() && type)
-                        data.textures.push_back(Texture::create(path, *type));   // reference-only; pixels loaded by the GPU cache
+                    if (path.empty() || !type)
+                        continue;
+
+                    // Decode + embed the pixels so the GPU texture cache uploads
+                    // the real image. A path-only reference (no pixel data) is
+                    // treated as invalid by the cache and renders as the 1x1
+                    // per-type fallback.
+                    try
+                    {
+                        data.textures.push_back(loadTextureFromFile(path, *type));
+                    }
+                    catch (const std::exception &e)
+                    {
+                        LOG_WARNING(Logger::get(), "Scene load: failed to load texture '{}' ({}); using fallback.",
+                                    path, e.what());
+                        data.textures.push_back(Texture::create(path, *type));
+                    }
                 }
             }
             return data;
