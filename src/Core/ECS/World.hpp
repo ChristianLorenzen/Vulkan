@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -107,6 +108,17 @@ namespace Faye::Ecs
             return e;
         }
 
+        // Create with a persisted GUID (scene load). Uniqueness is guaranteed
+        // by EntityRegistry (collisions mint a fresh random GUID).
+        Entity createWithGuid(Uuid guid)
+        {
+            const Entity e = entities.createWithGuid(guid);
+            if (e.index >= componentMasks.size())
+                componentMasks.resize(e.index + 1, 0);
+            componentMasks[e.index] = 0;
+            return e;
+        }
+
         void destroy(Entity e)
         {
             assert(alive(e));
@@ -127,6 +139,12 @@ namespace Faye::Ecs
         }
 
         bool alive(Entity e) const { return entities.alive(e); }
+
+        // Stable identity for save/load; nullopt for dead handles.
+        std::optional<Uuid> guidOf(Entity e) const { return entities.guidOf(e); }
+
+        // Reverse lookup for scene load (persisted GUID -> live handle).
+        std::optional<Entity> findByGuid(Uuid guid) const { return entities.findByGuid(guid); }
 
         // ---- components -------------------------------------------------
         template <class T, class... Args>

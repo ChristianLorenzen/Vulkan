@@ -11,6 +11,13 @@ namespace Faye
         return scene != nullptr && scene->isValid(entityHandle);
     }
 
+    std::optional<Uuid> Entity::guid() const
+    {
+        if (scene == nullptr || !scene->getWorld().alive(entityHandle))
+            return std::nullopt;
+        return scene->getWorld().guidOf(entityHandle);
+    }
+
     std::string_view Entity::getName() const
     {
         return scene != nullptr ? scene->getEntityName(entityHandle) : std::string_view{};

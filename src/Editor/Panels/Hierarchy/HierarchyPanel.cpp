@@ -106,7 +106,14 @@ namespace Faye::Editor::Panels
                         flags |= ImGuiTreeNodeFlags_Selected;
 
                     const char *displayName = name.empty() ? "<unnamed>" : name.data();
-                    ImGui::PushID(static_cast<int>(entityHandle.index));
+                    // Stable per-entity id for ImGui row identity: prefer the
+                    // GUID so a recycled slot (same .index, new entity) can't
+                    // alias a previous row; fall back to the index.
+                    const auto guid = entity.guid();
+                    const int entityId = guid.has_value()
+                        ? static_cast<int>(std::hash<Faye::Uuid>{}(*guid))
+                        : static_cast<int>(entityHandle.index);
+                    ImGui::PushID(entityId);
 
                     bool nodeOpen = ImGui::TreeNodeEx("##entity", flags, "%s", displayName);
 

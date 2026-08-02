@@ -1,9 +1,11 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "Core/ECS/Entity.hpp"
+#include "Core/Serialization/Uuid.hpp"
 #include "Scene/Entities/Components.hpp"
 
 namespace Faye
@@ -22,6 +24,10 @@ namespace Faye
         Ecs::Entity handle() const { return entityHandle; }
         bool isValid() const;
         explicit operator bool() const { return isValid(); }
+
+        // Stable identity (save/load). Null-scene safe: nullopt when the
+        // entity is dead or has no owning scene.
+        std::optional<Uuid> guid() const;
 
         std::string_view getName() const;
         void setName(std::string name) const;

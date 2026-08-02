@@ -39,6 +39,107 @@ TEST_CASE("recycling bumps generation and kills stale handles")
     CHECK_FALSE(registry.alive(first));          // the whole point
 }
 
+// --- stable GUID identity (save/load) --------------------------------------
+
+TEST_CASE("every entity gets a unique, stable GUID at creation")
+{
+    EntityRegistry registry;
+    const Entity a = registry.create();
+    const Entity b = registry.create();
+    const Entity c = registry.create();
+
+    const auto guidA = registry.guidOf(a);
+    const auto guidB = registry.guidOf(b);
+    const auto guidC = registry.guidOf(c);
+
+    REQUIRE(guidA.has_value());
+    REQUIRE(guidB.has_value());
+    REQUIRE(guidC.has_value());
+    CHECK_FALSE(guidA->isNull());
+    CHECK(*guidA != *guidB);
+    CHECK(*guidB != *guidC);
+    CHECK(*guidA != *guidC);
+}
+
+TEST_CASE("GUID round-trips through the registry")
+{
+    EntityRegistry registry;
+    const Entity e = registry.create();
+    const auto guid = registry.guidOf(e);
+    REQUIRE(guid.has_value());
+
+    const auto found = registry.findByGuid(*guid);
+    REQUIRE(found.has_value());
+    CHECK(*found == e);
+}
+
+TEST_CASE("destroy/recreate mints a NEW guid; stale guid no longer resolves")
+{
+    EntityRegistry registry;
+    const Entity first = registry.create();
+    const auto firstGuid = registry.guidOf(first);
+    REQUIRE(firstGuid.has_value());
+
+    registry.destroy(first);
+    CHECK_FALSE(registry.guidOf(first).has_value());       // dead handle: no guid
+    CHECK_FALSE(registry.findByGuid(*firstGuid).has_value());
+
+    const Entity second = registry.create();               // reuses the slot
+    CHECK(second.index == first.index);
+    const auto secondGuid = registry.guidOf(second);
+    REQUIRE(secondGuid.has_value());
+    CHECK(*secondGuid != *firstGuid);                      // identity does not follow the slot
+}
+
+TEST_CASE("createWithGuid restores a persisted GUID and resolves via findByGuid")
+{
+    EntityRegistry registry;
+    const Faye::Uuid persisted = Faye::Uuid::generateV4();
+
+    const Entity e = registry.createWithGuid(persisted);
+    const auto guid = registry.guidOf(e);
+    REQUIRE(guid.has_value());
+    CHECK(*guid == persisted);
+
+    const auto found = registry.findByGuid(persisted);
+    REQUIRE(found.has_value());
+    CHECK(*found == e);
+}
+
+TEST_CASE("createWithGuid never breaks uniqueness on collision")
+{
+    EntityRegistry registry;
+    const Faye::Uuid persisted = Faye::Uuid::generateV4();
+
+    const Entity first = registry.createWithGuid(persisted);
+    const Entity second = registry.createWithGuid(persisted);   // collides
+
+    const auto firstGuid = registry.guidOf(first);
+    const auto secondGuid = registry.guidOf(second);
+    REQUIRE(firstGuid.has_value());
+    REQUIRE(secondGuid.has_value());
+    CHECK(*firstGuid == persisted);
+    CHECK(*secondGuid != *firstGuid);                  // second got a fresh random guid
+    CHECK(registry.findByGuid(persisted).has_value());
+    CHECK(*registry.findByGuid(persisted) == first);
+}
+
+TEST_CASE("World exposes guidOf/findByGuid/createWithGuid")
+{
+    World world;
+    const Entity e = world.create();
+    const auto guid = world.guidOf(e);
+    REQUIRE(guid.has_value());
+
+    const Entity restored = world.createWithGuid(*guid);
+    CHECK(restored != e);                              // distinct entity, same guid would collide
+    CHECK(world.findByGuid(*guid).has_value());
+
+    world.destroy(e);
+    world.destroy(restored);
+    CHECK_FALSE(world.findByGuid(*guid).has_value());
+}
+
 TEST_CASE("sparse set swap-and-pop, exact contents")
 {
     SparseSet<Position> set;

@@ -106,7 +106,8 @@ namespace Faye::Editor::Panels
         }
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         {
-            ImGui::SetTooltip("Entity index %u", entity.handle().index);
+            if (const auto guid = entity.guid())
+                ImGui::SetTooltip("Entity %s", guid->toString().c_str());
         }
 
         ImGui::Spacing();

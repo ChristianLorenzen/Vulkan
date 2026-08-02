@@ -132,4 +132,28 @@ function(faye_configure_dependencies)
     set(DOCTEST_WITH_TESTS OFF CACHE BOOL "" FORCE)
     set(DOCTEST_NO_INSTALL ON  CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(doctest)
+
+    # Boost — header-only surface (boost.uuid and its transitive headers),
+    # pinned to a release tag. Shallow-cloned WITH all submodules so the
+    # header closure is complete without maintaining a fragile per-module
+    # list (boostdep can narrow this later if the download size matters).
+    # Consumed as include paths only: we do NOT run Boost's own CMake, which
+    # expects the full superproject layout.
+    FetchContent_Declare(
+        boost
+        GIT_REPOSITORY https://github.com/boostorg/boost.git
+        GIT_TAG        boost-1.87.0
+        GIT_SHALLOW    TRUE
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_GetProperties(boost)
+    if(NOT boost_POPULATED)
+        FetchContent_Populate(boost)
+    endif()
+    add_library(faye_boost_headers INTERFACE)
+    file(GLOB _faye_boost_module_includes "${boost_SOURCE_DIR}/libs/*/include")
+    target_include_directories(faye_boost_headers INTERFACE
+        "${boost_SOURCE_DIR}/boost"
+        ${_faye_boost_module_includes})
+    add_library(Faye::BoostHeaders ALIAS faye_boost_headers)
 endfunction()

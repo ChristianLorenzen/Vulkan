@@ -7,6 +7,7 @@ set(FAYE_ENGINE_SOURCES
     Core/ECS/SystemSchedule.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
+    Core/Serialization/Uuid.cpp
     Core/Time/Timer.cpp
     Editor/Editor.cpp
     Editor/ImGuiIntegration/EditorRenderLayer.cpp
@@ -139,7 +140,8 @@ target_link_libraries(faye_app
     quill::quill
     spirv-reflect-static
     lua_static
-    sol2::sol2)
+    sol2::sol2
+    Faye::BoostHeaders)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
 
@@ -225,6 +227,8 @@ add_executable(faye_tests
     Core/ECS/Tests/ScheduleTests.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
+    Core/Serialization/Uuid.cpp
+    Core/Serialization/Tests/UuidTests.cpp
     Scene/Camera/Camera.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
@@ -246,7 +250,8 @@ target_link_libraries(faye_tests
     glm::glm
     quill::quill
     sol2::sol2
-    lua_static)
+    lua_static
+    Faye::BoostHeaders)
 
 # Core/Path/Paths.cpp (pulled in for the hot-reload watch path) needs the same
 # repo-root definition faye_app gets.

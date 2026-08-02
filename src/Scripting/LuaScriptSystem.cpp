@@ -64,6 +64,12 @@ namespace Faye
                                  "getId", [](const Entity &e) -> uint32_t
                                  { return e.handle().index; },
 
+                                 "getGuid", [](const Entity &e) -> std::string
+                                 {
+                                     const auto guid = e.guid();
+                                     return guid ? guid->toString() : std::string{};
+                                 },
+
                                  "getName", [](const Entity &e) -> std::string
                                  { return std::string(e.getName()); },
 
