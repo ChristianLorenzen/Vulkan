@@ -40,7 +40,8 @@ namespace Faye
     struct VkImageResource
     {
         VkImage image = VK_NULL_HANDLE;
-        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
+        VmaAllocator allocator = VK_NULL_HANDLE;
         VkImageView imageView = VK_NULL_HANDLE;
         VkFormat format = VK_FORMAT_UNDEFINED;
         VkExtent3D extent{0, 0, 0};
@@ -67,10 +68,10 @@ namespace Faye
         void createOwned(VulkanDevice &device,
                          const VkImageResourceCreateInfo &createInfo,
                          bool createDefaultView = true);
-        void wrapExternal(VkDevice device,
+        void wrapExternal(VulkanDevice &device,
                           const VkImageWrapInfo &wrapInfo,
                           bool createDefaultView = true);
-        void wrapSwapchainImage(VkDevice device,
+        void wrapSwapchainImage(VulkanDevice &device,
                                 VkImage swapchainImage,
                                 VkFormat swapchainFormat,
                                 VkExtent2D swapchainExtent,
@@ -78,6 +79,20 @@ namespace Faye
                                 uint32_t swapchainMipLevels = 1,
                                 VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                                 bool createDefaultView = true);
+        void recordTransition(VkCommandBuffer commandBuffer,
+                              VkImageLayout newLayout,
+                              VkPipelineStageFlags2 srcStageMask,
+                              VkPipelineStageFlags2 dstStageMask,
+                              VkAccessFlags2 srcAccessMask,
+                              VkAccessFlags2 dstAccessMask,
+                              uint32_t baseMipLevel = 0,
+                              uint32_t levelCount = VK_REMAINING_MIP_LEVELS,
+                              uint32_t baseArrayLayer = 0,
+                              uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS);
+        static void imageBarrier(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect,
+                          VkImageLayout oldLayout, VkImageLayout newLayout,
+                          VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage,
+                          VkAccessFlags2 srcAccess, VkAccessFlags2 dstAccess);
         void destroy(VkDevice device);
         VkImageView createImageView(VkDevice device,
                                     uint32_t baseMipLevel = 0,
@@ -86,10 +101,10 @@ namespace Faye
                                     uint32_t layerCount = 0);
         void transitionLayout(VulkanDevice &device,
                               VkImageLayout newLayout,
-                              VkPipelineStageFlags srcStageMask,
-                              VkPipelineStageFlags dstStageMask,
-                              VkAccessFlags srcAccessMask,
-                              VkAccessFlags dstAccessMask,
+                              VkPipelineStageFlags2 srcStageMask,
+                              VkPipelineStageFlags2 dstStageMask,
+                              VkAccessFlags2 srcAccessMask,
+                              VkAccessFlags2 dstAccessMask,
                               uint32_t baseMipLevel = 0,
                               uint32_t levelCount = 0,
                               uint32_t baseArrayLayer = 0,

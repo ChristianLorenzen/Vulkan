@@ -1,8 +1,5 @@
 #include "Model.hpp"
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "include/tiny_obj_loader.h"
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
 
@@ -10,9 +7,11 @@
 #include "quill/LogMacros.h"
 
 #include <assimp/GltfMaterial.h>
+#include <filesystem>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <unordered_map>
@@ -171,6 +170,60 @@ namespace Faye
                 makeVertex({-0.5f, 0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}),
             };
             mesh.indices = {0, 1, 2, 0, 2, 3};
+            builder.meshes.push_back(mesh);
+            return builder;
+        }
+
+        // 64x64 subdivided plane for Gerstner wave displacement.
+        // Spans [-0.5, 0.5] in XZ at Y=0. UV tiles once across the full mesh.
+        // Tangent is +X with handedness +1, consistent with water.vert analytics.
+        Builder makeWaterPlaneBuilder(uint32_t divisions = 64)
+        {
+            Builder builder{};
+            Mesh mesh{};
+
+            const float half = 0.5f;
+            const float step = 1.0f / static_cast<float>(divisions);
+            const uint32_t verts = divisions + 1;
+
+            mesh.vertices.reserve(verts * verts);
+            for (uint32_t row = 0; row < verts; ++row)
+            {
+                for (uint32_t col = 0; col < verts; ++col)
+                {
+                    const float x = -half + static_cast<float>(col) * step;
+                    const float z = -half + static_cast<float>(row) * step;
+                    const float u = static_cast<float>(col) * step;
+                    const float v = static_cast<float>(row) * step;
+                    mesh.vertices.push_back(makeVertex(
+                        {x, 0.0f, z},
+                        {1.0f, 1.0f, 1.0f},
+                        {0.0f, 1.0f, 0.0f},
+                        {u, v},
+                        {1.0f, 0.0f, 0.0f, 1.0f}));
+                }
+            }
+
+            mesh.indices.reserve(divisions * divisions * 6);
+            for (uint32_t row = 0; row < divisions; ++row)
+            {
+                for (uint32_t col = 0; col < divisions; ++col)
+                {
+                    const uint32_t tl = row * verts + col;
+                    const uint32_t tr = tl + 1;
+                    const uint32_t bl = tl + verts;
+                    const uint32_t br = bl + 1;
+
+                    mesh.indices.push_back(tl);
+                    mesh.indices.push_back(bl);
+                    mesh.indices.push_back(tr);
+
+                    mesh.indices.push_back(tr);
+                    mesh.indices.push_back(bl);
+                    mesh.indices.push_back(br);
+                }
+            }
+
             builder.meshes.push_back(mesh);
             return builder;
         }
@@ -369,7 +422,7 @@ namespace Faye
         calculateLocalBounds(meshVertices);
         createVertexBuffers(meshVertices);
         createIndexBuffers(meshIndices);
-        LOG_INFO(Logger::getInstance(), "Model created successfully {} {}.", vertexCount, indexCount);
+        LOG_INFO(Logger::get(), "Model created successfully {} {}.", vertexCount, indexCount);
     }
 
     Model::Model(VulkanDevice &device, const std::vector<Vertex> &vertices) : vk_device{device}
@@ -377,7 +430,7 @@ namespace Faye
         this->vertices = vertices;
         calculateLocalBounds(vertices);
         createVertexBuffers(vertices);
-        LOG_INFO(Logger::getInstance(), "Model created successfully {}.", vertexCount);
+        LOG_INFO(Logger::get(), "Model created successfully {}.", vertexCount);
     }
 
     Model::~Model()
@@ -387,16 +440,16 @@ namespace Faye
     std::unique_ptr<Model> Model::createModelFromFile(VulkanDevice &device, const std::string &modelPath)
     {
         std::string directory = modelPath.substr(0, modelPath.find_last_of('/'));
-        LOG_INFO(Logger::getInstance(), "Loading model from file at directory {}.", directory);
+        LOG_INFO(Logger::get(), "Loading model from file at directory {}.", directory);
         Builder builder{};
         builder.directory = directory;
         builder.loadModel(modelPath);
         return std::make_unique<Model>(device, builder);
     }
 
-    std::unique_ptr<Model> Model::createPrimitive(VulkanDevice &device, PrimitiveType primitiveType)
+    std::unique_ptr<Model> Model::createPrimitive(VulkanDevice &device, PrimitiveType primitiveType, uint32_t subdivisions)
     {
-        return std::make_unique<Model>(device, Builder::makePrimitive(primitiveType));
+        return std::make_unique<Model>(device, Builder::makePrimitive(primitiveType, subdivisions));
     }
 
     void Model::calculateLocalBounds(const std::vector<Vertex> &vertices)
@@ -442,7 +495,7 @@ namespace Faye
             vk_device,
             vertexSize,
             vertexCount,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         vk_device.copyBuffer(stagingBuffer.getBuffer(), vertexBuffer->getBuffer(), bufferSize);
@@ -477,7 +530,7 @@ namespace Faye
             vk_device,
             indexSize,
             indexCount,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         vk_device.copyBuffer(stagingBuffer.getBuffer(), indexBuffer->getBuffer(), bufferSize);
     }
@@ -527,9 +580,6 @@ namespace Faye
 
     void Model::bind(VkCommandBuffer commandBuffer)
     {
-        VkBuffer buffers[] = {vertexBuffer->getBuffer()};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, buffers, offsets);
         if (hasIndexBuffer)
         {
             vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
@@ -545,8 +595,9 @@ namespace Faye
 
         if (scene == nullptr)
         {
-            LOG_INFO(Logger::getInstance(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
-            throw std::runtime_error("Failed to load model at path " + modelPath);
+            LOG_ERROR(Logger::get(), "Failed to load model at path {}. Assimp error: {}", modelPath, importer.GetErrorString());
+            throw std::runtime_error("Failed to load model at path " + modelPath +
+                                     ": " + importer.GetErrorString());
         }
 
         materials.clear();
@@ -622,13 +673,13 @@ namespace Faye
             if (mesh->HasTangentsAndBitangents())
             {
                 const glm::vec3 tangent = glm::normalize(normalMatrix * glm::vec3{
-                    mesh->mTangents[vertexIndex].x,
-                    mesh->mTangents[vertexIndex].y,
-                    mesh->mTangents[vertexIndex].z});
+                                                                            mesh->mTangents[vertexIndex].x,
+                                                                            mesh->mTangents[vertexIndex].y,
+                                                                            mesh->mTangents[vertexIndex].z});
                 const glm::vec3 bitangent = glm::normalize(normalMatrix * glm::vec3{
-                    mesh->mBitangents[vertexIndex].x,
-                    mesh->mBitangents[vertexIndex].y,
-                    mesh->mBitangents[vertexIndex].z});
+                                                                              mesh->mBitangents[vertexIndex].x,
+                                                                              mesh->mBitangents[vertexIndex].y,
+                                                                              mesh->mBitangents[vertexIndex].z});
                 const float handedness = glm::dot(glm::cross(vertex.normal, tangent), bitangent) < 0.0f ? -1.0f : 1.0f;
                 vertex.tangent = glm::vec4(glm::normalize(tangent), handedness);
             }
@@ -649,6 +700,62 @@ namespace Faye
         }
 
         return meshData;
+    }
+
+    namespace
+    {
+        // Assimp returns whatever the exporter baked in, which for Windows-authored
+        // FBX/OBJ is routinely a backslash path. std::filesystem on POSIX treats '\'
+        // as an ordinary filename character, not a separator, so an un-normalised
+        // reference collapses into an invalid filename.
+        std::string normalizeSeparators(std::string path)
+        {
+            std::replace(path.begin(), path.end(), '\\', '/');
+            return path;
+        }
+
+        // The embedded path is only a hint: exporters routinely bake absolute or
+        // machine-specific paths (the stylized-tropical pack points into the FBX
+        // Converter's own install directory). So try the reference as given, then
+        // fall back to the basename beside the model and in nearby `textures/`
+        // folders -- packs commonly ship `fbx/`, `obj/` and `textures/` as siblings.
+        //
+        // Returns an empty path when nothing matches; the caller warns and continues.
+        std::filesystem::path resolveTexturePath(const std::string &rawPath, const std::string &directory)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path normalized{normalizeSeparators(rawPath)};
+            const fs::path modelDir{directory};
+
+            std::vector<fs::path> candidates;
+            candidates.push_back((modelDir / normalized).lexically_normal());
+            if (normalized.is_absolute())
+            {
+                candidates.push_back(normalized);
+            }
+
+            const fs::path basename = normalized.filename();
+            if (!basename.empty())
+            {
+                candidates.push_back(modelDir / basename);
+                for (const fs::path &root : {modelDir, modelDir / "..", modelDir / ".." / ".."})
+                {
+                    candidates.push_back((root / "textures" / basename).lexically_normal());
+                    candidates.push_back((root / "Textures" / basename).lexically_normal());
+                }
+            }
+
+            std::error_code ec;
+            for (const fs::path &candidate : candidates)
+            {
+                if (fs::is_regular_file(candidate, ec))
+                {
+                    return candidate;
+                }
+            }
+            return {};
+        }
     }
 
     MaterialData Builder::processMaterial(aiMaterial *material, const aiScene *scene)
@@ -748,7 +855,7 @@ namespace Faye
             else if (importedAlphaMode == "BLEND")
             {
                 LOG_WARNING(
-                    Logger::getInstance(),
+                    Logger::get(),
                     "Material '{}' requests alpha mode BLEND, which is not supported in the current v1 pipeline. Falling back to opaque rendering.",
                     result.name);
             }
@@ -771,7 +878,7 @@ namespace Faye
                 if (!resolvedTextureType.has_value())
                 {
                     LOG_INFO(
-                        Logger::getInstance(),
+                        Logger::get(),
                         "Skipping unsupported Assimp texture type {} for material {}.",
                         textureType,
                         result.name);
@@ -780,10 +887,28 @@ namespace Faye
 
                 material->GetTexture(static_cast<aiTextureType>(textureType), textureIndex, &texturePath);
 
-                // Load the texture and add it to the material
-                LOG_INFO(Logger::getInstance(), "Found texture at path {} for material {}.", texturePath.C_Str(), result.name);
-                std::filesystem::path fullTexturePath = std::filesystem::path(directory) / texturePath.C_Str();
-                LOG_INFO(Logger::getInstance(), "Full texture path resolved to {}.", fullTexturePath.string());
+                LOG_INFO(Logger::get(), "Found texture reference '{}' for material {}.", texturePath.C_Str(), result.name);
+
+                // check for embedded texture before trying to resolve in filesystem
+                if (scene->GetEmbeddedTexture(texturePath.C_Str()) != nullptr)
+                {
+                    result.textures.push_back(loadTexture(texturePath.C_Str(), scene, *resolvedTextureType));
+                    continue;
+                }
+
+                const std::filesystem::path fullTexturePath = resolveTexturePath(texturePath.C_Str(), directory);
+                if (fullTexturePath.empty())
+                {
+                    LOG_WARNING(
+                        Logger::get(),
+                        "Could not resolve texture '{}' for material '{}' relative to '{}'. Continuing without it.",
+                        texturePath.C_Str(),
+                        result.name,
+                        directory);
+                    continue;
+                }
+
+                LOG_INFO(Logger::get(), "Resolved texture to {}.", fullTexturePath.string());
                 result.textures.push_back(loadTexture(
                     fullTexturePath.string(),
                     scene,
@@ -799,7 +924,7 @@ namespace Faye
         const std::string cacheKey = texturePath + "#" + std::to_string(static_cast<uint32_t>(textureType));
         if (const auto iterator = loadedTextures.find(cacheKey); iterator != loadedTextures.end())
         {
-            LOG_INFO(Logger::getInstance(), "Reusing cached texture at path {}.", texturePath);
+            LOG_INFO(Logger::get(), "Reusing cached texture at path {}.", texturePath);
             return iterator->second;
         }
 
@@ -807,18 +932,18 @@ namespace Faye
         if (aiTex != nullptr)
         {
             // Handle embedded texture
-            LOG_INFO(Logger::getInstance(), "Loading embedded texture at path {}.", texturePath);
+            LOG_INFO(Logger::get(), "Loading embedded texture at path {}.", texturePath);
         }
         else
         {
             // Handle external texture file
-            LOG_INFO(Logger::getInstance(), "Loading external texture at path {}.", texturePath);
+            LOG_INFO(Logger::get(), "Loading external texture at path {}.", texturePath);
             // Use stb_image or another library to load the texture from the file system
             int width, height, channels;
             unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
             if (data)
             {
-                LOG_INFO(Logger::getInstance(), "Successfully loaded texture at path {} with dimensions {}x{} and {} channels.", texturePath, width, height, channels);
+                LOG_INFO(Logger::get(), "Successfully loaded texture at path {} with dimensions {}x{} and {} channels.", texturePath, width, height, channels);
                 std::vector<unsigned char> textureData(data, data + (width * height * 4)); // forcing 4 channels.
                 stbi_image_free(data);
                 Texture texture = Texture::create(std::move(textureData), width, height, channels, texturePath, textureType);
@@ -827,13 +952,13 @@ namespace Faye
             }
             else
             {
-                LOG_ERROR(Logger::getInstance(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
+                LOG_ERROR(Logger::get(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
             }
         }
         return Texture{};
     }
 
-    Builder Builder::makePrimitive(PrimitiveType primitiveType)
+    Builder Builder::makePrimitive(PrimitiveType primitiveType, uint32_t subdivisions)
     {
         switch (primitiveType)
         {
@@ -845,6 +970,8 @@ namespace Faye
             return makePlaneBuilder();
         case PrimitiveType::Capsule:
             return makeCapsuleBuilder();
+        case PrimitiveType::WaterPlane:
+            return makeWaterPlaneBuilder(subdivisions);
         case PrimitiveType::Count:
             break;
         }

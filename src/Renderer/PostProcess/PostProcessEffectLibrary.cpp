@@ -1,6 +1,7 @@
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 
 #include "Core/IO/FileSystem.hpp"
+#include "Core/Path/Paths.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -11,7 +12,7 @@ namespace Faye
 {
     namespace
     {
-        constexpr std::string_view kEffectDefinitionsDirectory = "./src/Assets/PostProcessEffects";
+        const std::filesystem::path kEffectDefinitionsDirectory = Paths::assets() / "PostProcessEffects";
 
         std::vector<PostProcessEffectDefinition> &registry()
         {
@@ -142,11 +143,15 @@ namespace Faye
                 }
                 else if (key == "vertexShader")
                 {
-                    definition.vertexShaderPath = value;
+                    // Extract filename only — handles both legacy full paths
+                    // ("./src/shaders/compiled/X.spv") and portable names ("X.spv").
+                    definition.vertexShaderPath =
+                        Paths::compiledShader(std::filesystem::path{value}.filename().string()).string();
                 }
                 else if (key == "fragmentShader")
                 {
-                    definition.fragmentShaderPath = value;
+                    definition.fragmentShaderPath =
+                        Paths::compiledShader(std::filesystem::path{value}.filename().string()).string();
                 }
                 else if (key == "showInEditor")
                 {
@@ -271,8 +276,8 @@ namespace Faye
         static const PostProcessEffectDefinition presentDefinition{
             "present",
             "Present",
-            "./src/shaders/compiled/post_process.vert.spv",
-            "./src/shaders/compiled/post_process.frag.spv",
+            Paths::compiledShader("post_process.vert").string(),
+            Paths::compiledShader("post_process.frag").string(),
             {PostProcessInputDefinition{"sourceColor", 0}},
             {},
             PostProcessParameterBlock{},

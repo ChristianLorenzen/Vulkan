@@ -24,6 +24,10 @@ namespace Faye
     TextureCache::~TextureCache()
     {
         clear();
+        for (auto &[type, resource] : fallbackTextures)
+        {
+            resource->destroy(vk_device.getDevice());
+        }
         fallbackTextures.clear();
     }
 
@@ -45,7 +49,96 @@ namespace Faye
 
         auto resource = createTextureResource(texture);
         textureResources.emplace(key, resource);
+
+        if (bindlessDescriptorSet != VK_NULL_HANDLE)
+        {
+            assignSlot(key, *resource);
+        }
+
         return resource;
+    }
+
+    void TextureCache::initBindless(VkDescriptorSet bindlessSet)
+    {
+        bindlessDescriptorSet = bindlessSet;
+
+        // Ensure fallbacks exist and register them into the bindless set.
+        ensureFallbackResources();
+        for (auto &[type, resource] : fallbackTextures)
+        {
+            TextureCacheKey fallbackKey{type, "__fallback__", 1, 1, 4, 4, 0};
+            uint32_t slot = assignSlot(fallbackKey, *resource);
+            fallbackSlots[type] = slot;
+        }
+    }
+
+    uint32_t TextureCache::assignSlot(const TextureCacheKey &key, VkTextureResource &resource)
+    {
+        auto it = textureSlots.find(key);
+        if (it != textureSlots.end())
+        {
+            return it->second;
+        }
+
+        uint32_t slot = nextFreeSlot++;
+        textureSlots[key] = slot;
+        resource.bindlessSlot = slot;
+        if (slotToResource.size() <= slot)
+            slotToResource.resize(slot + 1, nullptr);
+        slotToResource[slot] = &resource;
+
+        VkDescriptorImageInfo imageInfo = resource.descriptorInfo();
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = bindlessDescriptorSet;
+        write.dstBinding = 0;
+        write.dstArrayElement = slot;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.descriptorCount = 1;
+        write.pImageInfo = &imageInfo;
+
+        vkUpdateDescriptorSets(vk_device.getDevice(), 1, &write, 0, nullptr);
+        return slot;
+    }
+
+    TextureCache::TextureAndSlot TextureCache::getOrCreateTextureAndSlot(const Texture &texture)
+    {
+        auto resource = getOrCreateTexture(texture);
+        // Slot was stamped onto the resource during assignSlot — no rehash needed.
+        return {resource, resource->bindlessSlot != UINT32_MAX
+                              ? resource->bindlessSlot
+                              : getFallbackSlot(texture.type)};
+    }
+
+    const VkTextureResource *TextureCache::getResourceForSlot(uint32_t slot) const
+    {
+        if (slot == UINT32_MAX || slot >= slotToResource.size())
+            return nullptr;
+        return slotToResource[slot];
+    }
+
+    uint32_t TextureCache::getTextureSlot(const Texture &texture) const
+    {
+        const TextureCacheKey key = makeKey(texture);
+        const auto it = textureSlots.find(key);
+        if (it != textureSlots.end())
+        {
+            return it->second;
+        }
+        // Fall back to the albedo fallback slot if texture not registered.
+        return getFallbackSlot(texture.type);
+    }
+
+    uint32_t TextureCache::getFallbackSlot(TextureType type) const
+    {
+        const auto it = fallbackSlots.find(type);
+        if (it != fallbackSlots.end())
+        {
+            return it->second;
+        }
+        // Return slot 0 as last resort (albedo fallback is always the first registered).
+        return 0;
     }
 
     const VkTextureResource &TextureCache::getFallbackTexture(TextureType type) const
@@ -61,6 +154,10 @@ namespace Faye
 
     void TextureCache::clear()
     {
+        for (auto &[key, resource] : textureResources)
+        {
+            resource->destroy(vk_device.getDevice());
+        }
         textureResources.clear();
     }
 
@@ -151,10 +248,10 @@ namespace Faye
         textureResource->imageResource.transitionLayout(
             vk_device,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
             0,
-            VK_ACCESS_TRANSFER_WRITE_BIT);
+            VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
         vk_device.copyBufferToImage(
             stagingBuffer.getBuffer(),
@@ -165,10 +262,10 @@ namespace Faye
         textureResource->imageResource.transitionLayout(
             vk_device,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            VK_ACCESS_TRANSFER_WRITE_BIT,
-            VK_ACCESS_SHADER_READ_BIT);
+            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT);
 
         textureResource->samplerResource.create(vk_device);
         return textureResource;

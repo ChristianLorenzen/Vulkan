@@ -7,8 +7,6 @@
 #include "Renderer/Material/Material.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
@@ -50,7 +48,7 @@ namespace Faye
         MaterialData processMaterial(aiMaterial *material, const aiScene *scene);
         Texture loadTexture(const std::string &texturePath, const aiScene *scene, TextureType textureType);
         Texture processTexture(aiTextureType type, const aiScene *scene);
-        static Builder makePrimitive(PrimitiveType primitiveType);
+        static Builder makePrimitive(PrimitiveType primitiveType, uint32_t subdivisions = 64);
     };
 
     class Model
@@ -94,7 +92,7 @@ namespace Faye
         Model &operator=(const Model &) = delete;
 
         static std::unique_ptr<Model> createModelFromFile(VulkanDevice &device, const std::string &modelPath);
-        static std::unique_ptr<Model> createPrimitive(VulkanDevice &device, PrimitiveType primitiveType);
+        static std::unique_ptr<Model> createPrimitive(VulkanDevice &device, PrimitiveType primitiveType, uint32_t subdivisions = 64);
 
         void bind(VkCommandBuffer commandBuffer);
         void draw(VkCommandBuffer commandBuffer);
@@ -103,6 +101,7 @@ namespace Faye
         const Bounds &getLocalBounds() const { return localBounds; }
         const std::vector<MaterialData> &getImportedMaterials() const { return importedMaterials; }
         const std::vector<Submesh> &getSubmeshes() const { return submeshes; }
+        VkDeviceAddress getVertexBufferAddress() const { return vertexBuffer->getDeviceAddress(); }
         const std::vector<MeshNode> &getMeshNodes() const { return meshNodes; }
         uint32_t getRootNodeIndex() const { return rootNodeIndex; }
 

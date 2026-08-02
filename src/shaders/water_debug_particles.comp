@@ -1,0 +1,202 @@
+#version 450
+// water_debug_particles.comp -- Phase 1 compute smoke test, particle variant.
+//
+// Same descriptor/push-constant contract as water_debug_gradient.comp, so it is a
+// drop-in swap for it (set=0 binding=0 storage image, 8-byte {time, deltaTime} push
+// block, 16x16 local size over a 256x256 dispatch). Nothing on the C++ side changes
+// except which file VulkanComputePipeline is pointed at.
+//
+// What it exercises that the gradient shader does not: a real per-frame workload with
+// shared memory, a barrier, a dynamic loop, and arithmetic whose output is obviously
+// wrong if the time push constant is stale. Particles are integrated under attract
+// (pull) and repel (push) force sources, so the visual is a direct readout of whether
+// the dispatch is running with live inputs.
+//
+// STATELESS BY NECESSITY. The only bound resource is one write-only storage image;
+// there is no particle SSBO to carry state between frames. So the simulation is
+// re-derived from scratch every frame: each particle's age comes from `time`, and it
+// is integrated forward from a hashed spawn state over that age. Consequences:
+//   - Force sources are static/analytic, never particle-particle. Each particle is
+//     therefore independent, which is why integration needs no barrier.
+//   - Cost is redundant: all 256 workgroups integrate the same 64 particles. At
+//     64 x 240 steps that is ~3.9M integration steps per frame, which is nothing.
+//   - Particles loop on their own staggered lifetimes rather than a single global
+//     reset, so respawns read as emission rather than a whole-field pop.
+// Phase 2's real passes get an SSBO and integrate incrementally; this does not.
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba16f) uniform writeonly image2D outputImage;
+
+layout(push_constant) uniform WaterComputeTimePushConstants
+{
+    float time;
+    float deltaTime;
+}
+push;
+
+const int kNumParticles = 64;
+
+// Fixed integration step, deliberately NOT push.deltaTime: the sim is re-derived from
+// absolute `time` every frame, so it must be frame-rate independent and deterministic.
+// Feeding it the real frame delta would make particle positions depend on how long the
+// last frame took, and the field would jitter under load.
+const float kSimDt = 1.0 / 120.0;
+const int kMaxSteps = 240; // kMaxSteps * kSimDt = 2.0 s, the longest lifetime below.
+
+// Force sources. xy = orbit centre, z = orbit radius, w = strength.
+// Positive strength pulls, negative pushes -- the behaviour under test.
+const int kNumSources = 4;
+const vec4 kSources[kNumSources] = vec4[](
+    vec4(0.33, 0.36, 0.10, 0.055),  // pull
+    vec4(0.68, 0.64, 0.12, 0.045),  // pull
+    vec4(0.66, 0.30, 0.09, -0.040), // push
+    vec4(0.30, 0.70, 0.08, -0.035)  // push
+);
+const float kSourceOrbitSpeed[kNumSources] = float[](0.55, -0.42, 0.73, -0.61);
+
+// Softening keeps the 1/r^2 term finite at the source centre. Without it a particle
+// passing near a source takes an unbounded impulse and leaves the domain.
+const float kSoftening = 0.012;
+const float kDrag = 0.6;        // per second, keeps orbits from winding up
+const float kCentrePull = 0.35; // weak restoring force so nothing escapes the view
+
+const float kParticleRadius = 0.006;
+const float kStreakSeconds = 0.02; // motion streak length, in seconds of travel
+
+// Integrated particle state for this workgroup, shared so the 256 threads that render
+// pixels can all read the 64 particles that threads 0..63 integrated.
+shared vec2 gParticlePos[kNumParticles];
+shared vec2 gParticleVel[kNumParticles];
+shared float gParticleLife[kNumParticles]; // normalised age, 0 at spawn, 1 at death
+
+float hash11(float n)
+{
+    return fract(sin(n * 12.9898) * 43758.5453123);
+}
+
+vec2 sourcePosition(int index, float t)
+{
+    vec4 source = kSources[index];
+    float angle = kSourceOrbitSpeed[index] * t;
+    return source.xy + source.z * vec2(cos(angle), sin(angle));
+}
+
+// Net acceleration at p. Sources move, so this is a function of time as well as
+// position and must be re-evaluated at every integration substep.
+vec2 fieldAccel(vec2 p, float t)
+{
+    vec2 accel = vec2(0.0);
+    for (int i = 0; i < kNumSources; ++i)
+    {
+        vec2 delta = sourcePosition(i, t) - p;
+        float distSq = dot(delta, delta) + kSoftening;
+        // Softened inverse-square: unit(delta) * strength / r^2.
+        accel += kSources[i].w * delta * inversesqrt(distSq) / distSq;
+    }
+    accel += (vec2(0.5) - p) * kCentrePull;
+    return accel;
+}
+
+float distanceToSegment(vec2 p, vec2 a, vec2 b)
+{
+    vec2 ab = b - a;
+    vec2 ap = p - a;
+    float t = clamp(dot(ap, ab) / max(dot(ab, ab), 1e-8), 0.0, 1.0);
+    return length(ap - ab * t);
+}
+
+// Re-integrate one particle from its spawn state up to the current time.
+void simulateParticle(int index)
+{
+    float seed = float(index);
+    float lifetime = mix(1.2, 2.0, hash11(seed + 3.1));
+    // Per-particle phase: lifetimes are staggered so particles respawn at different
+    // moments instead of all resetting together.
+    float phase = hash11(seed + 7.7) * lifetime;
+    float age = mod(push.time + phase, lifetime);
+    float spawnTime = push.time - age;
+
+    float spawnAngle = hash11(seed + 1.3) * 6.2831853;
+    float spawnRadius = mix(0.34, 0.46, hash11(seed + 5.9));
+    vec2 pos = vec2(0.5) + spawnRadius * vec2(cos(spawnAngle), sin(spawnAngle));
+
+    // Tangential launch with a slight inward bias, so particles arrive on curved paths
+    // and the pull/push sources visibly bend them rather than just sucking them in.
+    vec2 tangent = vec2(-sin(spawnAngle), cos(spawnAngle));
+    vec2 inward = normalize(vec2(0.5) - pos);
+    float spin = hash11(seed + 9.2) > 0.5 ? 1.0 : -1.0;
+    vec2 vel = tangent * spin * mix(0.18, 0.30, hash11(seed + 4.4)) + inward * 0.06;
+
+    int steps = min(int(age / kSimDt), kMaxSteps);
+    for (int s = 0; s < steps; ++s)
+    {
+        float t = spawnTime + float(s) * kSimDt;
+        vec2 accel = fieldAccel(pos, t);
+        vel += accel * kSimDt;
+        vel -= vel * kDrag * kSimDt;
+        pos += vel * kSimDt;
+    }
+
+    gParticlePos[index] = pos;
+    gParticleVel[index] = vel;
+    gParticleLife[index] = age / lifetime;
+}
+
+void main()
+{
+    // Threads 0..63 each own one particle. Integration touches no other particle, so
+    // no barrier is needed inside simulateParticle -- only one before the render pass
+    // below reads what every thread wrote.
+    uint localIndex = gl_LocalInvocationIndex;
+    if (localIndex < uint(kNumParticles))
+    {
+        simulateParticle(int(localIndex));
+    }
+    barrier();
+
+    ivec2 dims = imageSize(outputImage);
+    ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+    if (texel.x >= dims.x || texel.y >= dims.y)
+    {
+        return;
+    }
+
+    vec2 uv = (vec2(texel) + 0.5) / vec2(dims);
+
+    // Background: a soft halo per source, colour-coded so the two behaviours are
+    // separable at a glance. Blue = pulls, red = pushes.
+    vec3 color = vec3(0.02, 0.03, 0.05);
+    for (int i = 0; i < kNumSources; ++i)
+    {
+        float dist = length(uv - sourcePosition(i, push.time));
+        float halo = exp(-dist * dist / (2.0 * 0.055 * 0.055));
+        vec3 tint = kSources[i].w > 0.0 ? vec3(0.10, 0.28, 0.85) : vec3(0.85, 0.22, 0.10);
+        color += tint * halo * 0.5;
+    }
+
+    // Particles, additive, drawn as short streaks along their velocity so direction of
+    // travel is visible in a still frame.
+    for (int i = 0; i < kNumParticles; ++i)
+    {
+        vec2 pos = gParticlePos[i];
+        vec2 vel = gParticleVel[i];
+        float dist = distanceToSegment(uv, pos - vel * kStreakSeconds, pos);
+
+        float core = exp(-dist * dist / (2.0 * kParticleRadius * kParticleRadius));
+        float glow = exp(-dist * dist / (2.0 * 0.018 * 0.018)) * 0.20;
+
+        // Fade in at spawn and out at death so the per-particle loop point is not a pop.
+        float life = gParticleLife[i];
+        float fade = smoothstep(0.0, 0.08, life) * smoothstep(1.0, 0.80, life);
+
+        // Slow particles read cyan, fast ones warm -- speed is what the force sources
+        // are actually changing, so this makes pull/push legible.
+        float speed = clamp(length(vel) * 1.6, 0.0, 1.0);
+        vec3 tint = mix(vec3(0.35, 0.75, 1.0), vec3(1.0, 0.85, 0.45), speed);
+
+        color += tint * (core + glow) * fade;
+    }
+
+    imageStore(outputImage, texel, vec4(color, 1.0));
+}

@@ -1,18 +1,29 @@
 include_guard(GLOBAL)
 
 function(faye_find_glslc out_var)
+    set(_hints)
+
+    # Prefer the env var when VS passes it through.
     if(DEFINED ENV{VULKAN_SDK})
-        set(_vulkan_sdk_glslc
-            "$ENV{VULKAN_SDK}/Bin/glslc"
-            "$ENV{VULKAN_SDK}/bin/glslc")
+        list(APPEND _hints "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
     endif()
 
-    find_program(_faye_glslc
-        NAMES glslc
-        HINTS ${_vulkan_sdk_glslc})
+    # Fallback: scan the default Windows install location so the build works
+    # even when VS's CMake process doesn't inherit VULKAN_SDK from the shell.
+    if(WIN32)
+        file(GLOB _sdk_bins LIST_DIRECTORIES true "C:/VulkanSDK/*/Bin")
+        if(_sdk_bins)
+            list(SORT _sdk_bins ORDER DESCENDING)  # newest version first
+            list(APPEND _hints ${_sdk_bins})
+        endif()
+    endif()
+
+    find_program(_faye_glslc NAMES glslc glslc.exe HINTS ${_hints})
 
     if(NOT _faye_glslc)
-        message(FATAL_ERROR "glslc was not found. Install shaderc/glslc or set VULKAN_SDK.")
+        message(FATAL_ERROR
+            "glslc was not found. Install the LunarG Vulkan SDK or set VULKAN_SDK.\n"
+            "  Searched: ${_hints}")
     endif()
 
     set(${out_var} "${_faye_glslc}" PARENT_SCOPE)

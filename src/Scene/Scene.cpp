@@ -3,20 +3,76 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "Scene/Entities/RegisterComponents.hpp"
+
 namespace Faye
 {
     Scene::Scene(std::string sceneName) : name(std::move(sceneName))
     {
+        registerEngineComponents(world);
+
+        // Keep the primary-camera invariant no matter which route removes the
+        // camera — Scene::remove<CameraComponent>, entity destruction, or the editor's
+        // type-erased remove via the component registry.
+        world.setRemoveHook<CameraComponent>(
+            [this](Ecs::World &, Ecs::Entity entity, void *)
+            {
+                if (entity == primaryCameraEntity)
+                {
+                    primaryCameraEntity = Ecs::Entity::null();
+                }
+            });
+    }
+
+    Scene::~Scene()
+    {
+        while (!sceneEntities.empty())
+        {
+            destroyEntity(sceneEntities.back());
+        }
     }
 
     Entity Scene::createEntity(std::string name)
     {
-        return Entity{this, entityManager.createEntity(std::move(name))};
+        const Ecs::Entity entity = world.create();
+        sceneEntities.push_back(entity);
+
+        if (name.empty())
+        {
+            name = defaultEntityName(entity);
+        }
+        world.add<EntityMetadata>(entity, EntityMetadata{std::move(name)});
+
+        return Entity{this, entity};
     }
 
-    Entity Scene::getEntity(EntityId entity)
+    Entity Scene::getEntity(Ecs::Entity entity)
     {
-        return Entity{this, isValid(entity) ? entity : invalidEntity};
+        return Entity{this, isValid(entity) ? entity : Ecs::Entity::null()};
+    }
+
+    Entity Scene::duplicateEntity(Ecs::Entity entity)
+    {
+        if (!isValid(entity))
+        {
+            return Entity{this, Ecs::Entity::null()};
+        }
+
+        // EntityMetadata is not part of the type registry at this point
+        // so unless a name is explicitly given, the copy will be unnamed.
+        // So basically don't use world.create().
+        const Entity copiedEntity = createEntity(std::string(getEntityName(entity)));
+
+        for (const Ecs::ComponentTypeInfo &component : world.types().all())
+        {
+            // copyTo is null for types registered with Clone::skip.
+            if (component.name && component.copyTo && component.has(world, entity))
+            {
+                component.copyTo(world, entity, copiedEntity.handle());
+            }
+        }
+
+        return copiedEntity;
     }
 
     Entity Scene::getPrimaryCameraEntity()
@@ -24,203 +80,103 @@ namespace Faye
         return getEntity(primaryCameraEntity);
     }
 
-    void Scene::destroyEntity(EntityId entity)
+    void Scene::destroyEntity(Ecs::Entity entity)
     {
         if (!isValid(entity))
         {
             return;
         }
 
-        entityManager.destroyEntity(entity);
-        if (primaryCameraEntity == entity)
-        {
-            primaryCameraEntity = invalidEntity;
-        }
+        // world.destroy fires every remove hook (scripts, camera, ...) while
+        // the components are still intact.
+        world.destroy(entity);
+        sceneEntities.erase(std::remove(sceneEntities.begin(), sceneEntities.end(), entity),
+                            sceneEntities.end());
     }
 
     void Scene::destroyEntity(Entity entity)
     {
-        destroyEntity(entity.id());
+        destroyEntity(entity.handle());
     }
 
-    bool Scene::isValid(EntityId entity) const
+    bool Scene::isValid(Ecs::Entity entity) const
     {
-        return entityManager.isValid(entity);
+        return world.alive(entity);
     }
 
-    void Scene::setEntityName(EntityId entity, std::string name)
+    Ecs::Entity Scene::require(Ecs::Entity entity) const
     {
-        entityManager.setEntityName(entity, std::move(name));
+        if (!world.alive(entity))
+        {
+            throw std::runtime_error("Attempted to access an entity that does not exist in the scene");
+        }
+
+        return entity;
     }
 
-    std::string_view Scene::getEntityName(EntityId entity) const
+    void Scene::setEntityName(Ecs::Entity entity, std::string name)
     {
-        return entityManager.getEntityName(entity);
+        require(entity);
+
+        if (name.empty())
+        {
+            name = defaultEntityName(entity);
+        }
+
+        world.tryGet<EntityMetadata>(entity)->name = std::move(name);
     }
 
-    const Scene::EntityMetadata *Scene::tryGetEntityMetadata(EntityId entity) const
+    std::string Scene::defaultEntityName(Ecs::Entity entity)
     {
-        return entityManager.tryGetEntityMetadata(entity);
+        // Slot-based, not a creation-order counter: with generational reuse
+        // there is no monotonic legacy id left to name after. Two entities
+        // can carry the same default name if one died and its slot was
+        // recycled — cosmetic only, never used as an identity.
+        return "Entity " + std::to_string(entity.index + 1);
     }
 
-    Scene::ComponentMask Scene::getComponentMask(EntityId entity) const
+    std::string_view Scene::getEntityName(Ecs::Entity entity) const
     {
-        return entityManager.getComponentMask(entity);
+        const auto *metadata = tryGetEntityMetadata(entity);
+        return metadata != nullptr ? metadata->name : std::string_view{};
     }
 
-    bool Scene::hasComponent(EntityId entity, ComponentKind kind) const
+    const Scene::EntityMetadata *Scene::tryGetEntityMetadata(Ecs::Entity entity) const
     {
-        return entityManager.hasComponent(entity, kind);
+        return world.tryGet<EntityMetadata>(entity);
     }
 
-    std::vector<Scene::ComponentKind> Scene::getComponentKinds(EntityId entity) const
+    MeshRendererComponent &Scene::addMesh(Ecs::Entity entity, ModelHandle modelHandle)
     {
-        return entityManager.getComponentKinds(entity);
+        auto &mesh = addOrGet<MeshRendererComponent>(entity);
+        mesh.modelHandle = modelHandle;
+        return mesh;
     }
 
-    TransformComponent &Scene::addTransform(EntityId entity)
+    CameraComponent &Scene::addCamera(Ecs::Entity entity, bool primary)
     {
-        return entityManager.addTransform(entity);
-    }
-
-    RigidBody2dComponent &Scene::addRigidBody2d(EntityId entity)
-    {
-        return entityManager.addRigidBody2d(entity);
-    }
-
-    MeshRendererComponent &Scene::addMesh(EntityId entity, ModelHandle modelHandle)
-    {
-        return entityManager.addMesh(entity, modelHandle);
-    }
-
-    CameraComponent &Scene::addCamera(EntityId entity, bool primary)
-    {
-        auto &camera = entityManager.addCamera(entity);
+        auto &camera = addOrGet<CameraComponent>(entity);
         camera.primary = primary;
 
-        if (primary || primaryCameraEntity == invalidEntity)
+        if (primary || primaryCameraEntity.isNull())
         {
-            setPrimaryCamera(getEntity(entity));
+            setPrimaryCamera(entity);
         }
 
         return camera;
     }
 
-    PointLightComponent &Scene::addPointLight(EntityId entity)
+    void Scene::setPrimaryCamera(Ecs::Entity entity)
     {
-        return entityManager.addPointLight(entity);
-    }
-
-    PostProcessStackComponent &Scene::addPostProcessStack(EntityId entity)
-    {
-        return entityManager.addPostProcessStack(entity);
-    }
-
-    void Scene::removeTransform(EntityId entity)
-    {
-        entityManager.removeTransform(entity);
-    }
-
-    void Scene::removeRigidBody2d(EntityId entity)
-    {
-        entityManager.removeRigidBody2d(entity);
-    }
-
-    void Scene::removeMesh(EntityId entity)
-    {
-        entityManager.removeMesh(entity);
-    }
-
-    void Scene::removeCamera(EntityId entity)
-    {
-        entityManager.removeCamera(entity);
-        if (primaryCameraEntity == entity)
-        {
-            primaryCameraEntity = invalidEntity;
-        }
-    }
-
-    void Scene::removePointLight(EntityId entity)
-    {
-        entityManager.removePointLight(entity);
-    }
-
-    void Scene::removePostProcessStack(EntityId entity)
-    {
-        entityManager.removePostProcessStack(entity);
-    }
-
-    TransformComponent *Scene::tryGetTransform(EntityId entity)
-    {
-        return entityManager.tryGetTransform(entity);
-    }
-
-    const TransformComponent *Scene::tryGetTransform(EntityId entity) const
-    {
-        return entityManager.tryGetTransform(entity);
-    }
-
-    RigidBody2dComponent *Scene::tryGetRigidBody2d(EntityId entity)
-    {
-        return entityManager.tryGetRigidBody2d(entity);
-    }
-
-    const RigidBody2dComponent *Scene::tryGetRigidBody2d(EntityId entity) const
-    {
-        return entityManager.tryGetRigidBody2d(entity);
-    }
-
-    MeshRendererComponent *Scene::tryGetMesh(EntityId entity)
-    {
-        return entityManager.tryGetMesh(entity);
-    }
-
-    const MeshRendererComponent *Scene::tryGetMesh(EntityId entity) const
-    {
-        return entityManager.tryGetMesh(entity);
-    }
-
-    CameraComponent *Scene::tryGetCamera(EntityId entity)
-    {
-        return entityManager.tryGetCamera(entity);
-    }
-
-    const CameraComponent *Scene::tryGetCamera(EntityId entity) const
-    {
-        return entityManager.tryGetCamera(entity);
-    }
-
-    PointLightComponent *Scene::tryGetPointLight(EntityId entity)
-    {
-        return entityManager.tryGetPointLight(entity);
-    }
-
-    const PointLightComponent *Scene::tryGetPointLight(EntityId entity) const
-    {
-        return entityManager.tryGetPointLight(entity);
-    }
-
-    PostProcessStackComponent *Scene::tryGetPostProcessStack(EntityId entity)
-    {
-        return entityManager.tryGetPostProcessStack(entity);
-    }
-
-    const PostProcessStackComponent *Scene::tryGetPostProcessStack(EntityId entity) const
-    {
-        return entityManager.tryGetPostProcessStack(entity);
-    }
-
-    void Scene::setPrimaryCamera(EntityId entity)
-    {
-        auto *camera = tryGetCamera(entity);
+        auto *camera = tryGet<CameraComponent>(entity);
         if (camera == nullptr)
         {
             throw std::runtime_error("Cannot set primary camera on entity without a camera component");
         }
 
-        for (EntityId cameraEntity : getEntities())
+        for (const Ecs::Entity cameraEntity : getEntities())
         {
-            if (auto *cameraComponent = tryGetCamera(cameraEntity))
+            if (auto *cameraComponent = tryGet<CameraComponent>(cameraEntity))
             {
                 cameraComponent->primary = false;
             }
@@ -232,54 +188,17 @@ namespace Faye
 
     void Scene::setPrimaryCamera(Entity entity)
     {
-        setPrimaryCamera(entity.id());
+        setPrimaryCamera(entity.handle());
     }
 
     CameraComponent *Scene::getPrimaryCamera()
     {
-        return tryGetCamera(primaryCameraEntity);
+        return tryGet<CameraComponent>(primaryCameraEntity);
     }
 
     const CameraComponent *Scene::getPrimaryCamera() const
     {
-        return tryGetCamera(primaryCameraEntity);
+        return tryGet<CameraComponent>(primaryCameraEntity);
     }
 
-    std::vector<Scene::RenderableView> Scene::getRenderableViews() const
-    {
-        std::vector<RenderableView> renderables;
-
-        for (EntityId entity : getEntities())
-        {
-            const auto *transform = tryGetTransform(entity);
-            const auto *mesh = tryGetMesh(entity);
-            if (transform == nullptr || mesh == nullptr)
-            {
-                continue;
-            }
-
-            renderables.push_back(RenderableView{entity, transform, mesh});
-        }
-
-        return renderables;
-    }
-
-    std::vector<Scene::PointLightView> Scene::getPointLightViews() const
-    {
-        std::vector<PointLightView> pointLights;
-
-        for (EntityId entity : getEntities())
-        {
-            const auto *transform = tryGetTransform(entity);
-            const auto *pointLight = tryGetPointLight(entity);
-            if (transform == nullptr || pointLight == nullptr)
-            {
-                continue;
-            }
-
-            pointLights.push_back(PointLightView{entity, transform, pointLight});
-        }
-
-        return pointLights;
-    }
 }

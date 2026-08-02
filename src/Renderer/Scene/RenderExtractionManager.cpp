@@ -1,37 +1,63 @@
 #include "Renderer/Scene/RenderExtractionManager.hpp"
 
-#include "Renderer/Scene/Extractors/CameraRenderExtractor.hpp"
+#include <memory>
+
+#include "Core/ECS/World.hpp"
+#include "Renderer/Scene/Extractors/DirectionalLightRenderExtractor.hpp"
 #include "Renderer/Scene/Extractors/MeshRenderExtractor.hpp"
 #include "Renderer/Scene/Extractors/PointLightRenderExtractor.hpp"
-#include "Renderer/Scene/RenderExtractionContext.hpp"
 
 namespace Faye
 {
-    RenderExtractionManager::RenderExtractionManager()
+    RenderExtractionManager::RenderExtractionManager(ModelRegistry &models, MaterialRegistry &materials)
     {
-        extractors.push_back(std::make_unique<CameraRenderExtractor>());
-        extractors.push_back(std::make_unique<MeshRenderExtractor>());
-        extractors.push_back(std::make_unique<PointLightRenderExtractor>());
+        // The extractors hold references into this manager's persistent state
+        // (snapshot + extractionIndex) and the asset registries; the schedule
+        // runs them in parallel each frame.
+        extractSchedule.addSystem(Ecs::Stage::Extract,
+                                  std::make_unique<MeshRenderExtractor>(models, materials, snapshot, extractionIndex));
+        extractSchedule.addSystem(Ecs::Stage::Extract,
+                                  std::make_unique<PointLightRenderExtractor>(snapshot));
+        extractSchedule.addSystem(Ecs::Stage::Extract,
+                                  std::make_unique<DirectionalLightRenderExtractor>(snapshot));
     }
 
-    RenderSceneSnapshot RenderExtractionManager::extract(const Scene &scene, ModelRegistry &modelRegistry, MaterialRegistry &materialRegistry)
+    const RenderSceneSnapshot &RenderExtractionManager::extract(Scene &scene, Jobs::JobSystem &jobs)
     {
-        RenderSceneSnapshot snapshot{};
-        const uint64_t currentExtractionIndex = ++extractionIndex;
-        RenderExtractionContext context{scene, modelRegistry, materialRegistry, snapshot, previousModelTransforms, currentExtractionIndex};
+        // Reuse the persistent buffers: clear() keeps capacity, so steady-state
+        // extraction performs no heap allocation.
+        snapshot.primaryCamera = nullptr;
+        snapshot.renderables.clear();
+        snapshot.pointLights.clear();
+        snapshot.directionalLights.clear();
+        ++extractionIndex;
 
-        for (const auto &extractor : extractors)
+        // Camera: needs the Scene's primary-camera bookkeeping (not a plain
+        // view), so it is resolved here rather than as a scheduled system.
+        if (const CameraComponent *camera = scene.getPrimaryCamera())
         {
-            extractor->extract(context);
+            snapshot.primaryCamera = &camera->camera;
         }
 
-        // Update the previous model transforms for all renderables in this scene.
-        // This is used for motion vectors
+        // Mesh + point-light extraction: read-only view passes writing disjoint
+        // snapshot fields — the schedule runs them concurrently.
+        EngineContext ctx{};
+        ctx.jobs = &jobs;
+        extractSchedule.runStage(Ecs::Stage::Extract, scene.getWorld(), ctx, jobs);
+
+        // Motion-vector write-back: single-threaded, after the read barrier, so
+        // this structural change (add PreviousTransformComponent) cannot race a
+        // view iteration. World::destroy prunes the component with the entity.
+        Ecs::World &world = scene.getWorld();
         for (const auto &renderable : snapshot.renderables)
         {
-            previousModelTransforms[renderable.entity] = RenderTransformHistoryEntry{
-                renderable.modelMatrix,
-                currentExtractionIndex};
+            PreviousTransformComponent *history = world.tryGet<PreviousTransformComponent>(renderable.entity);
+            if (history == nullptr)
+            {
+                history = &world.add<PreviousTransformComponent>(renderable.entity);
+            }
+            history->modelMatrix = renderable.modelMatrix;
+            history->lastSeenExtraction = extractionIndex;
         }
 
         return snapshot;

@@ -1,6 +1,5 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 
@@ -38,7 +37,7 @@ namespace Faye
     public:
         FullscreenEffectPass(
             VulkanDevice &device,
-            VkRenderPass renderPass,
+            VkFormat colorFormat,
             VulkanDescriptorPool &descriptorPool,
             PostProcessEffectDefinition effectDefinition);
         ~FullscreenEffectPass();
@@ -59,7 +58,7 @@ namespace Faye
         PostProcessEffectDefinition effectDefinition;
         std::unique_ptr<VulkanPipeline> vk_pipeline;
         VulkanDescriptorPool &descriptorPool;
-        VkRenderPass renderPass{VK_NULL_HANDLE};
+        VkFormat colorFormat;
         VkSampler sceneColorSampler{VK_NULL_HANDLE};
         std::vector<VkDescriptorSet> descriptorSets;
 

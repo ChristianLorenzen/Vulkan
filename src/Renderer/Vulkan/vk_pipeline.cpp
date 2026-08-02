@@ -6,57 +6,74 @@
 
 using namespace Faye;
 
-VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config) : device(device)
+VulkanPipeline::VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
+                               const std::string &tescFilepath, const std::string &tesePath) : device(device)
 {
-    LOG_INFO(Logger::getInstance(), "Creating Graphics Pipeline...");
-    createGraphicsPipeline(vertFilepath, fragFilepath, config);
+    LOG_INFO(Logger::get(), "Creating Graphics Pipeline...");
+    createGraphicsPipeline(vertFilepath, fragFilepath, config, tescFilepath, tesePath);
 }
 
 VulkanPipeline::~VulkanPipeline()
 {
-    if (fragShaderModule != VK_NULL_HANDLE)
-    {
-        vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
-    }
-
-    if (vertShaderModule != VK_NULL_HANDLE)
-    {
-        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
-    }
-
     if (graphicsPipeline != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(device.getDevice(), graphicsPipeline, nullptr);
     }
 }
 
-void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config)
+void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
+                                            const std::string &tescFilepath, const std::string &tesePath)
 {
     auto vertShaderCode = FileSystem::readFile(vertFilepath);
     auto fragShaderCode = FileSystem::readFile(fragFilepath);
+    const bool hasTessellation = !tescFilepath.empty() && !tesePath.empty();
 
-    vertShaderModule = createShaderModule(vertShaderCode);
-    fragShaderModule = createShaderModule(fragShaderCode);
+    VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
+    VkShaderModule fragShaderModule{VK_NULL_HANDLE};
+    VkShaderModule tescShaderModule{VK_NULL_HANDLE};
+    VkShaderModule teseShaderModule{VK_NULL_HANDLE};
 
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
-    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vertShaderModule;
-    vertShaderStageInfo.pName = "main";
-    vertShaderStageInfo.flags = 0;
-    vertShaderStageInfo.pNext = nullptr;
-    vertShaderStageInfo.pSpecializationInfo = nullptr;
+    auto destroyCreatedModules = [&]()
+    {
+        if (fragShaderModule != VK_NULL_HANDLE) vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
+        if (tescShaderModule != VK_NULL_HANDLE) vkDestroyShaderModule(device.getDevice(), tescShaderModule, nullptr);
+        if (teseShaderModule != VK_NULL_HANDLE) vkDestroyShaderModule(device.getDevice(), teseShaderModule, nullptr);
+        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
+    };
 
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
-    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = fragShaderModule;
-    fragShaderStageInfo.pName = "main";
-    fragShaderStageInfo.flags = 0;
-    fragShaderStageInfo.pNext = nullptr;
-    fragShaderStageInfo.pSpecializationInfo = nullptr;
+    try
+    {
+        fragShaderModule = createShaderModule(device, fragShaderCode);
+        if (hasTessellation)
+        {
+            tescShaderModule = createShaderModule(device, FileSystem::readFile(tescFilepath));
+            teseShaderModule = createShaderModule(device, FileSystem::readFile(tesePath));
+        }
+    }
+    catch (const std::exception &e)
+    {
+        destroyCreatedModules();
+        throw; // Re-throw the exception after cleanup
+    }
 
-    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+    auto makeStageInfo = [](VkShaderStageFlagBits stage, VkShaderModule module)
+    {
+        VkPipelineShaderStageCreateInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        info.stage = stage;
+        info.module = module;
+        info.pName = "main";
+        return info;
+    };
+
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+    shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_VERTEX_BIT, vertShaderModule));
+    shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShaderModule));
+    if (hasTessellation)
+    {
+        shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, tescShaderModule));
+        shaderStages.push_back(makeStageInfo(VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, teseShaderModule));
+    }
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -70,50 +87,61 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
-    std::vector<VkDynamicState> dynamicStates = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamicState = {};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data();
-
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+    pipelineInfo.pStages = shaderStages.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &config.inputAssemblyInfo;
     pipelineInfo.pViewportState = &config.viewportInfo;
     pipelineInfo.pRasterizationState = &config.rasterizationInfo;
     pipelineInfo.pMultisampleState = &config.multisamplingInfo;
-    pipelineInfo.pColorBlendState = &config.colorBlendingInfo;
     pipelineInfo.pDepthStencilState = &config.depthStencilInfo;
     pipelineInfo.pDynamicState = &config.dynamicStateInfo;
     pipelineInfo.layout = config.pipelineLayout;
-    pipelineInfo.renderPass = config.renderPass;
-    pipelineInfo.subpass = config.subpass;
+    pipelineInfo.renderPass = VK_NULL_HANDLE;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
+
+    // Only chain tessellation state when both stages are present -- pTessellationState
+    // must point at a struct with a correct sType when non-null, even though the spec
+    // says it's "ignored" without tess stages, so it's left nullptr (the prior,
+    // implicit behavior) for every non-tessellated pipeline.
+    if (hasTessellation)
+    {
+        pipelineInfo.pTessellationState = &config.tessellationInfo;
+    }
 
     VkPipelineColorBlendStateCreateInfo colorBlendingInfo = config.colorBlendingInfo;
     colorBlendingInfo.attachmentCount = static_cast<uint32_t>(colorBlendAttachments.size());
     colorBlendingInfo.pAttachments = colorBlendAttachments.data();
     pipelineInfo.pColorBlendState = &colorBlendingInfo;
 
-    LOG_INFO(Logger::getInstance(), "Initialized Pipeline Info...");
+    // Dynamic rendering: when no VkRenderPass is provided, the pipeline must declare
+    // its attachment formats via VkPipelineRenderingCreateInfo. Without this chained,
+    // the pipeline is created with zero attachments (depth format UNDEFINED), which
+    // silently disables depth testing and blending state at draw time.
+    VkPipelineRenderingCreateInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(config.colorAttachmentFormats.size());
+    renderingInfo.pColorAttachmentFormats = config.colorAttachmentFormats.empty() ? nullptr : config.colorAttachmentFormats.data();
+    renderingInfo.depthAttachmentFormat = config.depthAttachmentFormat;
+    renderingInfo.stencilAttachmentFormat = config.stencilAttachmentFormat;
+    pipelineInfo.pNext = &renderingInfo;
 
-    if (vkCreateGraphicsPipelines(device.getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS)
+    LOG_INFO(Logger::get(), "Initialized Pipeline Info...");
+
+    VkResult result = vkCreateGraphicsPipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &graphicsPipeline);
+
+    destroyCreatedModules();
+
+    if (result != VK_SUCCESS)
     {
-        vkDestroyShaderModule(device.getDevice(), fragShaderModule, nullptr);
-        vkDestroyShaderModule(device.getDevice(), vertShaderModule, nullptr);
-        fragShaderModule = VK_NULL_HANDLE;
-        vertShaderModule = VK_NULL_HANDLE;
         throw std::runtime_error("Failed to create graphics pipeline");
     }
 }
 
-VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char> &code)
+VkShaderModule Faye::createShaderModule(VulkanDevice &device, const std::vector<char> &code)
 {
     VkShaderModuleCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -187,14 +215,26 @@ void VulkanPipeline::defaultPipelineConfigInfo(PipelineConfigInfo &configInfo)
     configInfo.depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
     configInfo.depthStencilInfo.stencilTestEnable = VK_FALSE;
 
-    configInfo.dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    configInfo.dynamicStateEnables = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_CULL_MODE,
+        VK_DYNAMIC_STATE_FRONT_FACE,
+        VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
+        VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
+        VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE,
+        VK_DYNAMIC_STATE_DEPTH_COMPARE_OP,
+    };
+
     configInfo.dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    configInfo.dynamicStateInfo.dynamicStateCount = configInfo.dynamicStateEnables.size();
+    configInfo.dynamicStateInfo.dynamicStateCount = static_cast<uint32_t>(configInfo.dynamicStateEnables.size());
     configInfo.dynamicStateInfo.pDynamicStates = configInfo.dynamicStateEnables.data();
     configInfo.dynamicStateInfo.flags = 0;
 
-    configInfo.bindingDescriptions = Vertex::getBindingDescription();
-    configInfo.attributeDescriptions = Vertex::getAttributeDescriptions();
+    // configInfo.bindingDescriptions = Vertex::getBindingDescription();
+    // configInfo.attributeDescriptions = Vertex::getAttributeDescriptions();
+    configInfo.bindingDescriptions = {};
+    configInfo.attributeDescriptions = {};
 }
 
 void VulkanPipeline::bind(VkCommandBuffer commandBuffer)

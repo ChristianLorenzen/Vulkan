@@ -12,7 +12,7 @@ namespace Faye
     {
         std::string label;
         std::string field;
-        ShaderProperty::Type type = ShaderProperty::Type::Float;
+        ShaderMember::Type type = ShaderMember::Type::Float;
         float minVal = 0.0f;
         float maxVal = 1.0f;
     };

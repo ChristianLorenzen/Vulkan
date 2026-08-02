@@ -1,7 +1,7 @@
 id=depthFog
 displayName=Depth Fog
-vertexShader=./src/shaders/compiled/post_process.vert.spv
-fragmentShader=./src/shaders/compiled/post_process_depth_fog.frag.spv
+vertexShader=post_process.vert.spv
+fragmentShader=post_process_depth_fog.frag.spv
 showInEditor=true
 input=sourceColor,0
 input=sceneDepth,1

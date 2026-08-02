@@ -4,97 +4,145 @@
 #include <string_view>
 #include <vector>
 
+#include "Core/ECS/World.hpp"
 #include "Scene/Entities/Entity.hpp"
-#include "Scene/Entities/EntityManager.hpp"
 
 namespace Faye
 {
+    // Thin facade over Ecs::World: callers hold generational Ecs::Entity
+    // handles directly (a stale handle safely reads as dead — no aliasing).
+    // Scene adds what the World deliberately doesn't know about: entity
+    // naming, creation-order enumeration for the editor, the primary-camera
+    // invariant, and the per-type convenience wrappers (which forward to
+    // world.add<T>/remove<T>/tryGet<T>).
     class Scene
     {
     public:
-        using EntityId = Faye::EntityId;
-        static constexpr EntityId invalidEntity = Faye::invalidEntity;
         using EntityMetadata = Faye::EntityMetadata;
-        using ComponentKind = Faye::ComponentKind;
-        using ComponentMask = Faye::ComponentMask;
-
-        struct RenderableView
-        {
-            EntityId entity = invalidEntity;
-            const TransformComponent *transform = nullptr;
-            const MeshRendererComponent *mesh = nullptr;
-        };
-
-        struct PointLightView
-        {
-            EntityId entity = invalidEntity;
-            const TransformComponent *transform = nullptr;
-            const PointLightComponent *pointLight = nullptr;
-        };
 
         explicit Scene(std::string sceneName = "Scene");
 
+        // Destroys all remaining entities through the normal path so every
+        // remove hook (scripts, camera) fires while the World is intact.
+        ~Scene();
+
+        // The World's remove hooks capture `this`; pinning the object is
+        // simpler than rebinding them on move.
+        Scene(const Scene &) = delete;
+        Scene &operator=(const Scene &) = delete;
+        Scene(Scene &&) = delete;
+        Scene &operator=(Scene &&) = delete;
+
         Entity createEntity(std::string name = {});
-        Entity getEntity(EntityId entity);
+        Entity getEntity(Ecs::Entity entity);
+        Entity duplicateEntity(Ecs::Entity entity);
         Entity getPrimaryCameraEntity();
-        void destroyEntity(EntityId entity);
+        void destroyEntity(Ecs::Entity entity);
         void destroyEntity(Entity entity);
-        bool isValid(EntityId entity) const;
+        bool isValid(Ecs::Entity entity) const;
 
         std::string_view getName() const { return name; }
-        const std::vector<EntityId> &getEntities() const { return entityManager.getEntities(); }
+        const std::vector<Ecs::Entity> &getEntities() const { return sceneEntities; }
 
-        void setEntityName(EntityId entity, std::string name);
-        std::string_view getEntityName(EntityId entity) const;
-        const EntityMetadata *tryGetEntityMetadata(EntityId entity) const;
-        ComponentMask getComponentMask(EntityId entity) const;
-        bool hasComponent(EntityId entity, ComponentKind kind) const;
-        std::vector<ComponentKind> getComponentKinds(EntityId entity) const;
+        void setEntityName(Ecs::Entity entity, std::string name);
+        std::string_view getEntityName(Ecs::Entity entity) const;
+        const EntityMetadata *tryGetEntityMetadata(Ecs::Entity entity) const;
 
-        TransformComponent &addTransform(EntityId entity);
-        RigidBody2dComponent &addRigidBody2d(EntityId entity);
-        MeshRendererComponent &addMesh(EntityId entity, ModelHandle modelHandle = {});
-        CameraComponent &addCamera(EntityId entity, bool primary = false);
-        PointLightComponent &addPointLight(EntityId entity);
-        PostProcessStackComponent &addPostProcessStack(EntityId entity);
+        // Component access is generic: the World already stores components by
+        // type, so Scene forwards instead of restating one wrapper per type.
+        // These three cover every component; the two named overloads below
+        // exist only because they carry invariants a plain add cannot.
 
-        void removeTransform(EntityId entity);
-        void removeRigidBody2d(EntityId entity);
-        void removeMesh(EntityId entity);
-        void removeCamera(EntityId entity);
-        void removePointLight(EntityId entity);
-        void removePostProcessStack(EntityId entity);
+        // Returns the existing component untouched if already present.
+        // Throws if the handle is dead.
+        template <class T>
+        T &add(Ecs::Entity entity)
+        {
+            return addOrGet<T>(entity);
+        }
 
-        TransformComponent *tryGetTransform(EntityId entity);
-        const TransformComponent *tryGetTransform(EntityId entity) const;
+        // No-op when the component — or the entity itself — is absent.
+        template <class T>
+        void remove(Ecs::Entity entity)
+        {
+            removeIfPresent<T>(entity);
+        }
 
-        RigidBody2dComponent *tryGetRigidBody2d(EntityId entity);
-        const RigidBody2dComponent *tryGetRigidBody2d(EntityId entity) const;
+        template <class T>
+        T *tryGet(Ecs::Entity entity)
+        {
+            return world.tryGet<T>(entity);
+        }
 
-        MeshRendererComponent *tryGetMesh(EntityId entity);
-        const MeshRendererComponent *tryGetMesh(EntityId entity) const;
+        template <class T>
+        const T *tryGet(Ecs::Entity entity) const
+        {
+            return world.tryGet<T>(entity);
+        }
 
-        CameraComponent *tryGetCamera(EntityId entity);
-        const CameraComponent *tryGetCamera(EntityId entity) const;
+        // Doubles as "set the model": assigns modelHandle on first add and on
+        // every re-add, so add<MeshRendererComponent> is NOT equivalent.
+        MeshRendererComponent &addMesh(Ecs::Entity entity, ModelHandle modelHandle = {});
 
-        PointLightComponent *tryGetPointLight(EntityId entity);
-        const PointLightComponent *tryGetPointLight(EntityId entity) const;
+        // Maintains the scene-wide primary-camera invariant.
+        CameraComponent &addCamera(Ecs::Entity entity, bool primary = false);
 
-        PostProcessStackComponent *tryGetPostProcessStack(EntityId entity);
-        const PostProcessStackComponent *tryGetPostProcessStack(EntityId entity) const;
-
-        void setPrimaryCamera(EntityId entity);
+        void setPrimaryCamera(Ecs::Entity entity);
         void setPrimaryCamera(Entity entity);
-        EntityId getPrimaryCameraEntityId() const { return primaryCameraEntity; }
+        Ecs::Entity getPrimaryCameraHandle() const { return primaryCameraEntity; }
         CameraComponent *getPrimaryCamera();
         const CameraComponent *getPrimaryCamera() const;
 
-        std::vector<RenderableView> getRenderableViews() const;
-        std::vector<PointLightView> getPointLightViews() const;
+        Ecs::World &getWorld() { return world; }
+        const Ecs::World &getWorld() const { return world; }
 
     private:
+        Ecs::Entity require(Ecs::Entity entity) const;   // throws on dead/null handles
+        static std::string defaultEntityName(Ecs::Entity entity);
+
+        // add-or-get, preserving the pre-ECS semantics: adding a component
+        // the entity already has returns the existing one untouched.
+        template <class T>
+        T &addOrGet(Ecs::Entity entity)
+        {
+            require(entity);
+            if (T *existing = world.tryGet<T>(entity))
+                return *existing;
+            return world.add<T>(entity);
+        }
+
+        template <class T>
+        void removeIfPresent(Ecs::Entity entity)
+        {
+            if (world.has<T>(entity))
+                world.remove<T>(entity);
+        }
+
         std::string name;
-        EntityManager entityManager;
-        EntityId primaryCameraEntity = invalidEntity;
+        Ecs::World world;
+        std::vector<Ecs::Entity> sceneEntities;   // creation order, backs getEntities()
+        Ecs::Entity primaryCameraEntity{};        // null when no primary camera
     };
+
+    // ---- Entity facade forwarding ----------------------------------------
+    // Declared in Entity.hpp, defined here: they need Scene complete, and
+    // Scene.hpp is the header that includes Entity.hpp (not the reverse).
+
+    template <class T>
+    T &Entity::add() const
+    {
+        return requireScene().add<T>(entityHandle);
+    }
+
+    template <class T>
+    void Entity::remove() const
+    {
+        requireScene().remove<T>(entityHandle);
+    }
+
+    template <class T>
+    T *Entity::tryGet() const
+    {
+        return scene != nullptr ? scene->tryGet<T>(entityHandle) : nullptr;
+    }
 }

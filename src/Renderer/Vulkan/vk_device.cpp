@@ -1,4 +1,5 @@
 #include "vk_device.hpp"
+#include "Core/Path/Paths.hpp"
 #include <algorithm>
 #include <vector>
 #include <stdio.h>
@@ -169,16 +170,33 @@ VulkanDevice::VulkanDevice(Window &window) : window{window}
 {
     validationLayersEnabled = shouldEnableValidationLayers();
 
-    LOG_INFO(Logger::getInstance(), "Creating Instance...");
+    LOG_INFO(Logger::get(), "Creating Instance...");
     createInstance();
     setupDebugMessenger();
-    LOG_INFO(Logger::getInstance(), "Creating Surface...");
+    LOG_INFO(Logger::get(), "Creating Surface...");
     createSurface();
-    LOG_INFO(Logger::getInstance(), "Creating Devices...");
+    LOG_INFO(Logger::get(), "Creating Devices...");
     createPhysicalDevice();
     createLogicalDevice();
-    LOG_INFO(Logger::getInstance(), "Creating Command Pools...");
+    createAllocator();
+    createPipelineCache();
+    LOG_INFO(Logger::get(), "Creating Command Pools...");
     createCommandPools();
+}
+
+void VulkanDevice::createAllocator()
+{
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.vulkanApiVersion = VK_VERSION;
+    allocatorInfo.physicalDevice = physicalDevice;
+    allocatorInfo.device = device;
+    allocatorInfo.instance = instance;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+
+    if (vmaCreateAllocator(&allocatorInfo, &allocator) != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to create VMA allocator");
+    }
 }
 
 bool VulkanDevice::shouldEnableValidationLayers()
@@ -210,14 +228,49 @@ bool VulkanDevice::shouldEnableValidationLayers()
     }
 
     LOG_WARNING(
-        Logger::getInstance(),
+        Logger::get(),
         "Validation layer {} was requested but is not available in this environment. Continuing without validation layers.",
         validationLayers.front());
     return false;
 }
 
+void VulkanDevice::savePipelineCache()
+{
+    if (pipelineCache != VK_NULL_HANDLE)
+    {
+        size_t dataSize = 0;
+        vkGetPipelineCacheData(device, pipelineCache, &dataSize, nullptr);
+        if (dataSize > 0)
+        {
+            std::vector<char> data(dataSize);
+            vkGetPipelineCacheData(device, pipelineCache, &dataSize, data.data());
+            if (std::ofstream file{Paths::resolve("pipeline_cache.bin"), std::ios::binary})
+            {
+                file.write(data.data(), static_cast<std::streamsize>(dataSize));
+            }
+        }
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+    }
+}
+
 VulkanDevice::~VulkanDevice()
 {
+    savePipelineCache();
+
+    // Anything still allocated here trips a VMA assert inside vmaDestroyAllocator
+    // ("Some allocations were not freed..."), which aborts with no clue about the
+    // owner. Log the leak first so the abort is at least diagnosable.
+    VmaTotalStatistics stats{};
+    vmaCalculateStatistics(allocator, &stats);
+    if (stats.total.statistics.allocationCount > 0)
+    {
+        LOG_ERROR(Logger::get(),
+                  "VMA leak on shutdown: {} allocations ({} bytes) still live",
+                  stats.total.statistics.allocationCount,
+                  stats.total.statistics.allocationBytes);
+    }
+
+    vmaDestroyAllocator(allocator);
     vkDestroyCommandPool(device, commandPool, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -235,7 +288,7 @@ void VulkanDevice::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateI
                              VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     createInfo.pfnUserCallback = debugCallback;
-    createInfo.pUserData = Logger::getInstance();
+    createInfo.pUserData = Logger::get();
 }
 
 void VulkanDevice::setupDebugMessenger()
@@ -273,14 +326,14 @@ bool VulkanDevice::isDeviceSuitable(VkPhysicalDevice device)
     if (extensionsSupported)
     {
         SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-        LOG_INFO(Logger::getInstance(), "SwapChainSupportDetails: {} {}", swapChainSupport.formats.size(), swapChainSupport.presentModes.size());
+        LOG_INFO(Logger::get(), "SwapChainSupportDetails: {} {}", swapChainSupport.formats.size(), swapChainSupport.presentModes.size());
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
 
     VkPhysicalDeviceFeatures supportedFeatures;
     vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-    return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
+    return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy && supportedFeatures.tessellationShader;
 }
 
 bool VulkanDevice::checkDeviceExtensionSupport(VkPhysicalDevice device)
@@ -375,7 +428,7 @@ uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
             return i;
         }
     }
-    LOG_ERROR(Logger::getInstance(), "Failed to find suitable memory type");
+    LOG_ERROR(Logger::get(), "Failed to find suitable memory type");
     throw std::runtime_error("Failed to find suitable memory type...");
 }
 
@@ -419,10 +472,10 @@ void VulkanDevice::createInstance()
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Hello Triangle";
-    appInfo.applicationVersion = VK_MAKE_API_VERSION(1, 0, 0, 0);
+    appInfo.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
     appInfo.pEngineName = "No Engine";
-    appInfo.engineVersion = VK_MAKE_API_VERSION(1, 0, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_2;
+    appInfo.engineVersion = VK_MAKE_API_VERSION(0, 0, 0, 1);
+    appInfo.apiVersion = VK_VERSION;
 
     VkInstanceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -568,7 +621,7 @@ void VulkanDevice::createPhysicalDevice()
         if (evaluation.suitable)
         {
             LOG_INFO(
-                Logger::getInstance(),
+                Logger::get(),
                 "GPU candidate: {} | type={} | suitable=yes | priority={} | score={} | device_local_memory={:.2f} GiB | max2D={} | swapchain_formats={} | present_modes={}",
                 evaluation.properties.deviceName,
                 physicalDeviceTypeToString(evaluation.properties.deviceType),
@@ -582,7 +635,7 @@ void VulkanDevice::createPhysicalDevice()
         else
         {
             LOG_WARNING(
-                Logger::getInstance(),
+                Logger::get(),
                 "GPU candidate: {} | type={} | suitable=no | reason={}",
                 evaluation.properties.deviceName,
                 physicalDeviceTypeToString(evaluation.properties.deviceType),
@@ -597,6 +650,7 @@ void VulkanDevice::createPhysicalDevice()
     {
         physicalDevice = selected->device;
         properties = selected->properties;
+        cachedQueueFamilies = findQueueFamilies(physicalDevice);
     }
 
     if (physicalDevice == VK_NULL_HANDLE)
@@ -605,7 +659,7 @@ void VulkanDevice::createPhysicalDevice()
     }
 
     LOG_INFO(
-        Logger::getInstance(),
+        Logger::get(),
         "Selected physical device: {} | type={} | priority={} | score={}",
         properties.deviceName,
         physicalDeviceTypeToString(properties.deviceType),
@@ -618,8 +672,7 @@ void VulkanDevice::createPhysicalDevice()
 
 void VulkanDevice::createLogicalDevice()
 {
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-    graphicsQueueFamilyIndex = indices.graphicsFamily.value();
+    QueueFamilyIndices indices = cachedQueueFamilies;
 
     // Specifying the queue to use
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
@@ -635,30 +688,34 @@ void VulkanDevice::createLogicalDevice()
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    // Setup device features. Empty for now, but should fill out once we start using Vulkan features.
-    VkPhysicalDeviceFeatures deviceFeatures = {};
-    deviceFeatures.samplerAnisotropy = VK_TRUE;
+    VkPhysicalDeviceVulkan13Features featuresVK13 = {};
+    featuresVK13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+
+    VkPhysicalDeviceVulkan12Features featuresVK12 = {};
+    featuresVK12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    featuresVK12.pNext = &featuresVK13;
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    deviceFeatures2.pNext = &featuresVK12;
+
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
 
     // Create logical device
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.pEnabledFeatures = &deviceFeatures;
+    // We have the &deviceFeatures struct, but setting to null since now using pNext chaining.
+    createInfo.pEnabledFeatures = nullptr;
+    createInfo.pNext = &deviceFeatures2;
 
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-    // Back-compat with older implementations of vulkan. Now, enabledLayerCount and ppEnabledLayerNames are ignored.
-    if (validationLayersEnabled)
-    {
-        createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-        createInfo.ppEnabledLayerNames = validationLayers.data();
-    }
-    else
-    {
-        createInfo.enabledLayerCount = 0;
-    }
+    // Device layers were removed in Vulkan 1.0. enabledLayerCount must be 0.
+    createInfo.enabledLayerCount = 0;
+    createInfo.ppEnabledLayerNames = nullptr;
 
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
     {
@@ -669,9 +726,39 @@ void VulkanDevice::createLogicalDevice()
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
+void VulkanDevice::createPipelineCache()
+{
+    const auto kCachePath = Paths::resolve("pipeline_cache.bin");
+
+    std::vector<char> cacheData;
+    if (std::ifstream file{kCachePath, std::ios::binary | std::ios::ate})
+    {
+        const std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        cacheData.resize(size);
+        file.read(cacheData.data(), size);
+        LOG_INFO(Logger::get(), "Loaded existing pipeline cache");
+    }
+    else
+    {
+        LOG_INFO(Logger::get(), "No existing pipeline cache found, starting with an empty cache");
+    }
+
+    VkPipelineCacheCreateInfo cacheInfo{};
+    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    cacheInfo.initialDataSize = cacheData.size();
+    cacheInfo.pInitialData = cacheData.empty() ? nullptr : cacheData.data();
+
+    if (vkCreatePipelineCache(device, &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS)
+    {
+        LOG_WARNING(Logger::get(), "Failed to create pipeline cache, continuing without it");
+        pipelineCache = VK_NULL_HANDLE;
+    }
+}
+
 void VulkanDevice::createCommandPools()
 {
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices queueFamilyIndices = cachedQueueFamilies;
 
     VkCommandPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -742,7 +829,6 @@ std::vector<const char *> VulkanDevice::getRequiredExtensions()
 
 #ifdef __APPLE__
     extensions.push_back("VK_KHR_portability_enumeration");
-    extensions.push_back("VK_KHR_get_physical_device_properties2");
 #endif
 
     if (validationLayersEnabled)
@@ -753,33 +839,18 @@ std::vector<const char *> VulkanDevice::getRequiredExtensions()
     return extensions;
 }
 
-void VulkanDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
+void VulkanDevice::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, const VmaAllocationCreateInfo &allocInfo, VkBuffer &buffer, VmaAllocation &allocation)
 {
-    VkBufferCreateInfo bufferInfo = {};
+    VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
+    if (vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer, &allocation, nullptr) != VK_SUCCESS)
     {
-        throw std::runtime_error("Failed to create vertex buffer...");
+        throw std::runtime_error("Failed to create buffer via VMA");
     }
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo = {};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS)
-    {
-        throw std::runtime_error("Failed to allocate vertex buffer memory...");
-    }
-
-    vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
 
 void VulkanDevice::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
@@ -840,13 +911,23 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 {
     vkEndCommandBuffer(commandBuffer);
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFence fence;
+    vkCreateFence(device, &fenceInfo, nullptr, &fence);
 
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphicsQueue);
+    VkCommandBufferSubmitInfo cmdInfo{};
+    cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmdInfo.commandBuffer = commandBuffer;
+
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &cmdInfo;
+
+    vkQueueSubmit2(graphicsQueue, 1, &submitInfo, fence);
+    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(device, fence, nullptr);
 
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
@@ -858,30 +939,12 @@ void VulkanDevice::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 /// @param imageMemory
 void VulkanDevice::createImageWithInfo(
     const VkImageCreateInfo &imageInfo,
-    VkMemoryPropertyFlags properties,
+    const VmaAllocationCreateInfo &allocInfo,
     VkImage &image,
-    VkDeviceMemory &imageMemory)
+    VmaAllocation &allocation)
 {
-    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
+    if (vmaCreateImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr) != VK_SUCCESS)
     {
-        throw std::runtime_error("failed to create image!");
-    }
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, image, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to allocate image memory!");
-    }
-
-    if (vkBindImageMemory(device, image, imageMemory, 0) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to bind image memory!");
+        throw std::runtime_error("Failed to create image via VMA");
     }
 }

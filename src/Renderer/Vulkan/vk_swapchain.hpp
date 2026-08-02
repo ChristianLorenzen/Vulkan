@@ -7,8 +7,6 @@
 #include "Swapchain.hpp"
 
 #include "vk_device.hpp"
-#include "vk_render_pass.hpp"
-#include "vk_swapchain.hpp"
 #include "vk_types.hpp"
 
 namespace Faye
@@ -26,11 +24,7 @@ namespace Faye
         VulkanSwapchain(const VulkanSwapchain &) = delete;
         VulkanSwapchain &operator=(const VulkanSwapchain &) = delete;
 
-        VkFramebuffer getFrameBuffer(uint32_t index) const { return swapChainRenderPassInstances[index].getFramebuffer(); }
         VkImage getImage(uint32_t index) const { return swapChainImages[index]; }
-        VkRenderPass getRenderPass() const { return swapChainRenderPass ? swapChainRenderPass->getHandle() : VK_NULL_HANDLE; }
-        const VulkanRenderPass &getRenderPassObject() const { return *swapChainRenderPass; }
-        const VulkanRenderPassInstance &getRenderPassInstance(uint32_t index) const { return swapChainRenderPassInstances[index]; }
         VkImageView getImageView(uint32_t index) const { return swapChainImageViews[index]; }
         size_t imageCount() const { return swapChainImages.size(); }
         VkFormat getSwapChainImageFormat() const { return swapChainImageFormat; }
@@ -47,15 +41,10 @@ namespace Faye
 
         VkFormat findDepthFormat();
 
-        void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
-
     private:
         void init();
         void createSwapChain();
         void recreateSwapChain();
-        void createDepthResources();
-        void createRenderPass();
-        void createFramebuffers();
         void createSyncObjects();
 
         void createImageViews();
@@ -74,14 +63,8 @@ namespace Faye
         VkFormat swapChainDepthFormat;
         VkExtent2D swapChainExtent;
 
-        std::unique_ptr<VulkanRenderPass> swapChainRenderPass;
-
-        std::vector<VkImage> depthImages;
-        std::vector<VkDeviceMemory> depthImageMemorys;
-        std::vector<VkImageView> depthImageViews;
         std::vector<VkImage> swapChainImages;
         std::vector<VkImageView> swapChainImageViews;
-        std::vector<VulkanRenderPassInstance> swapChainRenderPassInstances;
 
         VulkanDevice *device;
         VkExtent2D windowExtent;

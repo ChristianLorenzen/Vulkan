@@ -11,7 +11,6 @@ local angle = 0.0           -- accumulated angle in radians
 
 function onStart(entity)
     print("Lua rotator started for entity " .. tostring(entity:getId()))
-    print("Engine time at start: " .. tostring(Engine.time))
 end
 
 function onUpdate(entity, dt)

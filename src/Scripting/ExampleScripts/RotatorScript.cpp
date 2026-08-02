@@ -1,5 +1,3 @@
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 
 #include "Scene/Entities/Entity.hpp"
@@ -21,7 +19,7 @@ public:
         if (!entity.isValid())
             return;
 
-        auto *transform = entity.tryGetTransform();
+        auto *transform = entity.tryGet<TransformComponent>();
         if (transform == nullptr)
             return;
 

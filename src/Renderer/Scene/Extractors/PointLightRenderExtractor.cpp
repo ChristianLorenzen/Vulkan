@@ -1,25 +1,28 @@
 #include "Renderer/Scene/Extractors/PointLightRenderExtractor.hpp"
 
+#include "Core/ECS/World.hpp"
+
 namespace Faye
 {
-    void PointLightRenderExtractor::extract(const RenderExtractionContext &context) const
+    Ecs::SystemAccess PointLightRenderExtractor::access() const
     {
-        auto pointLights = context.scene.getPointLightViews();
-        context.snapshot.pointLights.reserve(context.snapshot.pointLights.size() + pointLights.size());
+        return Ecs::SystemAccess{}
+            .read<TransformComponent>()
+            .read<PointLightComponent>();
+    }
 
-        for (const auto &pointLight : pointLights)
-        {
-            if (pointLight.transform == nullptr || pointLight.pointLight == nullptr)
+    void PointLightRenderExtractor::run(Ecs::World &world, const EngineContext &,
+                                        Jobs::JobSystem &, Ecs::CommandBuffer &)
+    {
+        world.view<TransformComponent, PointLightComponent>().each(
+            [&](Ecs::Entity entity, TransformComponent &transform, PointLightComponent &pointLight)
             {
-                continue;
-            }
-
-            context.snapshot.pointLights.push_back(PointLightInstance{
-                pointLight.entity,
-                pointLight.transform,
-                pointLight.pointLight->color,
-                pointLight.pointLight->intensity,
-                pointLight.pointLight->radius});
-        }
+                snapshot.pointLights.push_back(PointLightInstance{
+                    entity,
+                    &transform,
+                    pointLight.color,
+                    pointLight.intensity,
+                    pointLight.radius});
+            });
     }
 }

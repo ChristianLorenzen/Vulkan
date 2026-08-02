@@ -1,11 +1,8 @@
 #pragma once
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>    //vec3, vec4, ivec4, mat4
 #include <glm/common.hpp> //vec3, vec4, ivec4, mat4
 #include <glm/gtc/matrix_transform.hpp>
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
 namespace Faye
@@ -25,6 +22,12 @@ namespace Faye
 
         Camera(const Camera &) = delete;
         Camera &operator=(const Camera &) = delete;
+
+        // Movable (but still not copyable): CameraComponent lives in a
+        // sparse-set pool, whose swap-and-pop removal and vector growth
+        // relocate components by move.
+        Camera(Camera &&) = default;
+        Camera &operator=(Camera &&) = default;
 
         glm::vec3 position;
         glm::vec3 velocity;

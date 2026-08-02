@@ -36,7 +36,8 @@ Faye::VkImageResource &Faye::VkImageResource::operator=(VkImageResource &&other)
     }
 
     image = std::exchange(other.image, VK_NULL_HANDLE);
-    memory = std::exchange(other.memory, VK_NULL_HANDLE);
+    allocation = std::exchange(other.allocation, VK_NULL_HANDLE);
+    allocator = std::exchange(other.allocator, VK_NULL_HANDLE);
     imageView = std::exchange(other.imageView, VK_NULL_HANDLE);
     format = std::exchange(other.format, VK_FORMAT_UNDEFINED);
     extent = std::exchange(other.extent, VkExtent3D{0, 0, 0});
@@ -62,7 +63,8 @@ bool Faye::VkImageResource::hasView() const
 void Faye::VkImageResource::reset()
 {
     image = VK_NULL_HANDLE;
-    memory = VK_NULL_HANDLE;
+    allocation = VK_NULL_HANDLE;
+    allocator = VK_NULL_HANDLE;
     imageView = VK_NULL_HANDLE;
     format = VK_FORMAT_UNDEFINED;
     extent = {0, 0, 0};
@@ -78,57 +80,47 @@ void Faye::VkImageResource::createOwned(VulkanDevice &device,
                                         const VkImageResourceCreateInfo &createInfo,
                                         bool createDefaultView)
 {
-    destroy(device.getDevice());
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = createInfo.imageType;
+    imageInfo.extent = createInfo.extent;
+    imageInfo.mipLevels = createInfo.mipLevels;
+    imageInfo.arrayLayers = createInfo.arrayLayers;
+    imageInfo.format = createInfo.format;
+    imageInfo.tiling = createInfo.tiling;
+    imageInfo.initialLayout = createInfo.initialLayout;
+    imageInfo.usage = createInfo.usage;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageInfo.samples = createInfo.samples;
+    imageInfo.flags = createInfo.flags;
 
-    if (createInfo.extent.width == 0 || createInfo.extent.height == 0 || createInfo.extent.depth == 0)
-    {
-        throw std::runtime_error("VkImageResource requires a non-zero extent");
-    }
-    if (createInfo.format == VK_FORMAT_UNDEFINED)
-    {
-        throw std::runtime_error("VkImageResource requires a valid VkFormat");
-    }
-    if (createInfo.usage == 0)
-    {
-        throw std::runtime_error("VkImageResource requires at least one usage flag");
-    }
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-    extent = createInfo.extent;
+    device.createImageWithInfo(imageInfo, allocInfo, image, allocation);
+    allocator = device.getAllocator();
+    ownsImage = true;
+
     format = createInfo.format;
+    extent = createInfo.extent;
     layout = createInfo.initialLayout;
-    aspectFlags = createInfo.aspectFlags != 0 ? createInfo.aspectFlags : defaultAspectFlagsForFormat(createInfo.format);
+    aspectFlags = createInfo.aspectFlags != 0
+                      ? createInfo.aspectFlags
+                      : defaultAspectFlagsForFormat(createInfo.format);
     viewType = createInfo.viewType;
     mipLevels = createInfo.mipLevels;
     arrayLayers = createInfo.arrayLayers;
     ownsImage = true;
 
-    VkImageCreateInfo imageCreateInfo{};
-    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageCreateInfo.flags = createInfo.flags;
-    imageCreateInfo.imageType = createInfo.imageType;
-    imageCreateInfo.extent = createInfo.extent;
-    imageCreateInfo.mipLevels = createInfo.mipLevels;
-    imageCreateInfo.arrayLayers = createInfo.arrayLayers;
-    imageCreateInfo.format = createInfo.format;
-    imageCreateInfo.tiling = createInfo.tiling;
-    imageCreateInfo.initialLayout = createInfo.initialLayout;
-    imageCreateInfo.usage = createInfo.usage;
-    imageCreateInfo.samples = createInfo.samples;
-    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    device.createImageWithInfo(imageCreateInfo, createInfo.memoryProperties, image, memory);
-
     if (createDefaultView)
-    {
         createImageView(device.getDevice());
-    }
 }
 
-void Faye::VkImageResource::wrapExternal(VkDevice device,
+void Faye::VkImageResource::wrapExternal(VulkanDevice &device,
                                          const VkImageWrapInfo &wrapInfo,
                                          bool createDefaultView)
 {
-    destroy(device);
+    destroy(device.getDevice());
 
     if (wrapInfo.image == VK_NULL_HANDLE)
     {
@@ -148,15 +140,14 @@ void Faye::VkImageResource::wrapExternal(VkDevice device,
     mipLevels = wrapInfo.mipLevels;
     arrayLayers = wrapInfo.arrayLayers;
     ownsImage = false;
-    memory = VK_NULL_HANDLE;
 
     if (createDefaultView)
     {
-        createImageView(device);
+        createImageView(device.getDevice());
     }
 }
 
-void Faye::VkImageResource::wrapSwapchainImage(VkDevice device,
+void Faye::VkImageResource::wrapSwapchainImage(VulkanDevice &device,
                                                VkImage swapchainImage,
                                                VkFormat swapchainFormat,
                                                VkExtent2D swapchainExtent,
@@ -180,20 +171,20 @@ void Faye::VkImageResource::wrapSwapchainImage(VkDevice device,
 
 void Faye::VkImageResource::destroy(VkDevice device)
 {
+
     if (imageView != VK_NULL_HANDLE)
     {
         vkDestroyImageView(device, imageView, nullptr);
+        imageView = VK_NULL_HANDLE;
     }
-    if (ownsImage && image != VK_NULL_HANDLE)
+    if (ownsImage && image != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
     {
-        vkDestroyImage(device, image, nullptr);
+        vmaDestroyImage(allocator, image, allocation);
+        image = VK_NULL_HANDLE;
+        allocation = VK_NULL_HANDLE;
+        allocator = VK_NULL_HANDLE;
     }
-    if (ownsImage && memory != VK_NULL_HANDLE)
-    {
-        vkFreeMemory(device, memory, nullptr);
-    }
-
-    reset();
+    ownsImage = false;
 }
 
 VkImageView Faye::VkImageResource::createImageView(VkDevice device,
@@ -235,12 +226,60 @@ VkImageView Faye::VkImageResource::createImageView(VkDevice device,
     return imageView;
 }
 
+void Faye::VkImageResource::recordTransition(VkCommandBuffer commandBuffer,
+                                             VkImageLayout newLayout,
+                                             VkPipelineStageFlags2 srcStageMask,
+                                             VkPipelineStageFlags2 dstStageMask,
+                                             VkAccessFlags2 srcAccessMask,
+                                             VkAccessFlags2 dstAccessMask,
+                                             uint32_t baseMipLevel,
+                                             uint32_t levelCount,
+                                             uint32_t baseArrayLayer,
+                                             uint32_t layerCount)
+{
+    // Resolve 0 → sentinel so callers that pass 0 explicitly still produce valid barriers.
+    const uint32_t resolvedLevelCount = (levelCount == 0)
+        ? (mipLevels > baseMipLevel ? mipLevels - baseMipLevel : 1)
+        : levelCount;
+    const uint32_t resolvedLayerCount = (layerCount == 0)
+        ? (arrayLayers > baseArrayLayer ? arrayLayers - baseArrayLayer : 1)
+        : layerCount;
+
+    VkImageMemoryBarrier2 barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = srcStageMask;
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstStageMask = dstStageMask;
+    barrier.dstAccessMask = dstAccessMask;
+    barrier.oldLayout = layout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = aspectFlags;
+    barrier.subresourceRange.baseMipLevel = baseMipLevel;
+    barrier.subresourceRange.levelCount = resolvedLevelCount;
+    barrier.subresourceRange.baseArrayLayer = baseArrayLayer;
+    barrier.subresourceRange.layerCount = resolvedLayerCount;
+
+    VkDependencyInfo depInfo{};
+    depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    depInfo.imageMemoryBarrierCount = 1;
+    depInfo.pImageMemoryBarriers = &barrier;
+
+    vkCmdPipelineBarrier2(
+        commandBuffer,
+        &depInfo);
+
+    layout = newLayout;
+}
+
 void Faye::VkImageResource::transitionLayout(VulkanDevice &device,
                                              VkImageLayout newLayout,
-                                             VkPipelineStageFlags srcStageMask,
-                                             VkPipelineStageFlags dstStageMask,
-                                             VkAccessFlags srcAccessMask,
-                                             VkAccessFlags dstAccessMask,
+                                             VkPipelineStageFlags2 srcStageMask,
+                                             VkPipelineStageFlags2 dstStageMask,
+                                             VkAccessFlags2 srcAccessMask,
+                                             VkAccessFlags2 dstAccessMask,
                                              uint32_t baseMipLevel,
                                              uint32_t levelCount,
                                              uint32_t baseArrayLayer,
@@ -256,35 +295,42 @@ void Faye::VkImageResource::transitionLayout(VulkanDevice &device,
 
     VkCommandBuffer commandBuffer = device.beginSingleTimeCommands();
 
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = layout;
-    barrier.newLayout = newLayout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = aspectFlags;
-    barrier.subresourceRange.baseMipLevel = baseMipLevel;
-    barrier.subresourceRange.levelCount = resolvedLevelCount;
-    barrier.subresourceRange.baseArrayLayer = baseArrayLayer;
-    barrier.subresourceRange.layerCount = resolvedLayerCount;
-    barrier.srcAccessMask = srcAccessMask;
-    barrier.dstAccessMask = dstAccessMask;
-
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        srcStageMask,
-        dstStageMask,
-        0,
-        0,
-        nullptr,
-        0,
-        nullptr,
-        1,
-        &barrier);
+    recordTransition(commandBuffer,
+                     newLayout,
+                     srcStageMask,
+                     dstStageMask,
+                     srcAccessMask,
+                     dstAccessMask,
+                     baseMipLevel,
+                     resolvedLevelCount,
+                     baseArrayLayer,
+                     resolvedLayerCount);
 
     device.endSingleTimeCommands(commandBuffer);
-    layout = newLayout;
+}
+
+void Faye::VkImageResource::imageBarrier(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect,
+                                         VkImageLayout oldLayout, VkImageLayout newLayout,
+                                         VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage,
+                                         VkAccessFlags2 srcAccess, VkAccessFlags2 dstAccess)
+{
+    VkImageMemoryBarrier2 b{};
+    b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    b.srcStageMask = srcStage;
+    b.srcAccessMask = srcAccess;
+    b.dstStageMask = dstStage;
+    b.dstAccessMask = dstAccess;
+    b.oldLayout = oldLayout;
+    b.newLayout = newLayout;
+    b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = image;
+    b.subresourceRange = {aspect, 0, 1, 0, 1};
+    VkDependencyInfo dep{};
+    dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dep.imageMemoryBarrierCount = 1;
+    dep.pImageMemoryBarriers = &b;
+    vkCmdPipelineBarrier2(cmd, &dep);
 }
 
 VkImageAspectFlags Faye::VkImageResource::defaultAspectFlagsForFormat(VkFormat format)

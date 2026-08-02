@@ -104,15 +104,15 @@ namespace Faye
         std::optional<SceneRaycastHit> closestHit;
         float closestDistance = std::numeric_limits<float>::max();
 
-        for (Scene::EntityId entity : scene.getEntities())
+        for (const Ecs::Entity entity : scene.getEntities())
         {
-            const auto *transform = scene.tryGetTransform(entity);
+            const auto *transform = scene.tryGet<TransformComponent>(entity);
             if (transform == nullptr)
             {
                 continue;
             }
 
-            if (const auto *mesh = scene.tryGetMesh(entity))
+            if (const auto *mesh = scene.tryGet<MeshRendererComponent>(entity))
             {
                 const Model *model = modelRegistry.getModel(mesh->modelHandle);
                 if (model != nullptr)
@@ -141,7 +141,7 @@ namespace Faye
                 }
             }
 
-            if (const auto *pointLight = scene.tryGetPointLight(entity))
+            if (const auto *pointLight = scene.tryGet<PointLightComponent>(entity))
             {
                 const float worldRadius = std::max(pointLight->radius * extractMaxScale(transform->scale), 0.05f);
 

@@ -12,6 +12,9 @@ namespace Faye
         VkImageResource imageResource;
         VkSamplerResource samplerResource;
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        // Bindless slot index assigned when the texture is registered into the
+        // global texture array. UINT32_MAX means not yet registered.
+        uint32_t bindlessSlot = UINT32_MAX;
 
         VkTextureResource() = default;
         ~VkTextureResource() = default;

@@ -10,15 +10,15 @@
 
 Faye::FullscreenEffectPass::FullscreenEffectPass(
     VulkanDevice &device,
-    VkRenderPass renderPass,
+    VkFormat colorFormat,
     VulkanDescriptorPool &pool,
     PostProcessEffectDefinition definition)
     : vk_device(device),
       effectDefinition(std::move(definition)),
       descriptorPool(pool),
-      renderPass(renderPass)
+      colorFormat(colorFormat)
 {
-    LOG_INFO(Logger::getInstance(), "Creating FullscreenEffectPass...");
+    LOG_INFO(Logger::get(), "Creating FullscreenEffectPass...");
     createDescriptorSetLayout();
     createSceneColorSampler();
     createPipelineLayout();
@@ -152,7 +152,7 @@ void Faye::FullscreenEffectPass::createPipelineLayout()
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    LOG_INFO(Logger::getInstance(), "Created pipelinelayoutinfo struct...");
+    LOG_INFO(Logger::get(), "Created pipelinelayoutinfo struct...");
 
     if (vkCreatePipelineLayout(vk_device.getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
     {
@@ -168,10 +168,8 @@ void Faye::FullscreenEffectPass::createPipeline()
     VulkanPipeline::defaultPipelineConfigInfo(pipelineConfig);
     pipelineConfig.attributeDescriptions.clear();
     pipelineConfig.bindingDescriptions.clear();
-    pipelineConfig.depthStencilInfo.depthTestEnable = VK_FALSE;
-    pipelineConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
 
-    pipelineConfig.renderPass = renderPass;
+    pipelineConfig.colorAttachmentFormats = {colorFormat};
     pipelineConfig.pipelineLayout = pipelineLayout;
 
     vk_pipeline = std::make_unique<VulkanPipeline>(
@@ -186,7 +184,7 @@ void Faye::FullscreenEffectPass::invalidatePipelines(const std::string &compiled
     if (effectDefinition.vertexShaderPath == compiledShader || effectDefinition.fragmentShaderPath == compiledShader)
     {
         LOG_INFO(
-            Logger::getInstance(),
+            Logger::get(),
             "Invalidating pipeline for fullscreen effect with vertex shader '{}' and fragment shader '{}'",
             effectDefinition.vertexShaderPath,
             effectDefinition.fragmentShaderPath);
@@ -202,6 +200,13 @@ void Faye::FullscreenEffectPass::render(
     updateDescriptorSet(static_cast<uint32_t>(frameContext.frameIndex), namedInputs);
 
     vk_pipeline->bind(frameContext.commandBuffer);
+
+    vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
+    vkCmdSetFrontFace(frameContext.commandBuffer, VK_FRONT_FACE_CLOCKWISE);
+    vkCmdSetPrimitiveTopology(frameContext.commandBuffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    vkCmdSetDepthTestEnable(frameContext.commandBuffer, VK_FALSE);
+    vkCmdSetDepthWriteEnable(frameContext.commandBuffer, VK_FALSE);
+    vkCmdSetDepthCompareOp(frameContext.commandBuffer, VK_COMPARE_OP_LESS);
 
     vkCmdBindDescriptorSets(
         frameContext.commandBuffer,
@@ -299,7 +304,7 @@ void Faye::PostProcessChain::recreatePresentPass()
 {
     presentPass = std::make_unique<FullscreenEffectPass>(
         vk_device,
-        vk_renderer.getSwapChainRenderPass(),
+        vk_renderer.getSwapchainColorFormat(),
         descriptorPool,
         getPostProcessPresentEffectDefinition());
 }
@@ -343,7 +348,7 @@ Faye::FullscreenEffectPass &Faye::PostProcessChain::getOrCreateEffectPass(const 
                                    definition.id,
                                    std::make_unique<FullscreenEffectPass>(
                                        vk_device,
-                                       vk_renderer.getPostProcessRenderPass(),
+                                       vk_renderer.getSceneColorFormat(),
                                        descriptorPool,
                                        definition))
                        .first;

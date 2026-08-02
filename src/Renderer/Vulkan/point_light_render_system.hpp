@@ -1,6 +1,5 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 
@@ -22,6 +21,7 @@
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/Resources/Vertex.hpp"
 #include "vk_device.hpp"
+#include "vk_descriptors.hpp"
 #include "vk_pipeline.hpp"
 #include "vk_types.hpp"
 
@@ -33,7 +33,7 @@ namespace Faye
 	class PointLightRenderSystem
 	{
 	public:
-		PointLightRenderSystem(VulkanDevice &device, VkRenderPass renderPass, VkDescriptorSetLayout globalSetLayout);
+		PointLightRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, VulkanDescriptorSetLayout &globalSetLayout);
 		~PointLightRenderSystem();
 
 		PointLightRenderSystem(const PointLightRenderSystem &) = delete;
@@ -41,17 +41,19 @@ namespace Faye
 		PointLightRenderSystem(PointLightRenderSystem &&) = delete;
 		PointLightRenderSystem &operator=(PointLightRenderSystem &&) = delete;
 
+		// Draws camera-facing debug billboards for each point light. Lighting
+		// data (the UBO arrays) is packed separately by packSceneLighting().
 		void render(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
-		void update(FrameContext &frameContext, const RenderSceneSnapshot &renderScene, GlobalUBO &ubo);
 
 	private:
 		VulkanDevice &vk_device;
+		VulkanDescriptorSetLayout &globalDescriptorSetLayout;
 		std::unique_ptr<VulkanPipeline> vk_pipeline;
 
 		VkPipelineLayout pipelineLayout;
 
 		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout);
-		void createPipeline(VkRenderPass renderPass);
+		void createPipeline(VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat);
 	};
 
 } // namespace

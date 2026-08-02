@@ -2,22 +2,24 @@
 
 #include <string>
 #include <string_view>
-#include <vector>
 
+#include "Core/ECS/Entity.hpp"
 #include "Scene/Entities/Components.hpp"
-#include "Scene/Entities/EntityManager.hpp"
 
 namespace Faye
 {
     class Scene;
 
+    // Convenience facade over (Scene*, Ecs::Entity). Copyable and cheap; the
+    // generational handle means a stale copy safely reads as invalid after
+    // the entity dies.
     class Entity
     {
     public:
         Entity() = default;
-        Entity(Scene *scene, EntityId entityId) : scene(scene), entityId(entityId) {}
+        Entity(Scene *scene, Ecs::Entity handle) : scene(scene), entityHandle(handle) {}
 
-        EntityId id() const { return entityId; }
+        Ecs::Entity handle() const { return entityHandle; }
         bool isValid() const;
         explicit operator bool() const { return isValid(); }
 
@@ -26,35 +28,28 @@ namespace Faye
         void destroy();
         void setPrimaryCamera() const;
 
-        ComponentMask getComponentMask() const;
-        std::vector<ComponentKind> getComponentKinds() const;
-        bool hasComponent(ComponentKind kind) const;
+        // Mirror of Scene's generic component API, bound to this entity.
+        // Bodies live at the bottom of Scene.hpp: they need Scene complete,
+        // and Scene.hpp is what includes this header.
+        template <class T>
+        T &add() const;
 
-        TransformComponent &addTransform() const;
-        RigidBody2dComponent &addRigidBody2d() const;
+        template <class T>
+        void remove() const;
+
+        // Null-scene safe: reads as "no component" rather than throwing, so
+        // callers holding a default-constructed Entity can probe it.
+        template <class T>
+        T *tryGet() const;
+
+        // See the Scene overloads — these carry extra invariants.
         MeshRendererComponent &addMesh(ModelHandle modelHandle = {}) const;
         CameraComponent &addCamera(bool primary = false) const;
-        PointLightComponent &addPointLight() const;
-        PostProcessStackComponent &addPostProcessStack() const;
-
-        void removeTransform() const;
-        void removeRigidBody2d() const;
-        void removeMesh() const;
-        void removeCamera() const;
-        void removePointLight() const;
-        void removePostProcessStack() const;
-
-        TransformComponent *tryGetTransform() const;
-        RigidBody2dComponent *tryGetRigidBody2d() const;
-        MeshRendererComponent *tryGetMesh() const;
-        CameraComponent *tryGetCamera() const;
-        PointLightComponent *tryGetPointLight() const;
-        PostProcessStackComponent *tryGetPostProcessStack() const;
 
     private:
         Scene &requireScene() const;
 
         Scene *scene = nullptr;
-        EntityId entityId = invalidEntity;
+        Ecs::Entity entityHandle{};   // null by default
     };
 }

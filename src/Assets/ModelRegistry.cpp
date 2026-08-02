@@ -4,6 +4,19 @@
 
 using namespace Faye;
 
+Faye::ModelRegistry::ModelRegistry(VulkanDevice &device)
+    : device(device) {}
+
+Faye::ModelHandle Faye::ModelRegistry::createPrimitive(PrimitiveType primitiveType, uint32_t subdivisions)
+{
+    return registerModel(Model::createPrimitive(device, primitiveType, subdivisions));
+}
+
+std::unique_ptr<Faye::Model> Faye::ModelRegistry::makeModelFromFile(const std::string &modelPath)
+{
+    return Model::createModelFromFile(device, modelPath);
+}
+
 Faye::ModelHandle Faye::ModelRegistry::registerModel(std::unique_ptr<Model> model)
 {
     if (model == nullptr)

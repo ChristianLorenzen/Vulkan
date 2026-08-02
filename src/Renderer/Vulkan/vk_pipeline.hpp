@@ -26,15 +26,24 @@ namespace Faye
         VkPipelineDepthStencilStateCreateInfo depthStencilInfo;
         std::vector<VkDynamicState> dynamicStateEnables;
         VkPipelineDynamicStateCreateInfo dynamicStateInfo;
+        VkPipelineTessellationStateCreateInfo tessellationInfo;
         VkPipelineLayout pipelineLayout = nullptr;
-        VkRenderPass renderPass = nullptr;
-        uint32_t subpass = 0;
+
+        std::vector<VkFormat> colorAttachmentFormats;
+        VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+        VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
     };
 
     class VulkanPipeline : Pipeline
     {
     public:
-        VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config);
+        // tescFilepath/tesePath are optional: when both are non-empty the pipeline
+        // is built with a tessellation control + evaluation stage and
+        // config.tessellationInfo is wired in as pTessellationState. Leave both
+        // empty for a standard vertex+fragment pipeline (the default for every
+        // existing caller).
+        VulkanPipeline(VulkanDevice &device, const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
+                       const std::string &tescFilepath = "", const std::string &tesePath = "");
         ~VulkanPipeline();
 
         VulkanPipeline(const VulkanPipeline &) = delete;
@@ -45,14 +54,12 @@ namespace Faye
         static void defaultPipelineConfigInfo(PipelineConfigInfo &configInfo);
 
     private:
-        void createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config);
+        void createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
+                                    const std::string &tescFilepath, const std::string &tesePath);
 
-        VkShaderModule createShaderModule(const std::vector<char> &code);
-        // Dangling references to the Vulkan device.
-        // Only done as this should exist as long as this pipeline does.
         VulkanDevice &device;
         VkPipeline graphicsPipeline{VK_NULL_HANDLE};
-        VkShaderModule vertShaderModule{VK_NULL_HANDLE};
-        VkShaderModule fragShaderModule{VK_NULL_HANDLE};
     };
+    
+    VkShaderModule createShaderModule(VulkanDevice &device, const std::vector<char> &code);
 }

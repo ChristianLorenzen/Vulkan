@@ -1,6 +1,5 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
 
@@ -37,7 +36,7 @@ namespace Faye
 	class SimpleRenderSystem
 	{
 	public:
-		SimpleRenderSystem(VulkanDevice &device, VkRenderPass renderPass, MaterialCache &materialCache, VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
+		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout);
 		~SimpleRenderSystem();
 
 		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -47,33 +46,47 @@ namespace Faye
 
 		void invalidatePipelines(const std::string &compiledShader);
 		void renderScene(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
+		VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
 
-	private:
-		struct MaterialPipelineKey
-		{
-			std::string vertexShaderPath;
-			std::string fragmentShaderPath;
+                // Prepares the cached depth-prepass pipeline (call once after construction).
+                void prepareDepthPrepassPipeline(VkFormat depthFormat,
+                                                 VkDescriptorSetLayout globalSetLayout);
+                // Renders all non-water renderables depth-only.
+                void renderDepthPrepass(FrameContext &frameContext, const RenderSceneSnapshot &renderScene);
 
-			friend bool operator==(const MaterialPipelineKey &left, const MaterialPipelineKey &right) = default;
-		};
+        private:
+                struct MaterialPipelineKey
+                {
+                        std::string vertexShaderPath;
+                        std::string fragmentShaderPath;
+                        bool alphaBlend = false;
+                        MaterialDomain domain = MaterialDomain::Opaque;
+                        std::string tessControlShaderPath;
+                        std::string tessEvalShaderPath;
 
-		struct MaterialPipelineKeyHasher
-		{
-			size_t operator()(const MaterialPipelineKey &key) const;
-		};
+                        friend bool operator==(const MaterialPipelineKey &left, const MaterialPipelineKey &right) = default;
+                };
 
-		VulkanDevice &vk_device;
-		VkRenderPass renderPass;
-		MaterialCache &materialCache;
-		std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
+                struct MaterialPipelineKeyHasher
+                {
+                        size_t operator()(const MaterialPipelineKey &key) const;
+                };
 
-		VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
+                VulkanDevice &vk_device;
+                VkFormat sceneColorFormat, sceneMotionFormat, sceneDepthFormat;
+                MaterialCache &materialCache;
+                VulkanDescriptorSetLayout &globalDescriptorSetLayout;
+                std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
 
-		void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout);
-		VulkanPipeline &getOrCreatePipeline(const MaterialState &materialState);
-		std::unique_ptr<VulkanPipeline> createPipeline(const MaterialPipelineKey &key) const;
-		static MaterialPipelineKey makePipelineKey(const MaterialState &materialState);
-		static std::string resolveCompiledShaderPath(const std::string &shaderPath);
-	};
+                VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
+                VkPipelineLayout depthPrepassPipelineLayout{VK_NULL_HANDLE};
+                std::unique_ptr<VulkanPipeline> depthPrepassPipeline;
 
-} // namespace
+                void createPipelineLayout(VkDescriptorSetLayout globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout);
+                VulkanPipeline &getOrCreatePipeline(const MaterialState &materialState);
+                std::unique_ptr<VulkanPipeline> createPipeline(const MaterialPipelineKey &key) const;
+                static MaterialPipelineKey makePipelineKey(const MaterialState &materialState);
+                static std::string resolveCompiledShaderPath(const std::string &shaderPath);
+        }; // class SimpleRenderSystem
+
+} // namespace Faye

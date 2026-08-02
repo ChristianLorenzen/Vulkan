@@ -30,13 +30,17 @@ namespace Faye
         MaterialHandle handle{};
         uint64_t materialRevision = 0;
         MaterialPipelineConfig pipelineConfig{};
-        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-        std::unordered_map<TextureType, std::shared_ptr<VkTextureResource>, TextureTypeHasher> textures;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE; // params UBO only (set 1, binding 0)
         std::unique_ptr<VulkanBuffer> parameterBuffer{};
         MaterialUniformData uniformData{};
+        // Bindless texture slot indices (written into push constants per draw call).
+        uint32_t albedoSlot{0};
+        uint32_t normalSlot{0};
+        uint32_t metallicSlot{0};
+        uint32_t roughnessSlot{0};
+        uint32_t aoSlot{0};
 
         void reset();
-        const VkTextureResource *findTexture(TextureType type) const;
     };
 
     class MaterialCache
@@ -67,8 +71,7 @@ namespace Faye
         std::unordered_map<uint32_t, MaterialState> materialStates;
 
         void refreshState(MaterialState &state, MaterialHandle handle, const Material &material);
-        void writeDescriptorSet(MaterialState &state);
+        void writeParamDescriptorSet(MaterialState &state);
         void destroyState(MaterialState &state);
-        const VkTextureResource &resolveBoundTexture(const MaterialState &state, TextureType type) const;
     };
 }

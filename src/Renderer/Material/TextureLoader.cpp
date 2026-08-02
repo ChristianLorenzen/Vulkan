@@ -17,7 +17,7 @@ namespace Faye
         unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
         if (data == nullptr)
         {
-            LOG_ERROR(Logger::getInstance(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
+            LOG_ERROR(Logger::get(), "Failed to load texture at path {}. stbi error: {}", texturePath, stbi_failure_reason());
             throw std::runtime_error("Failed to load texture from file: " + texturePath);
         }
 
@@ -25,7 +25,7 @@ namespace Faye
         stbi_image_free(data);
 
         LOG_INFO(
-            Logger::getInstance(),
+            Logger::get(),
             "Loaded runtime texture at path {} with dimensions {}x{} and {} channels.",
             texturePath,
             width,

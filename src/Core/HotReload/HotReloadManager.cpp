@@ -2,25 +2,14 @@
 
 #include <algorithm>
 #include <ranges>
+#include <thread>
+#include "Core/Path/Paths.hpp"
 #include "quill/LogMacros.h"
 
 using namespace Faye;
 
 namespace
 {
-    std::string normalizeExtension(std::string extension)
-    {
-        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
-                       { return static_cast<char>(std::tolower(character)); });
-
-        if (!extension.empty() && extension.front() != '.')
-        {
-            extension.insert(extension.begin(), '.');
-        }
-
-        return extension;
-    }
-
     std::string eventKey(const HotReloadEvent &event)
     {
         return event.watchId + "|" + event.path.lexically_normal().string();
@@ -46,7 +35,7 @@ bool HotReloadManager::addWatch(HotReloadWatchSpec watchSpec)
 
     for (auto &extension : watchSpec.fileExtensions)
     {
-        extension = normalizeExtension(std::move(extension));
+        extension = Paths::normalizeExtension(std::move(extension));
     }
 
     WatchState watchState{};
@@ -58,7 +47,6 @@ bool HotReloadManager::addWatch(HotReloadWatchSpec watchSpec)
         watches[watchState.spec.id] = std::move(watchState);
     }
 
-    wakeCondition.notify_all();
     return true;
 }
 
@@ -86,6 +74,19 @@ std::vector<HotReloadWatchSpec> HotReloadManager::getWatches() const
     }
 
     return result;
+}
+
+WatchState HotReloadManager::getWatch(std::string_view watchId) const
+{
+    std::lock_guard<std::mutex> lock{mutex};
+
+    const auto it = watches.find(std::string(watchId));
+    if (it != watches.end())
+    {
+        return it->second;
+    }
+
+    throw std::invalid_argument("Watch not found");
 }
 
 HotReloadManager::CallbackToken HotReloadManager::subscribe(EventCallback callback)
@@ -131,18 +132,11 @@ bool HotReloadManager::unsubscribe(CallbackToken token)
 
 void HotReloadManager::start()
 {
+    // No thread to spawn anymore: tick() schedules scan jobs while `running`
+    // is true. lastScanTime is left as-is, so the first tick() after start()
+    // scans immediately (default epoch value is always >= pollInterval ago).
     bool expected = false;
-    if (!running.compare_exchange_strong(expected, true))
-    {
-        return;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock{mutex};
-        stopRequested = false;
-    }
-
-    workerThread = std::thread(&HotReloadManager::workerLoop, this);
+    running.compare_exchange_strong(expected, true);
 }
 
 void HotReloadManager::stop()
@@ -153,16 +147,12 @@ void HotReloadManager::stop()
         return;
     }
 
+    // This replaces the old workerThread.join(): the scan job captures
+    // `this`, so we must not return (and certainly not destruct) while one is
+    // still running. tick() schedules no new scans once `running` is false.
+    while (scanInFlight.load(std::memory_order_acquire))
     {
-        std::lock_guard<std::mutex> lock{mutex};
-        stopRequested = true;
-    }
-
-    wakeCondition.notify_all();
-
-    if (workerThread.joinable())
-    {
-        workerThread.join();
+        std::this_thread::yield();
     }
 }
 
@@ -234,8 +224,6 @@ void HotReloadManager::setPollInterval(std::chrono::milliseconds interval)
         std::lock_guard<std::mutex> lock{mutex};
         pollInterval = interval;
     }
-
-    wakeCondition.notify_all();
 }
 
 std::chrono::milliseconds HotReloadManager::getPollInterval() const
@@ -244,7 +232,7 @@ std::chrono::milliseconds HotReloadManager::getPollInterval() const
     return pollInterval;
 }
 
-std::unordered_map<std::string, HotReloadManager::FileState> HotReloadManager::scanFiles(const HotReloadWatchSpec &watchSpec) const
+std::unordered_map<std::string, FileState> HotReloadManager::scanFiles(const HotReloadWatchSpec &watchSpec) const
 {
     std::unordered_map<std::string, FileState> files;
     std::error_code errorCode;
@@ -309,81 +297,92 @@ bool HotReloadManager::shouldWatchFile(const HotReloadWatchSpec &watchSpec, cons
         return true;
     }
 
-    const std::string extension = normalizeExtension(path.extension().string());
+    const std::string extension = Paths::normalizeExtension(path.extension().string());
     return std::find(watchSpec.fileExtensions.begin(), watchSpec.fileExtensions.end(), extension) != watchSpec.fileExtensions.end();
 }
 
-void HotReloadManager::workerLoop()
+void HotReloadManager::tick(Jobs::JobSystem &jobs)
 {
-    while (running.load())
+    if (!running.load())
     {
-        std::unordered_map<std::string, WatchState> watchesSnapshot;
-        std::unordered_map<CallbackToken, EventCallback> subscribersSnapshot;
-        std::chrono::milliseconds currentPollInterval{};
+        return;
+    }
 
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastScanTime < getPollInterval())
+    {
+        return;
+    }
+
+    // At most one scan in flight; a slow scan skips intervals instead of
+    // stacking jobs behind it.
+    if (scanInFlight.exchange(true))
+    {
+        return;
+    }
+
+    lastScanTime = now;
+    jobs.schedule([this]
+                  {
+                      runScan();
+                      scanInFlight.store(false, std::memory_order_release);
+                  },
+                  {}, "hot-reload scan");
+}
+
+void HotReloadManager::runScan()
+{
+    std::unordered_map<std::string, WatchState> watchesSnapshot;
+    {
+        std::unique_lock<std::mutex> lock{mutex};
+        watchesSnapshot = watches;
+    }
+
+    std::unordered_map<std::string, std::unordered_map<std::string, FileState>> scannedFiles;
+    std::vector<HotReloadEvent> events;
+
+    for (const auto &[watchId, watchState] : watchesSnapshot)
+    {
+        auto currentFiles = scanFiles(watchState.spec);
+
+        for (const auto &[path, fileState] : currentFiles)
         {
-            std::unique_lock<std::mutex> lock{mutex};
-            currentPollInterval = pollInterval;
-            wakeCondition.wait_for(lock, currentPollInterval, [&]
-                                   { return stopRequested || !running.load(); });
-
-            if (stopRequested || !running.load())
+            const auto knownIterator = watchState.knownFiles.find(path);
+            if (knownIterator == watchState.knownFiles.end())
             {
-                break;
+                events.push_back(HotReloadEvent{watchId, path, HotReloadEventType::Added});
+                continue;
             }
 
-            watchesSnapshot = watches;
-            subscribersSnapshot = subscribers;
-        }
-
-        std::unordered_map<std::string, std::unordered_map<std::string, FileState>> scannedFiles;
-        std::vector<HotReloadEvent> events;
-
-        for (const auto &[watchId, watchState] : watchesSnapshot)
-        {
-            auto currentFiles = scanFiles(watchState.spec);
-            scannedFiles.emplace(watchId, currentFiles);
-
-            for (const auto &[path, fileState] : currentFiles)
+            if (knownIterator->second.lastWriteTime != fileState.lastWriteTime || knownIterator->second.fileSize != fileState.fileSize)
             {
-                const auto knownIterator = watchState.knownFiles.find(path);
-                if (knownIterator == watchState.knownFiles.end())
-                {
-                    events.push_back(HotReloadEvent{watchId, path, HotReloadEventType::Added});
-                    continue;
-                }
-
-                if (knownIterator->second.lastWriteTime != fileState.lastWriteTime || knownIterator->second.fileSize != fileState.fileSize)
-                {
-                    events.push_back(HotReloadEvent{watchId, path, HotReloadEventType::Modified});
-                }
-            }
-
-            for (const auto &[path, _] : watchState.knownFiles)
-            {
-                if (!currentFiles.contains(path))
-                {
-                    events.push_back(HotReloadEvent{watchId, path, HotReloadEventType::Removed});
-                }
-            }
-        }
-
-        {
-            std::lock_guard<std::mutex> lock{mutex};
-            for (auto &[watchId, fileStates] : scannedFiles)
-            {
-                auto watchIterator = watches.find(watchId);
-                if (watchIterator != watches.end())
-                {
-                    watchIterator->second.knownFiles = std::move(fileStates);
-                }
+                events.push_back(HotReloadEvent{watchId, path, HotReloadEventType::Modified});
             }
         }
 
-        std::lock_guard<std::mutex> lock{mutex};
-        for (const auto &event : events)
+        for (const auto &[path, _] : watchState.knownFiles)
         {
-            pendingEvents[eventKey(event)] = event;
+            if (!currentFiles.contains(path))
+            {
+                events.push_back(HotReloadEvent{watchId, path, HotReloadEventType::Removed});
+            }
         }
+
+        scannedFiles.emplace(watchId, std::move(currentFiles));
+    }
+
+    std::lock_guard<std::mutex> lock{mutex};
+    for (auto &[watchId, fileStates] : scannedFiles)
+    {
+        auto watchIterator = watches.find(watchId);
+        if (watchIterator != watches.end())
+        {
+            watchIterator->second.knownFiles = std::move(fileStates);
+        }
+    }
+
+    for (const auto &event : events)
+    {
+        pendingEvents[eventKey(event)] = event;
     }
 }

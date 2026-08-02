@@ -1,4 +1,3 @@
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 #include "Platform/GLFW/VKGLFW.hpp"
@@ -35,13 +34,15 @@ void Faye::Window::framebufferResizeCallback(GLFWwindow *window, int width, int 
 /// @param title The window name
 Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width{width}, height{height}, title{title}
 {
-    LOG_INFO(Logger::getInstance(), "Window::Window - [Constructor] - Initializing glfw and the glfwWindow");
+    LOG_INFO(Logger::get(), "Window::Window - [Constructor] - Initializing glfw and the glfwWindow");
 
     // Init GLFW
     glfwInit();
     glfwSetErrorCallback(VKGLFW::glfwErrorCallback);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
 
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
@@ -59,8 +60,9 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width
         glfwSetCursorPosCallback(window, Input::cursorCallback);
         glfwSetMouseButtonCallback(window, Input::mouseButtonCallback);
         glfwSetScrollCallback(window, Input::scrollCallback);
+        glfwSetWindowSizeLimits(window, 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
-        LOG_INFO(Logger::getInstance(), "GLFW Window created successfully.");
+        LOG_INFO(Logger::get(), "GLFW Window created successfully.");
     }
 }
 
@@ -78,7 +80,7 @@ bool Window::isVulkanSupported()
 {
     if (!glfwVulkanSupported())
     {
-        LOG_ERROR(Logger::getInstance(), "Vulkan not supported on this device.");
+        LOG_ERROR(Logger::get(), "Vulkan not supported on this device.");
         glfwTerminate();
         return false;
     }
