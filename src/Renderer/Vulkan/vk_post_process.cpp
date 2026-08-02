@@ -319,7 +319,11 @@ uint32_t Faye::PostProcessChain::getEnabledEffectCount(const PostProcessStackCom
     uint32_t count = 0;
     for (const auto &effect : stack->effects)
     {
-        if (effect.enabled)
+        // Count only effects that will actually render: renderEffects skips
+        // unknown definition ids, so counting them here would hand the
+        // composite/viewport a target index that was never written (a stale
+        // or black frame for a hand-edited/forward-compat scene file).
+        if (effect.enabled && findPostProcessEffectDefinition(effect.definitionId) != nullptr)
         {
             ++count;
         }

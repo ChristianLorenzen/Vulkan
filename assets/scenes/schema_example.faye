@@ -72,7 +72,7 @@ entities:
       - type: Post Process Stack
         enabled: true
         effects:
-          - definitionId: tone_map
+          - definitionId: tonemap
             enabled: true
             parameters:
               color: [1, 1, 1, 1]
