@@ -74,6 +74,12 @@ set(FAYE_ENGINE_SOURCES
     Scene/SceneQueries.cpp
     Scene/SceneManager.cpp
     Scene/SceneBuilder.cpp
+    Scene/Serialization/Serializer.cpp
+    Scene/Serialization/Deserializer.cpp
+    Scene/Serialization/ComponentSerializers.cpp
+    Scene/Serialization/MaterialEnumNames.cpp
+    Scene/Serialization/SceneFileWriter.cpp
+    Scene/Serialization/SceneFileReader.cpp
 )
 
 include(FetchContent)
@@ -142,7 +148,8 @@ target_link_libraries(faye_app
     spirv-reflect-static
     lua_static
     sol2::sol2
-    Faye::BoostHeaders)
+    Faye::BoostHeaders
+    yaml-cpp)
 
 target_compile_features(faye_app PRIVATE cxx_std_20)
 
@@ -238,6 +245,11 @@ add_executable(faye_tests
     Scene/Entities/RegisterComponents.cpp
     Scene/Scene.cpp
     Scene/Tests/SceneTests.cpp
+    Scene/Serialization/Serializer.cpp
+    Scene/Serialization/Deserializer.cpp
+    Scene/Serialization/ComponentSerializers.cpp
+    Scene/Serialization/MaterialEnumNames.cpp
+    Scene/Serialization/Tests/SceneSerializationTests.cpp
     Scripting/ScriptSystem.cpp
     Scripting/LuaScriptSystem.cpp
     Scripting/Tests/ScriptSystemTests.cpp
@@ -254,7 +266,9 @@ target_link_libraries(faye_tests
     quill::quill
     sol2::sol2
     lua_static
-    Faye::BoostHeaders)
+    assimp::assimp
+    Faye::BoostHeaders
+    yaml-cpp)
 
 # Core/Path/Paths.cpp (pulled in for the hot-reload watch path) needs the same
 # repo-root definition faye_app gets.

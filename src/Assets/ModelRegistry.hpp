@@ -43,8 +43,17 @@ namespace Faye
         Model *getModel(ModelHandle handle);
         const Model *getModel(ModelHandle handle) const;
 
-        std::optional<AssetId> assetIdOf(ModelHandle handle) const;
-        std::optional<ModelHandle> findByAssetId(const AssetId &assetId) const;
+        std::optional<AssetId> assetIdOf(ModelHandle handle) const
+        {
+            const auto it = handleToAsset.find(handle.value);
+            return it != handleToAsset.end() ? std::optional<AssetId>{it->second} : std::nullopt;
+        }
+
+        std::optional<ModelHandle> findByAssetId(const AssetId &assetId) const
+        {
+            const auto it = assetToHandle.find(assetId);
+            return it != assetToHandle.end() ? std::optional<ModelHandle>{it->second} : std::nullopt;
+        }
 
     private:
         VulkanDevice &device;

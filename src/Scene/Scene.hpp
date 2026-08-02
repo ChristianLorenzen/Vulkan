@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Core/ECS/World.hpp"
+#include "Core/Serialization/Uuid.hpp"
 #include "Scene/Entities/Entity.hpp"
 
 namespace Faye
@@ -34,6 +35,9 @@ namespace Faye
         Scene &operator=(Scene &&) = delete;
 
         Entity createEntity(std::string name = {});
+        // Create with a persisted GUID (scene load). Collisions mint a fresh
+        // random GUID (see EntityRegistry::createWithGuid).
+        Entity createEntityWithGuid(std::string name, Uuid guid);
         Entity getEntity(Ecs::Entity entity);
         Entity duplicateEntity(Ecs::Entity entity);
         Entity getPrimaryCameraEntity();
@@ -41,7 +45,11 @@ namespace Faye
         void destroyEntity(Entity entity);
         bool isValid(Ecs::Entity entity) const;
 
+        Uuid getSceneUuid() const { return sceneUuid; }
+        void setSceneUuid(Uuid uuid) { sceneUuid = uuid; }
+
         std::string_view getName() const { return name; }
+        void setName(std::string sceneName) { name = std::move(sceneName); }
         const std::vector<Ecs::Entity> &getEntities() const { return sceneEntities; }
 
         void setEntityName(Ecs::Entity entity, std::string name);
@@ -119,6 +127,7 @@ namespace Faye
         }
 
         std::string name;
+        Uuid sceneUuid = Uuid::generateV4();
         Ecs::World world;
         std::vector<Ecs::Entity> sceneEntities;   // creation order, backs getEntities()
         Ecs::Entity primaryCameraEntity{};        // null when no primary camera

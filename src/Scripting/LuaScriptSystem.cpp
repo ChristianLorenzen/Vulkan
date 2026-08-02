@@ -7,6 +7,7 @@
 
 #include "Core/Logging/Logger.hpp"
 #include "Scene/Scene.hpp"
+#include "Scene/Serialization/ComponentSerializers.hpp"
 #include "quill/LogMacros.h"
 
 namespace Faye
@@ -32,7 +33,8 @@ namespace Faye
 
         auto &world = scene->getWorld();
 
-        world.types().registerType<LuaScriptComponent, Ecs::Clone::skip>("Lua Script");
+        world.types().registerType<LuaScriptComponent, Ecs::Clone::skip>(
+            "Lua Script", Ecs::serializeLuaScript, Ecs::deserializeLuaScript);
 
         // Teardown channel: fires on unloadScript, entity destruction, the
         // editor's type-registry remove, and scene teardown. Calling onDestroy

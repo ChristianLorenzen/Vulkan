@@ -46,6 +46,20 @@ namespace Faye
         return Entity{this, entity};
     }
 
+    Entity Scene::createEntityWithGuid(std::string name, Uuid guid)
+    {
+        const Ecs::Entity entity = world.createWithGuid(guid);
+        sceneEntities.push_back(entity);
+
+        if (name.empty())
+        {
+            name = defaultEntityName(entity);
+        }
+        world.add<EntityMetadata>(entity, EntityMetadata{std::move(name)});
+
+        return Entity{this, entity};
+    }
+
     Entity Scene::getEntity(Ecs::Entity entity)
     {
         return Entity{this, isValid(entity) ? entity : Ecs::Entity::null()};

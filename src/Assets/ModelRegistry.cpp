@@ -24,6 +24,7 @@ Faye::ModelHandle Faye::ModelRegistry::createPrimitive(PrimitiveType primitiveTy
         .id = assetId,
         .type = AssetType::Model,
         .name = std::string(primitiveTypeName(primitiveType)),
+        .primitiveName = std::string(primitiveTypeName(primitiveType)),
         .persistence = AssetPersistenceMode::BuiltIn,
     });
     return handle;
@@ -90,16 +91,4 @@ const Faye::Model *Faye::ModelRegistry::getModel(ModelHandle handle) const
 {
     auto iterator = models.find(handle.value);
     return iterator != models.end() ? iterator->second.get() : nullptr;
-}
-
-std::optional<Faye::AssetId> Faye::ModelRegistry::assetIdOf(ModelHandle handle) const
-{
-    const auto it = handleToAsset.find(handle.value);
-    return it != handleToAsset.end() ? std::optional<AssetId>{it->second} : std::nullopt;
-}
-
-std::optional<Faye::ModelHandle> Faye::ModelRegistry::findByAssetId(const AssetId &assetId) const
-{
-    const auto it = assetToHandle.find(assetId);
-    return it != assetToHandle.end() ? std::optional<ModelHandle>{it->second} : std::nullopt;
 }

@@ -39,6 +39,7 @@ static const char *dl_error()
 #include "Core/Path/Paths.hpp"
 #include "Scene/Entities/Entity.hpp"
 #include "Scene/Scene.hpp"
+#include "Scene/Serialization/ComponentSerializers.hpp"
 #include "quill/LogMacros.h"
 
 using namespace Faye;
@@ -58,8 +59,8 @@ void ScriptSystem::bindScene(Scene *scene)
 
     auto &world = scene->getWorld();
 
-    world.types().registerType<NativeScriptComponent, Ecs::Clone::skip>("Native Script");
-
+world.types().registerType<NativeScriptComponent, Ecs::Clone::skip>(
+            "Native Script", Ecs::serializeNativeScript, Ecs::deserializeNativeScript);
     // The channel that fixes the orphaned-script leak: every removal route —
     // unloadScript, entity destruction, the editor's type-registry remove,
     // scene teardown — funnels through this hook while the data is intact.

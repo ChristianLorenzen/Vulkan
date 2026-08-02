@@ -133,6 +133,19 @@ function(faye_configure_dependencies)
     set(DOCTEST_NO_INSTALL ON  CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(doctest)
 
+    # yaml-cpp — scene/asset serialization format
+    FetchContent_Declare(
+        yaml-cpp
+        GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+        GIT_TAG        0.8.0
+        GIT_SHALLOW    TRUE
+    )
+    set(YAML_CPP_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
+    set(YAML_CPP_BUILD_TOOLS   OFF CACHE BOOL "" FORCE)
+    set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+    set(YAML_CPP_INSTALL       OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(yaml-cpp)
+
     # Boost — header-only surface (boost.uuid and its transitive headers),
     # pinned to a release tag. Shallow-cloned WITH all submodules so the
     # header closure is complete without maintaining a fragile per-module

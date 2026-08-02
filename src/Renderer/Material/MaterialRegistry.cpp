@@ -103,15 +103,3 @@ const Faye::Material *Faye::MaterialRegistry::getMaterialOrDefault(MaterialHandl
     }
     return getMaterial(defaultHandle);
 }
-
-std::optional<Faye::AssetId> Faye::MaterialRegistry::assetIdOf(MaterialHandle handle) const
-{
-    const auto it = handleToAsset.find(handle.value);
-    return it != handleToAsset.end() ? std::optional<AssetId>{it->second} : std::nullopt;
-}
-
-std::optional<Faye::MaterialHandle> Faye::MaterialRegistry::findByAssetId(const AssetId &assetId) const
-{
-    const auto it = assetToHandle.find(assetId);
-    return it != assetToHandle.end() ? std::optional<MaterialHandle>{it->second} : std::nullopt;
-}

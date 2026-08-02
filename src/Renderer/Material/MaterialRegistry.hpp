@@ -47,8 +47,17 @@ namespace Faye
         Material *getMaterialOrDefault(MaterialHandle handle);
         const Material *getMaterialOrDefault(MaterialHandle handle) const;
 
-        std::optional<AssetId> assetIdOf(MaterialHandle handle) const;
-        std::optional<MaterialHandle> findByAssetId(const AssetId &assetId) const;
+        std::optional<AssetId> assetIdOf(MaterialHandle handle) const
+        {
+            const auto it = handleToAsset.find(handle.value);
+            return it != handleToAsset.end() ? std::optional<AssetId>{it->second} : std::nullopt;
+        }
+
+        std::optional<MaterialHandle> findByAssetId(const AssetId &assetId) const
+        {
+            const auto it = assetToHandle.find(assetId);
+            return it != assetToHandle.end() ? std::optional<MaterialHandle>{it->second} : std::nullopt;
+        }
 
     private:
         AssetDatabase &assetDatabase;

@@ -32,6 +32,7 @@ namespace Faye
         AssetType type{AssetType::Model};
         std::string name{};
         std::string sourceUri{};          // empty for built-ins/primitives
+        std::string primitiveName{};      // set for built-in primitive models ("Cube", ...)
         AssetPersistenceMode persistence{AssetPersistenceMode::Transient};
         bool dirty = false;
     };

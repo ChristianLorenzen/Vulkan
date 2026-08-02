@@ -61,8 +61,12 @@ namespace Faye::Ecs
         // Clone is a TEMPLATE argument, not a runtime one: Clone::skip must
         // stop the copy from being instantiated at all, which is the only way
         // a move-only component (CameraComponent) can be registered.
+        // serialize/deserialize fill the reserved ComponentTypeInfo slots;
+        // nullptr (default) marks a type as not (de)serializable.
         template <class T, Clone C = Clone::copy>
-        void registerType(const char *name);
+        void registerType(const char *name,
+                          void (*serialize)(const void *, Serializer &) = nullptr,
+                          void (*deserialize)(void *, Deserializer &) = nullptr);
 
         const ComponentTypeInfo &info(ComponentId id) const { return types[id]; }
         std::span<const ComponentTypeInfo> all() const { return types; }
@@ -314,7 +318,9 @@ namespace Faye::Ecs
 
     // Out of line because the lambdas need World's full definition.
     template <class T, Clone C>
-    void ComponentTypeRegistry::registerType(const char *name)
+    void ComponentTypeRegistry::registerType(const char *name,
+                                             void (*serialize)(const void *, Serializer &),
+                                             void (*deserialize)(void *, Deserializer &))
     {
         const ComponentId id = componentId<T>();
         if (id >= types.size())
@@ -327,6 +333,8 @@ namespace Faye::Ecs
             .tryGetRaw = [](World &world, Entity e) -> void * { return world.tryGet<T>(e); },
             .has = [](World &world, Entity e) { return world.has<T>(e); },
             .copyTo = makeCopyTo<T, C>(),
+            .serialize = serialize,
+            .deserialize = deserialize,
         };
     }
 

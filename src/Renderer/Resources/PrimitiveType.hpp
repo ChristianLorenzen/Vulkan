@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace Faye
@@ -34,5 +35,17 @@ namespace Faye
         }
 
         return "Unknown Primitive";
+    }
+
+    // Reverse lookup for scene files (name -> enum). nullopt for unknown names.
+    inline std::optional<PrimitiveType> primitiveTypeFromName(std::string_view name)
+    {
+        for (int i = 0; i < static_cast<int>(PrimitiveType::Count); ++i)
+        {
+            const auto type = static_cast<PrimitiveType>(i);
+            if (primitiveTypeName(type) == name)
+                return type;
+        }
+        return std::nullopt;
     }
 }
