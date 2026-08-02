@@ -110,6 +110,12 @@ target_link_libraries(faye_imgui
     Faye::GLFW
     Faye::Vulkan)
 
+# PUBLIC so faye_imgui and everything including imgui_internal.h agree on the
+# operator set — a mismatch is an ODR violation, and the precompiled header
+# (which parses imgui.h once for the whole target) makes a per-file #define
+# unreliable anyway.
+target_compile_definitions(faye_imgui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+
 if(MSVC)
     target_compile_definitions(faye_imgui PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
@@ -141,6 +147,19 @@ target_compile_definitions(faye_app PRIVATE
     FAYE_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
 )
 
+# Configuration macros for the third-party headers in the PCH. These used to be
+# #defined ad hoc at the top of individual sources; the precompiled header is
+# force-included before those lines, so they have to be target-wide to stay
+# consistent (GLM_FORCE_DEPTH_ZERO_TO_ONE in particular changes what
+# glm::perspective produces). The remaining in-file #defines are identical
+# redefinitions and stay harmless.
+target_compile_definitions(faye_app PRIVATE
+    GLM_FORCE_RADIANS
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
+    GLM_ENABLE_EXPERIMENTAL
+    GLFW_INCLUDE_VULKAN
+)
+
 if(FAYE_JOBS_SINGLE_THREADED)
     target_compile_definitions(faye_app PRIVATE JOBS_SINGLE_THREADED)
 endif()
@@ -167,6 +186,27 @@ endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(faye_app PRIVATE dl pthread)
     target_link_options(faye_app PRIVATE -rdynamic)
+endif()
+
+# --- Precompiled headers ---
+# Precompiles the stable third-party surface (ImGui, quill, glm, Vulkan, VMA,
+# GLFW) plus the standard library once per target instead of once per
+# translation unit. See src/Precompiled/FayePCH.hpp for what may go in there.
+if(FAYE_USE_PCH)
+    target_precompile_headers(faye_app PRIVATE Precompiled/FayePCH.hpp)
+
+    # Single-header libraries are compiled here, and the PCH is force-included
+    # ahead of the *_IMPLEMENTATION macro that switches them on:
+    # vma_implementation.cpp - the PCH already parsed vk_mem_alloc.h without
+    # VMA_IMPLEMENTATION, so the definitions would
+    # silently vanish.
+    # Model.cpp              - stb_image's SSE2 path miscompiles under a PCH
+    # at -O0 ("last argument must be an 8-bit
+    # immediate" out of emmintrin.h).
+    set_source_files_properties(
+        Renderer/Vulkan/vma_implementation.cpp
+        Renderer/Resources/Model.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 endif()
 
 # --- Unit tests ---
@@ -212,6 +252,14 @@ target_compile_definitions(faye_tests PRIVATE
     FAYE_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
 )
 
+# Match faye_app's glm configuration (see the note there); the tests share
+# Camera/Components, so the two targets must agree.
+target_compile_definitions(faye_tests PRIVATE
+    GLM_FORCE_RADIANS
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
+    GLM_ENABLE_EXPERIMENTAL
+)
+
 if(FAYE_JOBS_SINGLE_THREADED)
     target_compile_definitions(faye_tests PRIVATE JOBS_SINGLE_THREADED)
 endif()
@@ -242,6 +290,15 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(faye_tests PRIVATE dl pthread)
 endif()
 
+if(FAYE_USE_PCH)
+    target_precompile_headers(faye_tests PRIVATE Precompiled/FayeTestPCH.hpp)
+
+    # Defines DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN before including doctest, which
+    # the PCH has already parsed without it — without this, main() disappears.
+    set_source_files_properties(Tests/TestMain.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+endif()
+
 add_test(NAME faye_tests COMMAND faye_tests)
 
 # --- RotatorScript example plugin ---
@@ -257,6 +314,14 @@ target_include_directories(faye_rotator_script
     ${_assimp_script_bin}/include)
 
 target_compile_features(faye_rotator_script PRIVATE cxx_std_20)
+
+# Same glm configuration as faye_app: the plugin includes engine headers
+# (Camera, Components) that no longer set these themselves.
+target_compile_definitions(faye_rotator_script PRIVATE
+    GLM_FORCE_RADIANS
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
+    GLM_ENABLE_EXPERIMENTAL
+)
 
 if(MSVC)
     target_compile_options(faye_rotator_script PRIVATE /W4)

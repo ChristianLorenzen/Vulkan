@@ -1,8 +1,5 @@
 #include "Model.hpp"
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "include/tiny_obj_loader.h"
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
 

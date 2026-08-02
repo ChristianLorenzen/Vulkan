@@ -7,8 +7,6 @@
 #include "Renderer/Material/Material.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>

@@ -87,7 +87,7 @@ namespace Faye
         void cleanupSceneRenderTargets();
         void cleanupPostProcessRenderTargets();
         void createSceneViewportSampler();
-        void destroySceneViewportSampler();;
+        void destroySceneViewportSampler();
         VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
         void createCommandBuffers();
         void freeCommandBuffers();

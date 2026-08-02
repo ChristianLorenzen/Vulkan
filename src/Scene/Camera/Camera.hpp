@@ -1,11 +1,8 @@
 #pragma once
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>    //vec3, vec4, ivec4, mat4
 #include <glm/common.hpp> //vec3, vec4, ivec4, mat4
 #include <glm/gtc/matrix_transform.hpp>
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
 namespace Faye
