@@ -105,6 +105,8 @@ namespace Faye::Editor::Panels
             ImGui::EndMenuBar();
         }
 
+        drawFilePicker();
+
         ImGui::End();
     }
 
@@ -124,63 +126,37 @@ namespace Faye::Editor::Panels
             }
             if (ImGui::MenuItem("Save As..."))
             {
-                saveAsModalOpen = true;
-                pathInputBuffer[0] = '\0';
+                filePicker.open(Widgets::FilePickerDialog::Mode::Save,
+                                {".faye"},
+                                Paths::projects() / "scenes");
             }
             if (ImGui::MenuItem("Open..."))
             {
-                openModalOpen = true;
-                pathInputBuffer[0] = '\0';
+                filePicker.open(Widgets::FilePickerDialog::Mode::Open,
+                                {".faye"},
+                                Paths::projects() / "scenes");
             }
             ImGui::EndMenu();
         }
+    }
 
-        if (saveAsModalOpen)
+    void EditorPanels::drawFilePicker()
+    {
+        if (!filePicker.draw(icons))
         {
-            ImGui::OpenPopup("Save Scene As");
-            saveAsModalOpen = false;
+            return;
         }
-        if (ImGui::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (!fileActionCallback)
         {
-            ImGui::InputText("Path", pathInputBuffer.data(), static_cast<int>(pathInputBuffer.size()));
-            const bool saveClicked = ImGui::Button("Save") || ImGui::IsKeyPressed(ImGuiKey_Enter);
-            ImGui::SameLine();
-            const bool cancelClicked = ImGui::Button("Cancel");
-            if (saveClicked && pathInputBuffer[0] != '\0')
-            {
-                if (fileActionCallback)
-                    fileActionCallback(FileAction::SaveAs, std::filesystem::path(pathInputBuffer.data()));
-                ImGui::CloseCurrentPopup();
-            }
-            else if (cancelClicked)
-            {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
+            return;
         }
-
-        if (openModalOpen)
+        if (filePicker.mode() == Widgets::FilePickerDialog::Mode::Open)
         {
-            ImGui::OpenPopup("Open Scene");
-            openModalOpen = false;
+            fileActionCallback(FileAction::Open, filePicker.path());
         }
-        if (ImGui::BeginPopupModal("Open Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        else
         {
-            ImGui::InputText("Path", pathInputBuffer.data(), static_cast<int>(pathInputBuffer.size()));
-            const bool openClicked = ImGui::Button("Open") || ImGui::IsKeyPressed(ImGuiKey_Enter);
-            ImGui::SameLine();
-            const bool cancelClicked = ImGui::Button("Cancel");
-            if (openClicked && pathInputBuffer[0] != '\0')
-            {
-                if (fileActionCallback)
-                    fileActionCallback(FileAction::Open, std::filesystem::path(pathInputBuffer.data()));
-                ImGui::CloseCurrentPopup();
-            }
-            else if (cancelClicked)
-            {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
+            fileActionCallback(FileAction::SaveAs, filePicker.savePath());
         }
     }
 

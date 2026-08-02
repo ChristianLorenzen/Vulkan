@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Editor/Widgets/AssetBrowser.hpp"
+#include "Editor/Widgets/FilePickerDialog.hpp"
 #include "Editor/ImGuiFrameData.hpp"
 #include "Editor/Panels/IEditorPanel.hpp"
 #include "Renderer/Resources/PrimitiveType.hpp"
@@ -85,6 +86,7 @@ namespace Faye::Editor::Panels
         void drawDockspace();
         void drawPrimitiveMenuItem(PrimitiveType primitiveType);
         void drawFileMenu();
+        void drawFilePicker();
 
         Scene *boundScene = nullptr;
         Entity selectedEntity;
@@ -94,10 +96,9 @@ namespace Faye::Editor::Panels
         FileActionCallback fileActionCallback;
         std::vector<std::unique_ptr<IEditorPanel>> panels;
 
-        // Save As / Open path entry (ImGui modal). Empty path = modal closed.
-        std::array<char, 512> pathInputBuffer{};
-        bool saveAsModalOpen = false;
-        bool openModalOpen = false;
+        // Reusable scene file picker (Open shows .faye files; Save browses a
+        // folder + file name). Any specialized picker can reuse this widget.
+        Widgets::FilePickerDialog filePicker;
 
         Widgets::EditorIconLibrary icons;
         MaterialRegistry *materialRegistry = nullptr;

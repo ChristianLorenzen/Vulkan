@@ -26,6 +26,7 @@ set(FAYE_ENGINE_SOURCES
     Editor/Panels/RuntimeView/RuntimeViewPanel.cpp
     Editor/Widgets/AssetBrowser.cpp
     Editor/Widgets/EditorWidgets.cpp
+    Editor/Widgets/FilePickerDialog.cpp
     Platform/GLFW/VKGLFW.cpp
     Platform/Window/Window.cpp
     Renderer/Material/MaterialRegistry.cpp
