@@ -33,8 +33,12 @@ namespace Faye::Editor::Widgets
             openRequested = false;
         }
 
-        ImGui::SetNextWindowSize(ImVec2(680.0f, 480.0f), ImGuiCond_Appearing);
-        if (!ImGui::BeginPopupModal(kPopupName, nullptr, ImGuiWindowFlags_NoSavedSettings))
+        // Auto-size to content so the footer (hint/buttons) is never clipped:
+        // a fixed window height + negative grid height was cutting the bottom
+        // controls off. Popups are not user-resizable, so fit-to-content is
+        // the only safe layout.
+        if (!ImGui::BeginPopupModal(kPopupName, nullptr,
+                                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize))
         {
             return false;
         }
@@ -44,7 +48,7 @@ namespace Faye::Editor::Widgets
         ImGui::Separator();
 
         bool acceptedThisFrame = false;
-        if (ImGui::BeginChild("##pickerGrid", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing())))
+        if (ImGui::BeginChild("##pickerGrid", ImVec2(640.0f, 360.0f)))
         {
             const FileBrowserView::Result result = browser.draw(icons);
 
