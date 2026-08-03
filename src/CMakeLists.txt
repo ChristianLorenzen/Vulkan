@@ -23,6 +23,7 @@ set(FAYE_ENGINE_SOURCES
     Editor/Panels/Inspector/MaterialEditor.cpp
     Editor/Panels/RuntimeView/RuntimeViewPanel.cpp
     Editor/Panels/SceneSettings/SceneSettingsPanel.cpp
+    Editor/Panels/WaterDebug/WaterDebugPanel.cpp
     Editor/Widgets/AssetBrowser.cpp
     Editor/Widgets/EditorWidgets.cpp
     Platform/GLFW/VKGLFW.cpp

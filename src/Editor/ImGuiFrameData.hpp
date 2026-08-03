@@ -16,6 +16,8 @@ namespace Faye::Editor
         int averageFps = 0;
         std::vector<Profiler::ResolvedScope> scopes = {};
         ImTextureID viewportTexture = 0;
+        // Phase 1 water compute smoke test output. 0 when unavailable.
+        ImTextureID waterDebugTexture = 0;
         ImVec2 viewportSize{0.0f, 0.0f};
         ImVec2 requestedViewportSize{0.0f, 0.0f};
         bool viewportHovered = false;

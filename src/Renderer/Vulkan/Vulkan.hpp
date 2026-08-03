@@ -113,6 +113,14 @@ namespace Faye
 
 		VulkanDevice *getVkDevice() { return vk_device.get(); }
 
+		const std::vector<Profiler::ResolvedScope> &getScopeData() const { return profiler->getScopeResults(); }
+
+		// Phase 1 water smoke test: the storage image water_debug_gradient.comp
+		// writes each frame. Exposed so the editor can display it and confirm the
+		// compute path actually produced pixels. Goes away once real cascade
+		// textures exist (Phase 2).
+		VkImageView getWaterDebugImageView() const { return waterFieldDebugImage.imageView; }
+
 		void notifyShaderRecompilation(const std::string &compiledShader);
 
 	private:

@@ -147,7 +147,7 @@ void main()
         fayeAccumulateDirectionalLight(lights.directionalLights[i],surfaceNormal,viewDir,
         waterColor.rgb,0.,.06,diffuseLight,specularLight);
     }
-    vec3 ambient=fayeAmbient()*waterColor.rgb;
+    vec3 ambient=fayeIBL(surfaceNormal,viewDir,waterColor.rgb,0.,.06,1.);
     
     // ---- Foam masks ----------------------------------------------------------
     // fragFoamCrest = raw wave height (metres) above the rest plane.

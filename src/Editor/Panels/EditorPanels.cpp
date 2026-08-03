@@ -8,6 +8,7 @@
 #include "Editor/Panels/Hierarchy/HierarchyPanel.hpp"
 #include "Editor/Panels/Inspector/InspectorPanel.hpp"
 #include "Editor/Panels/RuntimeView/RuntimeViewPanel.hpp"
+#include "Editor/Panels/WaterDebug/WaterDebugPanel.hpp"
 #include "Editor/Panels/SceneSettings/SceneSettingsPanel.hpp"
 
 #include "imgui.h"
@@ -25,6 +26,7 @@ namespace Faye::Editor::Panels
         panels.push_back(std::make_unique<InspectorPanel>());
         panels.push_back(std::make_unique<RuntimeViewPanel>());
         panels.push_back(std::make_unique<AssetExplorerPanel>());
+        panels.push_back(std::make_unique<WaterDebugPanel>());
         panels.push_back(std::make_unique<SceneSettingsPanel>());
 
         // One icon upload shared by every file view (asset explorer grid,
