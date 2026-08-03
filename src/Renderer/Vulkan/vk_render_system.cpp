@@ -255,7 +255,16 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
         .writeBuffer(0, &bufferInfo)
         .writeImage(1, &frameContext.prepassDepthInfo)
         .writeBuffer(2, &lightingInfo)
+        .writeImage(4, &frameContext.irradianceInfo)
+        .writeImage(5, &frameContext.prefilteredInfo)
         .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 0);
+
+    // Water field (set 3, binding 1): the compute-written debug image, sampled by
+    // lit fragment shaders. Pushed once per frame like set 0 above -- every material
+    // pipeline shares `pipelineLayout`, so the push stays valid across the draw loop.
+    VulkanDescriptorWriter(waterFieldDescriptorSetLayout)
+        .writeImage(1, &frameContext.waterFieldInfo)
+        .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 3);
 
     for (const auto &renderable : renderScene.renderables)
     {

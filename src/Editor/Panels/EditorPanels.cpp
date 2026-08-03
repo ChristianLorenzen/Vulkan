@@ -8,6 +8,7 @@
 #include "Editor/Panels/Hierarchy/HierarchyPanel.hpp"
 #include "Editor/Panels/Inspector/InspectorPanel.hpp"
 #include "Editor/Panels/RuntimeView/RuntimeViewPanel.hpp"
+#include "Editor/Panels/SceneSettings/SceneSettingsPanel.hpp"
 
 #include "imgui.h"
 
@@ -24,6 +25,7 @@ namespace Faye::Editor::Panels
         panels.push_back(std::make_unique<InspectorPanel>());
         panels.push_back(std::make_unique<RuntimeViewPanel>());
         panels.push_back(std::make_unique<AssetExplorerPanel>());
+        panels.push_back(std::make_unique<SceneSettingsPanel>());
 
         // One icon upload shared by every file view (asset explorer grid,
         // inspector texture picker).
@@ -76,9 +78,25 @@ namespace Faye::Editor::Panels
 
         ImGui::DockSpace(ImGui::GetID("MainDockSpace"), ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
+        // TODO: maybe move global style vars to a central location
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f, 4.0f));
+
         if (ImGui::BeginMenuBar())
         {
-            if (ImGui::BeginMenu("View"))
+            if (ImGui::BeginMenu("File"))
+            {
+                if (ImGui::MenuItem("New"))
+                {
+                    // TODO: Temp item.
+                }
+                if (ImGui::MenuItem("Exit"))
+                {
+                    // TODO: Exit callback to editor
+
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("Windows"))
             {
                 for (const auto &panel : panels)
                 {
@@ -91,16 +109,26 @@ namespace Faye::Editor::Panels
                 }
                 ImGui::EndMenu();
             }
-            if (ImGui::BeginMenu("Primitives"))
+            if (ImGui::BeginMenu("Add"))
             {
-                drawPrimitiveMenuItem(PrimitiveType::Cube);
-                drawPrimitiveMenuItem(PrimitiveType::Sphere);
-                drawPrimitiveMenuItem(PrimitiveType::Plane);
-                drawPrimitiveMenuItem(PrimitiveType::Capsule);
-                drawPrimitiveMenuItem(PrimitiveType::WaterPlane);
+                if (ImGui::MenuItem("Entity"))
+                {
+                    // TODO: Might need to do this outside of ImGui context.
+                    this->boundScene->createEntity({"New Entity"}).add<TransformComponent>();
+                }
+                if (ImGui::BeginMenu("Primitives"))
+                {
+                    drawPrimitiveMenuItem(PrimitiveType::Cube);
+                    drawPrimitiveMenuItem(PrimitiveType::Sphere);
+                    drawPrimitiveMenuItem(PrimitiveType::Plane);
+                    drawPrimitiveMenuItem(PrimitiveType::Capsule);
+                    drawPrimitiveMenuItem(PrimitiveType::WaterPlane);
+                    ImGui::EndMenu();
+                }
                 ImGui::EndMenu();
             }
             ImGui::EndMenuBar();
+            ImGui::PopStyleVar();
         }
 
         ImGui::End();

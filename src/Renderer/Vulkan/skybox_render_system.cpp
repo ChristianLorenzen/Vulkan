@@ -3,6 +3,7 @@
 #include <cassert>
 #include <stdexcept>
 
+#include "Scene/Scene.hpp"
 #include "glm/glm.hpp"
 
 #include "skybox_render_system.hpp"
@@ -14,7 +15,8 @@
 namespace Faye {
 
     struct SkyboxPushConstantData {
-        glm::vec4 rotation{};
+        float rotation = 0.0f;
+        float intensity = 1.0f;
     };
 
 
@@ -48,8 +50,8 @@ namespace Faye {
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
         pipelineLayoutInfo.pSetLayouts = setLayouts;
-        pipelineLayoutInfo.pushConstantRangeCount = 0;
-        //pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
         if (vkCreatePipelineLayout(vk_device.getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
         {
@@ -98,11 +100,6 @@ namespace Faye {
 
     void SkyboxRenderSystem::render(FrameContext &frameContext, const SkyboxSettings &settings)
     {
-        if (!settings.enabled)
-        {
-            return;
-        }
-
         vk_pipeline->bind(frameContext.commandBuffer);
 
         vkCmdSetCullMode(frameContext.commandBuffer, VK_CULL_MODE_NONE);
@@ -118,18 +115,19 @@ namespace Faye {
         VulkanDescriptorWriter(globalDescriptorSetLayout)
             .writeBuffer(0, &bufferInfo)
             .writeImage(1, &frameContext.prepassDepthInfo)
-            .writeImage(3, &frameContext.skyboxInfo)
+            .writeImage(3, &frameContext.skyCubeInfo)
             .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 0);
 
-        //SkyboxPushConstantData push{};
-        //push.rotation = frameContext.camera.getForwardDirection();
+        SkyboxPushConstantData push{};
+        push.rotation = settings.rotation; // Rotate the skybox slowly over time.
+        push.intensity = settings.intensity;
 
-        // vkCmdPushConstants(frameContext.commandBuffer,
-        //                 pipelineLayout,
-        //                 VK_SHADER_STAGE_FRAGMENT_BIT,
-        //                 0,
-        //                 sizeof(SkyboxPushConstantData),
-        //                 &push);
+        vkCmdPushConstants(frameContext.commandBuffer,
+                        pipelineLayout,
+                        VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0,
+                        sizeof(SkyboxPushConstantData),
+                        &push);
 
         vkCmdDraw(frameContext.commandBuffer, 3, 1, 0, 0);
     }

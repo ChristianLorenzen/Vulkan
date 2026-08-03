@@ -98,7 +98,8 @@ void main()
         albedo,metallic,roughness,diffuseLight,specularLight);
     }
     
-    vec3 ambient=fayeAmbient()*albedo*(1.-metallic)*occlusion;
+    //vec3 ambient=fayeAmbient()*albedo*(1.-metallic)*occlusion;
+    vec3 ambient=fayeIBL(surfaceNormal,viewDir,albedo,metallic,roughness,occlusion);
     vec3 emissive=materialParams.emissiveFactors.rgb*materialParams.emissiveFactors.a;
     
     outColor=vec4(ambient+diffuseLight+specularLight+emissive,

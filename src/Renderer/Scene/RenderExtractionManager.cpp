@@ -27,6 +27,7 @@ namespace Faye
         // Reuse the persistent buffers: clear() keeps capacity, so steady-state
         // extraction performs no heap allocation.
         snapshot.primaryCamera = nullptr;
+        snapshot.sceneSettings = nullptr;
         snapshot.renderables.clear();
         snapshot.pointLights.clear();
         snapshot.directionalLights.clear();
@@ -38,6 +39,8 @@ namespace Faye
         {
             snapshot.primaryCamera = &camera->camera;
         }
+        
+        snapshot.sceneSettings = &scene.getSceneSettings();
 
         // Mesh + point-light extraction: read-only view passes writing disjoint
         // snapshot fields — the schedule runs them concurrently.

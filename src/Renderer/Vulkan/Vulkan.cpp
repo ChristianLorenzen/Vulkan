@@ -52,7 +52,7 @@ void Faye::Vulkan::initializeFrameResources()
 {
     uboBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     lightingBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < uboBuffers.size(); i++)
+    for (ulong i = 0; i < uboBuffers.size(); i++)
     {
         uboBuffers[i] = std::make_unique<VulkanBuffer>(
             *vk_device,
@@ -80,6 +80,8 @@ void Faye::Vulkan::initializeFrameResources()
                           .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .addBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                          .addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                          .addBinding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .build();
 
     // Material set (set 1): parameter UBO only — textures are now in the bindless set.
@@ -407,9 +409,17 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
         prepassDepthInfo});
     FrameContext &frameContext = *currentFrame;
 
-    frameContext.skyboxInfo = environmentMap.descriptorInfo();
+    frameContext.skyCubeInfo = environmentMap.skyInfo();
+    frameContext.irradianceInfo = environmentMap.irradianceInfo();
+    frameContext.prefilteredInfo = environmentMap.prefilteredInfo();
+    frameContext.prefilteredMipCount = environmentMap.prefilteredMipCount();
 
     totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
+
+    static const SceneSettings kDefaultSceneSettings{};
+    const SceneSettings &sceneSettings = frameInput.renderScene.sceneSettings
+    ? *frameInput.renderScene.sceneSettings
+    : kDefaultSceneSettings;
 
     GlobalUBO ubo{};
     ubo.priorViewProjection = primaryCamera->getPriorViewProjection();
@@ -430,6 +440,7 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     // lights have no geometry, and point-light billboards are drawn separately.
     SceneLightingUBO lighting{};
     packSceneLighting(frameInput.renderScene, lighting);
+    lighting.skyParams = glm::vec4(sceneSettings.skybox.rotation, sceneSettings.skybox.intensity, environmentMap.prefilteredMipCount(), 0.0f);
     lightingBuffers[frameIndex]->writeToBuffer(&lighting);
     lightingBuffers[frameIndex]->flush();
 
@@ -491,9 +502,9 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
 
     // isValid() guards the load having failed: descriptorInfo() would hand the
     // push-descriptor write a null sampler/view, which is a validation error.
-    if (frameInput.renderView.skybox.enabled && environmentMap.isValid())
+    if (environmentMap.isValid() && sceneSettings.skybox.enabled)
     {
-        skyboxRenderSystem->render(frameContext, frameInput.renderView.skybox);
+        skyboxRenderSystem->render(frameContext, sceneSettings.skybox);
     }
 
     // Editor reference grid. Last inside the scene pass so it tests against a

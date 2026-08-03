@@ -79,6 +79,7 @@ namespace Faye
                                 uint32_t swapchainMipLevels = 1,
                                 VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                                 bool createDefaultView = true);
+        // use for whole image transitions
         void recordTransition(VkCommandBuffer commandBuffer,
                               VkImageLayout newLayout,
                               VkPipelineStageFlags2 srcStageMask,
@@ -89,16 +90,30 @@ namespace Faye
                               uint32_t levelCount = VK_REMAINING_MIP_LEVELS,
                               uint32_t baseArrayLayer = 0,
                               uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS);
+        // use for anything touching a subrange
         static void imageBarrier(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect,
-                          VkImageLayout oldLayout, VkImageLayout newLayout,
-                          VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage,
-                          VkAccessFlags2 srcAccess, VkAccessFlags2 dstAccess);
+                         VkImageLayout oldLayout, VkImageLayout newLayout,
+                         VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage,
+                         VkAccessFlags2 srcAccess, VkAccessFlags2 dstAccess,
+                         uint32_t baseMipLevel = 0,
+                         uint32_t levelCount = VK_REMAINING_MIP_LEVELS,
+                         uint32_t baseArrayLayer = 0,
+                         uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS);
         void destroy(VkDevice device);
         VkImageView createImageView(VkDevice device,
                                     uint32_t baseMipLevel = 0,
                                     uint32_t levelCount = 0,
                                     uint32_t baseArrayLayer = 0,
                                     uint32_t layerCount = 0);
+        // Creates a standalone view the caller owns and must destroy. unlike
+        // createImageView this does NOT touch `imageView`, so it is safe to call
+        // repeatedly
+        VkImageView makeView(VkDevice device,
+                             VkImageViewType type,
+                             uint32_t baseMipLevel = 0,
+                             uint32_t levelCount = VK_REMAINING_MIP_LEVELS,
+                             uint32_t baseArrayLayer = 0,
+                             uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS) const;
         void transitionLayout(VulkanDevice &device,
                               VkImageLayout newLayout,
                               VkPipelineStageFlags2 srcStageMask,
