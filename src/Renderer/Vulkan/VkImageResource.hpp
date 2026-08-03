@@ -23,6 +23,7 @@ namespace Faye
         uint32_t mipLevels = 1;
         uint32_t arrayLayers = 1;
         VkImageCreateFlags flags = 0;
+        const char *debugName = nullptr;
     };
 
     struct VkImageWrapInfo

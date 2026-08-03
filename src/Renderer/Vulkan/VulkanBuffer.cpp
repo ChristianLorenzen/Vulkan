@@ -40,8 +40,8 @@ namespace Faye
       VkMemoryPropertyFlags memoryPropertyFlags, // TODO: Remove this parameter once VMA is integrated. Leaving now so all callers can be updated later.
       VkDeviceSize minOffsetAlignment)
       : vk_device{device},
-        instanceSize{instanceSize},
         instanceCount{instanceCount},
+        instanceSize{instanceSize},
         usageFlags{usageFlags},
         memoryPropertyFlags{memoryPropertyFlags}
   {
@@ -57,6 +57,8 @@ namespace Faye
     }
 
     device.createBuffer(bufferSize, usageFlags, allocInfo, buffer, allocation);
+
+    device.setObjectName(VK_OBJECT_TYPE_BUFFER, (uint64_t)(buffer), "VulkanBuffer Buffer Info");
   }
 
   VulkanBuffer::~VulkanBuffer()

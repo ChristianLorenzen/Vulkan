@@ -60,6 +60,7 @@ namespace Faye {
         Vulkan&             renderer()          { return *vkData; }
         int                 frameTimeMs() const { return static_cast<int>(timer->getDeltaTimeMS()); }
         int                 averageFps() const;
+        std::vector<Profiler::ResolvedScope>    getFrameScopeData() { return vkData->getScopeData(); }
 
         GLFWwindow*         window();
         VkExtent2D          windowExtent()      { return glfwWindow->getExtent(); }

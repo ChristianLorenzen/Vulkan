@@ -97,7 +97,11 @@ void Faye::VkImageResource::createOwned(VulkanDevice &device,
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
+    
     device.createImageWithInfo(imageInfo, allocInfo, image, allocation);
+    
+    device.setObjectName(VK_OBJECT_TYPE_IMAGE, (uint64_t)(image), createInfo.debugName ? createInfo.debugName : "VkImageResource Allocation Info");
+    
     allocator = device.getAllocator();
     ownsImage = true;
 
@@ -112,8 +116,10 @@ void Faye::VkImageResource::createOwned(VulkanDevice &device,
     arrayLayers = createInfo.arrayLayers;
     ownsImage = true;
 
-    if (createDefaultView)
-        createImageView(device.getDevice());
+    if (createDefaultView) {
+        VkImageView iv = createImageView(device.getDevice());
+        device.setObjectName(VK_OBJECT_TYPE_IMAGE_VIEW, (uint64_t)(iv), createInfo.debugName ? createInfo.debugName : "VkImageResource Default View");
+    }
 }
 
 void Faye::VkImageResource::wrapExternal(VulkanDevice &device,

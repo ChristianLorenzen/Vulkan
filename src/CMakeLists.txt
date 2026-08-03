@@ -53,6 +53,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_renderer.cpp
     Renderer/Vulkan/vk_swapchain.cpp
     Renderer/Vulkan/Vulkan.cpp
+    Renderer/Vulkan/profiler/vk_profiler.cpp
     Renderer/Vulkan/VulkanBuffer.cpp
     Renderer/Vulkan/VkImageResource.cpp
     Renderer/Vulkan/vma_implementation.cpp

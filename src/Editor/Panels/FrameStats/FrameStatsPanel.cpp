@@ -4,6 +4,18 @@
 
 namespace Faye::Editor::Panels
 {
+     namespace {
+        std::string repeat(std::string s, int n)
+        {
+            // Copying given string to temporary string.
+            std::string s1 = s;
+
+            for (int i=1; i<n;i++)
+                s += s1; // Concatenating strings
+
+            return s;
+        }
+     }
     void FrameStatsPanel::draw(ImGuiFrameData &frameData,
                                Scene *scene,
                                Entity &selectedEntity,
@@ -47,6 +59,11 @@ namespace Faye::Editor::Panels
             ImGui::Separator();
             ImGui::Text("Frame Time: %d ms", frameData.frameTimeMs);
             ImGui::Text("FPS: %d", frameData.averageFps);
+
+            for (Profiler::ResolvedScope &scope : frameData.scopes) {
+                ImGui::Text("%s\t\t\t%f ms", scope.name.c_str(), scope.milliseconds);
+            }
+            ImGui::Separator();
         }
         ImGui::End();
     }

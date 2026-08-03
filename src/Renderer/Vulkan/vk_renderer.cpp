@@ -20,7 +20,7 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device) : window{win}, vk_device{device}
+Faye::VulkanRenderer::VulkanRenderer(Window &win, VulkanDevice &device, Profiler::VkProfiler &profiler) : window{win}, vk_device{device}, profiler{profiler}
 {
     LOG_INFO(Logger::get(), "Creating Vulkan Device class instance...");
 
@@ -131,6 +131,11 @@ VkCommandBuffer Faye::VulkanRenderer::beginFrame()
     {
         throw std::runtime_error("Failed to begin recording command buffer");
     }
+    
+    // resets the query pool/profiler frame data for the frame
+    profiler.beginFrame(commandBuffer, currentFrameIndex);
+    profiler.beginScope(commandBuffer, "Frame");
+
     return commandBuffer;
 }
 
@@ -138,6 +143,9 @@ void Faye::VulkanRenderer::endFrame()
 {
     assert(isFrameStarted && "Can't call endFrame while frame is not in progress.");
     auto commandBuffer = getCurrentCommandBuffer();
+
+    profiler.endScope(commandBuffer); // end the "Frame" scope
+    profiler.endFrame(commandBuffer, currentFrameIndex);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
     {
@@ -448,6 +456,7 @@ void Faye::VulkanRenderer::createSceneImages()
         prepassDepthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         prepassDepthInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         prepassDepthInfo.imageType = VK_IMAGE_TYPE_2D;
+        prepassDepthInfo.debugName = "Depth Prepass Image";
         depthPrepassResources[i].createOwned(vk_device, prepassDepthInfo, true);
 
         VkImageResourceCreateInfo colorCreateInfo{};
@@ -459,7 +468,7 @@ void Faye::VulkanRenderer::createSceneImages()
         colorCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         colorCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         colorCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-
+        colorCreateInfo.debugName = "Scene Color Image";
         sceneColorResources[i].createOwned(vk_device, colorCreateInfo, true);
 
         VkImageResourceCreateInfo depthCreateInfo{};
@@ -471,7 +480,7 @@ void Faye::VulkanRenderer::createSceneImages()
         depthCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         depthCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         depthCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-
+        depthCreateInfo.debugName = "Scene Depth Image";
         sceneDepthResources[i].createOwned(vk_device, depthCreateInfo, true);
 
         VkImageResourceCreateInfo motionCreateInfo{};
@@ -483,7 +492,7 @@ void Faye::VulkanRenderer::createSceneImages()
         motionCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         motionCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         motionCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-
+        motionCreateInfo.debugName = "Scene Motion Image";
         sceneMotionResources[i].createOwned(vk_device, motionCreateInfo, true);
     }
 }

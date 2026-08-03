@@ -105,6 +105,7 @@ namespace Faye::Editor {
         ImGuiFrameData frameData{};
         frameData.frameTimeMs = engine.frameTimeMs();
         frameData.averageFps = engine.averageFps();
+        frameData.scopes = engine.getFrameScopeData();
         frameData.viewportGrid = viewport.grid;
         layer.buildViewportFrameData(r.targets(),
                                      static_cast<uint32_t>(frame->frameIndex),

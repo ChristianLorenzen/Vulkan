@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Renderer/View/RenderView.hpp"
+#include "Renderer/Vulkan/profiler/vk_profiler.hpp"
 #include "imgui.h"
 
 namespace Faye::Editor
@@ -13,6 +14,7 @@ namespace Faye::Editor
     {
         int frameTimeMs = 0;
         int averageFps = 0;
+        std::vector<Profiler::ResolvedScope> scopes = {};
         ImTextureID viewportTexture = 0;
         ImVec2 viewportSize{0.0f, 0.0f};
         ImVec2 requestedViewportSize{0.0f, 0.0f};

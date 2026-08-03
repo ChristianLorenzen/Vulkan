@@ -23,12 +23,13 @@ VulkanPipeline::~VulkanPipeline()
 
 void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, const std::string &fragFilepath, const PipelineConfigInfo &config,
                                             const std::string &tescFilepath, const std::string &tesePath)
-{
+{    
     auto vertShaderCode = FileSystem::readFile(vertFilepath);
     auto fragShaderCode = FileSystem::readFile(fragFilepath);
     const bool hasTessellation = !tescFilepath.empty() && !tesePath.empty();
 
     VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
+    device.setObjectName(VK_OBJECT_TYPE_SHADER_MODULE, (uint64_t)vertShaderModule, vertFilepath.c_str());
     VkShaderModule fragShaderModule{VK_NULL_HANDLE};
     VkShaderModule tescShaderModule{VK_NULL_HANDLE};
     VkShaderModule teseShaderModule{VK_NULL_HANDLE};
@@ -44,6 +45,7 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     try
     {
         fragShaderModule = createShaderModule(device, fragShaderCode);
+        device.setObjectName(VK_OBJECT_TYPE_SHADER_MODULE, (uint64_t)fragShaderModule, fragFilepath.c_str());
         if (hasTessellation)
         {
             tescShaderModule = createShaderModule(device, FileSystem::readFile(tescFilepath));
@@ -132,6 +134,8 @@ void VulkanPipeline::createGraphicsPipeline(const std::string &vertFilepath, con
     LOG_INFO(Logger::get(), "Initialized Pipeline Info...");
 
     VkResult result = vkCreateGraphicsPipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &graphicsPipeline);
+
+    device.setObjectName(VK_OBJECT_TYPE_PIPELINE, (uint64_t)(graphicsPipeline), fragFilepath.c_str());
 
     destroyCreatedModules();
 

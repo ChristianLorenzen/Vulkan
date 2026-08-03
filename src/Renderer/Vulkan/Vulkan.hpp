@@ -20,6 +20,7 @@
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
 #include "Renderer/Environment/environment_map.hpp"
+#include "Renderer/Vulkan/profiler/vk_profiler.hpp"
 #include "MaterialCache.hpp"
 #include "TextureCache.hpp"
 #include "VulkanBuffer.hpp"
@@ -120,6 +121,9 @@ namespace Faye
 		Window &window;
 		std::unique_ptr<VulkanDevice> vk_device;
 		std::unique_ptr<VulkanRenderer> vk_renderer;
+
+		std::unique_ptr<Profiler::VkProfiler> profiler;
+
 		std::unique_ptr<VulkanDescriptorSetLayout> globalSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> materialSetLayout{};
 		std::unique_ptr<VulkanDescriptorSetLayout> bindlessSetLayout{};

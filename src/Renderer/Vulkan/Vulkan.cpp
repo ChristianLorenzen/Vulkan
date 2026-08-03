@@ -1,11 +1,9 @@
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
-#include <stdio.h>
-#include <unordered_map>
 #include <vector>
 
 #include "Vulkan.hpp"
-#include "Renderer/Resources/Vertex.hpp"
+#include "Renderer/Vulkan/profiler/vk_profiler.hpp"
 #include "Renderer/Scene/LightingUniforms.hpp"
 #include "Core/Path/Paths.hpp"
 
@@ -20,6 +18,10 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
     LOG_INFO(Logger::get(), "Creating Vulkan Device class instance...");
 
     vk_device = std::make_unique<VulkanDevice>(window);
+    
+    profiler = std::make_unique<Profiler::VkProfiler>(*vk_device);
+    
+    vk_renderer = std::make_unique<VulkanRenderer>(window, *vk_device, *profiler);
 
     vk_renderer = std::make_unique<VulkanRenderer>(window, *vk_device);
     globalPool = VulkanDescriptorPool::Builder(*vk_device)
@@ -478,9 +480,12 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     // Opaque depth prepass -- write depth for all non-water objects.
     // water.frag samples this via set=0 binding=1 (prepassDepth) to
     // compute contact/intersection foam without self-contamination.
-    vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
-    simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
-    vk_renderer->endDepthPrepassRenderPass(commandBuffer);
+    {
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Depth Prepass"};
+        vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
+        simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
+        vk_renderer->endDepthPrepassRenderPass(commandBuffer);
+    }
 
     // Bind the bindless texture set (set 2) with the scene pipeline layout AFTER
     // the depth prepass. The depth prepass uses a separate pipeline layout (set 0
@@ -493,18 +498,28 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
 
     vk_renderer->beginSceneRenderPass(commandBuffer);
 
-    simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
+    {
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Scene Render"};
+        simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
+    }
 
     if (!frameInput.renderScene.pointLights.empty())
     {
-        pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Point Lights"};
+        if (!frameInput.renderScene.pointLights.empty())
+        {
+            pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+        }
     }
 
-    // isValid() guards the load having failed: descriptorInfo() would hand the
-    // push-descriptor write a null sampler/view, which is a validation error.
-    if (environmentMap.isValid() && sceneSettings.skybox.enabled)
     {
-        skyboxRenderSystem->render(frameContext, sceneSettings.skybox);
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Skybox"};
+        // isValid() guards the load having failed: descriptorInfo() would hand the
+        // push-descriptor write a null sampler/view, which is a validation error.
+        if (environmentMap.isValid() && sceneSettings.skybox.enabled)
+        {
+            skyboxRenderSystem->render(frameContext, sceneSettings.skybox);
+        }
     }
 
     // Editor reference grid. Last inside the scene pass so it tests against a
@@ -513,12 +528,24 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     // predicted-not-taken branch, not a pipeline bind.
     if (frameInput.renderView.grid.enabled)
     {
-        editorGridRenderSystem->render(frameContext, frameInput.renderView.grid);
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Editor Grid"};
+        // Editor reference grid. Last inside the scene pass so it tests against a
+        // complete depth buffer and alpha-blends over finished shading. The view
+        // owns the decision: runtime views leave `enabled` false and this is a
+        // predicted-not-taken branch, not a pipeline bind.
+        if (frameInput.renderView.grid.enabled)
+        {
+            editorGridRenderSystem->render(frameContext, frameInput.renderView.grid);
+        }
     }
 
     vk_renderer->endSceneRenderPass(commandBuffer);
 
-    postProcessChain->renderEffects(frameContext, frameInput.postProcessStack);
+    {
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Post-Process Effects"};
+        postProcessChain->renderEffects(frameContext, frameInput.postProcessStack);
+    }
+
     framePhase = FramePhase::Scene;
 }
 
