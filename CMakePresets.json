@@ -3,12 +3,15 @@
   "configurePresets": [
     {
       "name": "linux-debug",
-      "displayName": "Linux Debug (GCC)",
+      "displayName": "Linux Debug (GCC 16, C++26)",
+      "description": "GCC 16 is required: the engine builds at C++26 for P2996 static reflection. The default /usr/bin/c++ is too old on Ubuntu 24.04.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_C_COMPILER": "gcc-16",
+        "CMAKE_CXX_COMPILER": "g++-16"
       }
     },
     {

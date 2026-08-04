@@ -13,6 +13,6 @@
         "--compile-commands-dir=${workspaceFolder}/build",
         "--background-index",
         "--header-insertion=never",
-        "--query-driver=/usr/bin/c++"
+        "--query-driver=/usr/bin/g++*,/usr/bin/x86_64-linux-gnu-g++*,/usr/bin/c++"
     ]
 }

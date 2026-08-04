@@ -12,3 +12,4 @@ docs/*
 build-serial/*
 build-tsan/*
 build-release/*
+build-c26*/*

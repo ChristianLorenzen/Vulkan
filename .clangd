@@ -13,3 +13,21 @@ CompileFlags:
     # the database is produced by CMake/GCC, so stray unknown flags would
     # otherwise surface as noise in the editor.
     - "-Wno-unknown-warning-option"
+  Remove:
+    # The database is written by GCC 16. These flags have no clang equivalent,
+    # and clang's DRIVER rejects them outright ("Unknown argument"), which
+    # -Wno-unknown-warning-option cannot suppress — that only covers -W flags.
+    # An unknown driver argument makes clangd drop the whole command, so every
+    # include path goes with it and the file lights up red.
+    #
+    # -freflection: GCC's P2996 static reflection switch (see
+    # faye_enable_reflection in CMakeLists.txt). Upstream clang has not merged
+    # P2996, so code using ^^ / <meta> will still not resolve in the editor;
+    # removing the flag just keeps the REST of the TU analyzable.
+    - "-freflection"
+    # Module scanning flags. CMAKE_CXX_SCAN_FOR_MODULES=OFF in CMakeLists.txt
+    # stops these being emitted at all; kept here so a stale build/ or a
+    # future re-enable does not break the editor again.
+    - "-fmodules-ts"
+    - "-fmodule-mapper=*"
+    - "-fdeps-format=*"

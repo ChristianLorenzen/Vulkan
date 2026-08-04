@@ -112,6 +112,12 @@ file(GLOB_RECURSE FAYE_SHADER_SOURCES
 add_library(faye_imgui STATIC ${FAYE_IMGUI_SOURCES})
 add_library(Faye::ImGui ALIAS faye_imgui)
 
+# Explicit rather than silently inheriting CMAKE_CXX_STANDARD. ImGui's own code
+# needs nothing newer than C++11, but it is built at 26 here because that is
+# what the C++26 migration probe actually verified. Lowering it is safe if
+# compile time ever matters — just make it a decision, not an accident.
+target_compile_features(faye_imgui PRIVATE cxx_std_26)
+
 target_include_directories(faye_imgui
     PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -155,7 +161,8 @@ target_link_libraries(faye_app
     Faye::BoostHeaders
     yaml-cpp)
 
-target_compile_features(faye_app PRIVATE cxx_std_20)
+target_compile_features(faye_app PRIVATE cxx_std_26)
+faye_enable_reflection(faye_app)
 
 # Bake the repo root as an absolute path so asset/shader paths work regardless
 # of the working directory (avoids CWD dependency when launching from an IDE).
@@ -239,6 +246,7 @@ add_executable(faye_tests
     Core/ECS/Tests/ScheduleTests.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
+    Core/Path/Tests/PathsTests.cpp
     Core/Serialization/Uuid.cpp
     Core/Serialization/Tests/UuidTests.cpp
     Assets/AssetDatabase.cpp
@@ -306,7 +314,8 @@ if(FAYE_TSAN)
     endif()
 endif()
 
-target_compile_features(faye_tests PRIVATE cxx_std_20)
+target_compile_features(faye_tests PRIVATE cxx_std_26)
+faye_enable_reflection(faye_tests)
 
 if(MSVC)
     target_compile_options(faye_tests PRIVATE /W4)
@@ -341,7 +350,12 @@ target_include_directories(faye_rotator_script
     ${_assimp_script_src}/include
     ${_assimp_script_bin}/include)
 
-target_compile_features(faye_rotator_script PRIVATE cxx_std_20)
+# Must match faye_app's standard and reflection flag: descriptors and engine
+# headers cross this .so boundary, so the plugin ABI contract is "same compiler,
+# same flags". This target has no PCH and no target_link_libraries, which also
+# makes it the missing-include canary when libstdc++ prunes transitive headers.
+target_compile_features(faye_rotator_script PRIVATE cxx_std_26)
+faye_enable_reflection(faye_rotator_script)
 
 # Same glm configuration as faye_app: the plugin includes engine headers
 # (Camera, Components) that no longer set these themselves.
