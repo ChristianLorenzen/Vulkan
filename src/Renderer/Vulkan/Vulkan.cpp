@@ -44,6 +44,13 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
                        .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT)
                        .build();
 
+    // Water field set (set 3): one set per frame in flight, rewritten each frame.
+    waterFieldPool = VulkanDescriptorPool::Builder(*vk_device)
+                         .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                         .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                         .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
+                         .build();
+
     initializeFrameResources();
 
     lastReportedSwapchainGeneration = vk_renderer->getSwapchainGeneration();
@@ -108,14 +115,27 @@ void Faye::Vulkan::initializeFrameResources()
     // their own separate push-descriptor set — see vk_compute_pipeline.hpp). Phase 1
     // only creates the layout with a single placeholder params UBO; Phase 2 adds the
     // cascade/derivative texture bindings once there's real content to bind.
+    //
+    // NOT a push-descriptor layout: VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00293
+    // allows at most one push-descriptor set layout per pipeline layout, and the scene
+    // pipeline layout already uses that slot for the global set (set 0). This set is
+    // allocated from waterFieldPool below and bound with vkCmdBindDescriptorSets.
     waterFieldSetLayout = VulkanDescriptorSetLayout::Builder(*vk_device)
-                              .setFlags(VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR)
                               .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                                           VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
                                               VK_SHADER_STAGE_FRAGMENT_BIT |
                                               VK_SHADER_STAGE_COMPUTE_BIT)
                               .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                               .build();
+
+    waterFieldDescriptorSets.assign(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT, VK_NULL_HANDLE);
+    for (VkDescriptorSet &set : waterFieldDescriptorSets)
+    {
+        if (!waterFieldPool->allocateDescriptor(waterFieldSetLayout->getDescriptorSetLayout(), set))
+        {
+            throw std::runtime_error("Failed to allocate water field descriptor set");
+        }
+    }
 
     textureCache = std::make_unique<TextureCache>(*vk_device);
 
@@ -185,7 +205,7 @@ void Faye::Vulkan::initializeFrameResources()
         *globalSetLayout,
         materialSetLayout->getDescriptorSetLayout(),
         bindlessSetLayout->getDescriptorSetLayout(),
-        *waterFieldSetLayout);
+        waterFieldSetLayout->getDescriptorSetLayout());
 
     simpleRenderSystem->prepareDepthPrepassPipeline(
         vk_renderer->getSceneDepthFormat(),
@@ -481,6 +501,15 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     waterInfo.imageView = waterFieldDebugImage.imageView;
     waterInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     frameContext.waterFieldInfo = waterInfo;
+
+    // Refresh this frame's water field set (set 3). Safe to update in place: the
+    // per-frame fence waited on in beginFrame means frameIndex's set is no longer
+    // referenced by any command buffer still executing. Binding 0 (params UBO) has
+    // no content yet and stays unwritten -- no shader reads it.
+    frameContext.waterFieldDescriptorSet = waterFieldDescriptorSets[frameIndex];
+    VulkanDescriptorWriter(*waterFieldSetLayout, *waterFieldPool)
+        .writeImage(1, &frameContext.waterFieldInfo)
+        .overwrite(frameContext.waterFieldDescriptorSet);
 
     // Make the write visible to whatever reads it next. Fragment stage for a debug view
     // now; add TESSELLATION_EVALUATION_SHADER once TESE samples it in Phase 4.

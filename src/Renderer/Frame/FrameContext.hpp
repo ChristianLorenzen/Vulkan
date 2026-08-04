@@ -89,6 +89,10 @@ namespace Faye
         VulkanBuffer *lightingBuffer{nullptr};
         VkDescriptorImageInfo prepassDepthInfo{};
         VkDescriptorImageInfo waterFieldInfo{};
+        // Set 3 (water field). Unlike set 0 this is a pooled set: a pipeline layout
+        // may only contain one push-descriptor set layout. Written by Vulkan::renderScene
+        // from waterFieldInfo above, then bound by the scene render system.
+        VkDescriptorSet waterFieldDescriptorSet{VK_NULL_HANDLE};
         VkDescriptorImageInfo skyCubeInfo{};
         VkDescriptorImageInfo irradianceInfo{};
         VkDescriptorImageInfo prefilteredInfo{};

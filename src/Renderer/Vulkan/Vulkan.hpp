@@ -140,6 +140,14 @@ namespace Faye
 		std::unique_ptr<VulkanDescriptorPool> globalPool{};
 		std::unique_ptr<VulkanDescriptorPool> materialPool{};
 		std::unique_ptr<VulkanDescriptorPool> bindlessPool{};
+		std::unique_ptr<VulkanDescriptorPool> waterFieldPool{};
+
+		// One water-field set (set 3) per frame in flight. A pipeline layout may
+		// contain at most one push-descriptor set layout, and set 0 already claims
+		// that slot, so set 3 is a regular pooled set. Indexed by frame index, and
+		// rewritten in renderScene -- the fence wait in beginFrame guarantees the
+		// set for that index is no longer in use by the GPU.
+		std::vector<VkDescriptorSet> waterFieldDescriptorSets{};
 
 		std::unique_ptr<TextureCache> textureCache{};
 		std::unique_ptr<MaterialCache> materialCache{};
