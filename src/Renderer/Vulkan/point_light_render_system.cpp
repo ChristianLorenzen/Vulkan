@@ -55,6 +55,8 @@ void Faye::PointLightRenderSystem::createPipelineLayout(VkDescriptorSetLayout gl
     {
         throw std::runtime_error("Failed to create pipeline layout");
     }
+
+    vk_device.setObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)pipelineLayout, "Point Light Pipeline Layout");
 }
 
 void Faye::PointLightRenderSystem::createPipeline(VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat)

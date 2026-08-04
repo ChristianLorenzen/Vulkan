@@ -1,6 +1,7 @@
 #include "Editor/Panels/FrameStats/FrameStatsPanel.hpp"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 namespace Faye::Editor::Panels
 {
@@ -60,10 +61,19 @@ namespace Faye::Editor::Panels
             ImGui::Text("Frame Time: %d ms", frameData.frameTimeMs);
             ImGui::Text("FPS: %d", frameData.averageFps);
 
-            for (Profiler::ResolvedScope &scope : frameData.scopes) {
-                ImGui::Text("%s\t\t\t%f ms", scope.name.c_str(), scope.milliseconds);
+            if (ImGui::BeginTable("##frametable", 2)) {
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 150.0f);
+                ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                for (Profiler::ResolvedScope &scope : frameData.scopes) {
+                    std::string tabs = repeat("\t", scope.depth);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text("%s%s\t", tabs.c_str(), scope.name.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextAligned(1.0f,  -FLT_MIN, "%.2f", scope.milliseconds);
+                }
+                ImGui::EndTable();
             }
-            ImGui::Separator();
         }
         ImGui::End();
     }
