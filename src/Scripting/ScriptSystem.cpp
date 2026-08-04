@@ -112,18 +112,25 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
         return;
     }
 
-    if (!std::filesystem::exists(soPath))
+    // The component (and therefore the scene file) keeps the project-relative
+    // path; dlopen and the existence check need the absolute one. A stored
+    // "bin/libfoo.so" resolved against the working directory only worked when
+    // the app happened to be launched from the repo root.
+    const std::string scriptPath = Paths::toProjectRelative(soPath);
+    const std::string resolvedPath = Paths::fromProjectRelative(scriptPath);
+
+    if (!std::filesystem::exists(resolvedPath))
     {
-        LOG_WARNING(Logger::get(), "ScriptSystem: .so not found, skipping: {}", soPath);
+        LOG_WARNING(Logger::get(), "ScriptSystem: .so not found, skipping: {}", resolvedPath);
         return;
     }
 
     unloadScript(entity);   // replace any existing script (hook tears it down)
 
-    void *handle = dlopen(soPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+    void *handle = dlopen(resolvedPath.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (handle == nullptr)
     {
-        LOG_ERROR(Logger::get(), "ScriptSystem: dlopen failed for '{}': {}", soPath, dlerror());
+        LOG_ERROR(Logger::get(), "ScriptSystem: dlopen failed for '{}': {}", resolvedPath, dlerror());
         return;
     }
 
@@ -134,7 +141,7 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
     if (symErr != nullptr || createFn == nullptr)
     {
         LOG_ERROR(Logger::get(), "ScriptSystem: 'createScript' not found in '{}': {}",
-                  soPath, symErr != nullptr ? symErr : "null symbol");
+                  resolvedPath, symErr != nullptr ? symErr : "null symbol");
         dlclose(handle);
         return;
     }
@@ -142,17 +149,17 @@ void ScriptSystem::loadScript(Entity entity, const std::string &soPath)
     IScript *instance = createFn();
     if (instance == nullptr)
     {
-        LOG_ERROR(Logger::get(), "ScriptSystem: createScript() returned nullptr for '{}'", soPath);
+        LOG_ERROR(Logger::get(), "ScriptSystem: createScript() returned nullptr for '{}'", resolvedPath);
         dlclose(handle);
         return;
     }
 
-    const std::string scriptName = std::filesystem::path(soPath).stem().string();
+    const std::string scriptName = std::filesystem::path(scriptPath).stem().string();
 
     // Component first, then onStart: if onStart destroys its own entity, the
     // hook already owns cleanup and the script still sees a full lifecycle.
     boundScene->getWorld().add<NativeScriptComponent>(
-        entity.handle(), NativeScriptComponent{soPath, scriptName, handle, instance});
+        entity.handle(), NativeScriptComponent{scriptPath, scriptName, handle, instance});
     instance->onStart(entity, boundScene);
 
     LOG_INFO(Logger::get(), "ScriptSystem: loaded '{}' for entity {}", scriptName, entity.handle().index);
@@ -291,8 +298,9 @@ void ScriptSystem::registerHotReload(HotReloadManager &hotReloadManager)
             if (boundScene == nullptr)
                 return;
 
-            const std::string changedPath =
-                std::filesystem::path(event.path).lexically_normal().string();
+            // Both sides compared in the project-relative form the components
+            // store; the watcher reports absolute paths.
+            const std::string changedPath = Paths::toProjectRelative(event.path.string());
 
             // Snapshot: reloadScript restructures the pool mid-iteration.
             auto &world = boundScene->getWorld();
@@ -305,8 +313,7 @@ void ScriptSystem::registerHotReload(HotReloadManager &hotReloadManager)
             {
                 const Ecs::Entity entityHandle = world.entityAt(entityIndex);
                 const auto *script = world.tryGet<NativeScriptComponent>(entityHandle);
-                const std::string scriptPath =
-                    std::filesystem::path(script->scriptPath).lexically_normal().string();
+                const std::string scriptPath = Paths::toProjectRelative(script->scriptPath);
                 if (scriptPath == changedPath)
                 {
                     toReload.push_back(entityHandle);

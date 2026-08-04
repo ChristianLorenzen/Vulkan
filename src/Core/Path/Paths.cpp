@@ -48,6 +48,47 @@ namespace Faye
         return root() / relative;
     }
 
+    std::string Paths::toProjectRelative(std::string_view path)
+    {
+        if (path.empty())
+        {
+            return {};
+        }
+
+        const std::filesystem::path normalized = std::filesystem::path(path).lexically_normal();
+        if (!normalized.is_absolute())
+        {
+            return normalized.generic_string();
+        }
+
+        const std::filesystem::path relative = normalized.lexically_relative(root());
+        // Empty means the two paths share no root (different drive on Windows);
+        // a leading ".." means the file lives outside the repo. Neither is
+        // portable, so the absolute path is the most useful thing we can keep.
+        if (relative.empty() || *relative.begin() == "..")
+        {
+            return normalized.generic_string();
+        }
+
+        return relative.generic_string();
+    }
+
+    std::string Paths::fromProjectRelative(std::string_view path)
+    {
+        if (path.empty())
+        {
+            return {};
+        }
+
+        const std::filesystem::path stored{path};
+        if (stored.is_absolute())
+        {
+            return stored.lexically_normal().generic_string();
+        }
+
+        return (root() / stored).lexically_normal().generic_string();
+    }
+
     std::filesystem::path Paths::compiledShader(std::string_view name)
     {
         auto p = compiledShaders() / name;

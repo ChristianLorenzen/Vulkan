@@ -26,7 +26,9 @@ Faye::TextureHandle Faye::TextureRegistry::registerTexture(std::unique_ptr<Faye:
 
 Faye::TextureHandle Faye::TextureRegistry::registerOrGetTexture(const std::string &path, TextureType type)
 {
-    const std::string key = path + "#" + std::to_string(static_cast<uint32_t>(type));
+    // registerTexture keys on Texture::path, which is always project-relative,
+    // so the lookup has to use the same form or an absolute path never hits.
+    const std::string key = Paths::toProjectRelative(path) + "#" + std::to_string(static_cast<uint32_t>(type));
     if (const auto iterator = pathIndex.find(key); iterator != pathIndex.end())
     {
         return iterator->second;

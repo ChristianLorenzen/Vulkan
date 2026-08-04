@@ -60,11 +60,11 @@ assets:
       doubleSided: false
       textures:
         - type: albedo
-          path: /home/christian/Github/Vulkan-scene-serialization/src/textures/waternormal1.jpg
+          path: src/textures/waternormal1.jpg
         - type: normal
-          path: /home/christian/Github/Vulkan-scene-serialization/src/textures/waternormal2.jpg
+          path: src/textures/waternormal2.jpg
         - type: metallic
-          path: /home/christian/Github/Vulkan-scene-serialization/src/textures/waterfoam1.jpg
+          path: src/textures/waterfoam1.jpg
     pipeline:
       vertexShaderPath: water.vert
       fragmentShaderPath: water.frag
@@ -80,14 +80,10 @@ assets:
     type: model
     name: Plane
     primitive: Plane
-  - id: c472bccb-4a87-50ec-bb78-9dad392f3298
-    type: model
-    name: Ship_Scene.fbx
-    uri: /home/christian/Github/Vulkan-scene-serialization/assets/projects/models/stylized-pirate-ship/source/Ship_Scene.fbx
-  - id: be607234-af19-530b-9965-24771cd898b7
+  - id: 7ee5ffbb-1cd4-5cb2-896c-20efe9cd0d58
     type: model
     name: stones_v2.fbx
-    uri: /home/christian/Github/Vulkan-scene-serialization/assets/projects/models/stylized-stones-minipack/source/model/stones_v2.fbx
+    uri: assets/projects/models/stylized-stones-minipack/source/model/stones_v2.fbx
   - id: 621f3aa3-7dd8-56a9-a0ab-a57b39bb94c1
     type: model
     name: Water Plane
@@ -265,6 +261,6 @@ entities:
         rotation: [0, 0, 0]
         scale: [0.00999999978, 0.00999999978, 0.00999999978]
       - type: Mesh
-        modelHandle: c472bccb-4a87-50ec-bb78-9dad392f3298
+        modelHandle: 5c3cc9b9-0b90-56ba-aced-60dbf15bd666
         materialHandle: 00000000-0000-0000-0000-000000000000
         view: true

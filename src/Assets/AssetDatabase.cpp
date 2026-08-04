@@ -1,10 +1,16 @@
 #include "Assets/AssetDatabase.hpp"
 
+#include "Core/Path/Paths.hpp"
+
 namespace Faye
 {
     AssetId AssetDatabase::idForSourceUri(const std::string &sourceUri)
     {
-        return Uuid::nameBased(sourceUri);
+        // Hash the project-relative form, never the caller's. An id derived from
+        // "/home/me/Vulkan/assets/ship.fbx" would differ on every machine (and
+        // from the same file imported via a relative path), which would strand
+        // every scene-file reference to it.
+        return Uuid::nameBased(Paths::toProjectRelative(sourceUri));
     }
 
     AssetId AssetDatabase::idForPrimitive(PrimitiveType primitiveType)
@@ -26,8 +32,13 @@ namespace Faye
 
         recordsById[id] = std::move(record);
 
+        // Stored in the same project-relative form the ids are hashed from, so
+        // records survive a round trip through a scene file unchanged.
         if (!recordsById[id].sourceUri.empty())
+        {
+            recordsById[id].sourceUri = Paths::toProjectRelative(recordsById[id].sourceUri);
             idsBySourceUri[recordsById[id].sourceUri] = id;
+        }
     }
 
     bool AssetDatabase::contains(const AssetId &id) const
@@ -43,7 +54,7 @@ namespace Faye
 
     const AssetRecord *AssetDatabase::findBySourceUri(const std::string &sourceUri) const
     {
-        const auto it = idsBySourceUri.find(sourceUri);
+        const auto it = idsBySourceUri.find(Paths::toProjectRelative(sourceUri));
         if (it == idsBySourceUri.end())
             return nullptr;
         const auto record = recordsById.find(it->second);

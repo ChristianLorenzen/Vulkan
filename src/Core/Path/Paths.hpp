@@ -32,6 +32,18 @@ namespace Faye
         // Resolve any path relative to the repository root.
         static std::filesystem::path resolve(std::string_view relative);
 
+        // Persistence form: a repo-root-relative path with '/' separators, e.g.
+        // "assets/projects/models/ship.fbx". Absolute paths inside the repo are
+        // rebased onto the root; paths already relative are only normalized.
+        // A path outside the repo has no portable form and is returned normalized
+        // but still absolute. Use for anything written to a scene/asset file, and
+        // for anything hashed into a deterministic asset id.
+        static std::string toProjectRelative(std::string_view path);
+
+        // Inverse of toProjectRelative: makes a stored path usable for file I/O.
+        // Relative paths resolve against the repo root; absolute paths pass through.
+        static std::string fromProjectRelative(std::string_view path);
+
         // Absolute path to a compiled shader. Appends .spv if not already present.
         static std::filesystem::path compiledShader(std::string_view name);
 

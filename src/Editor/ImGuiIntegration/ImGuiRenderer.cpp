@@ -10,11 +10,11 @@
 #include "ImGuiRenderer.hpp"
 #include "ImGuiCustomStyle.hpp"
 
+#include "Core/Path/Paths.hpp"
 #include "Core/Logging/Logger.hpp"
 
 #include <cassert>
 #include <fstream>
-#include <stdexcept>
 
 namespace Faye::Editor::ImGuiIntegration
 {
@@ -36,14 +36,18 @@ void ImGuiRenderer::init(GLFWwindow *window,
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
 
-    const char *defaultFontPath = "src/include/fonts/Roboto-Regular.ttf";
+    // Resolved off the repo root, not the working directory — and the same
+    // string feeds both the probe and ImGui, which asserts if it cannot open
+    // the file the probe just said was there.
+    const std::string defaultFontPath =
+        Paths::resolve("src/include/fonts/Roboto-Regular.ttf").string();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
     std::ifstream fontFile(defaultFontPath);
     if (fontFile.good())
     {
-        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath, 18.0f);
+        io.FontDefault = io.Fonts->AddFontFromFileTTF(defaultFontPath.c_str(), 18.0f);
     }
     else
     {

@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include "Core/Logging/Logger.hpp"
+#include "Core/Path/Paths.hpp"
 #include "Scene/Scene.hpp"
 #include "Scene/Serialization/ComponentSerializers.hpp"
 #include "quill/LogMacros.h"
@@ -165,14 +166,20 @@ namespace Faye
         };
     }
 
-    void LuaScriptSystem::loadScript(Entity entity, const std::string &scriptPath, Scene *scene)
+    void LuaScriptSystem::loadScript(Entity entity, const std::string &rawScriptPath, Scene *scene)
     {
         if (scene == nullptr || !entity.isValid())
             return;
 
-        if (!std::filesystem::exists(scriptPath))
+        // Stored project-relative (that is what the scene file round-trips);
+        // resolved against the repo root for the actual file read, so loading
+        // does not depend on the working directory.
+        const std::string scriptPath = Paths::toProjectRelative(rawScriptPath);
+        const std::string resolvedPath = Paths::fromProjectRelative(scriptPath);
+
+        if (!std::filesystem::exists(resolvedPath))
         {
-            LOG_WARNING(Logger::get(), "[LuaScriptSystem] Script not found, skipping: {}", scriptPath);
+            LOG_WARNING(Logger::get(), "[LuaScriptSystem] Script not found, skipping: {}", resolvedPath);
             return;
         }
 
@@ -183,11 +190,11 @@ namespace Faye
         // Create a sandboxed environment inheriting from the global table
         sol::environment env(lua, sol::create, lua.globals());
 
-        auto result = lua.safe_script_file(scriptPath, env, sol::script_pass_on_error);
+        auto result = lua.safe_script_file(resolvedPath, env, sol::script_pass_on_error);
         if (!result.valid())
         {
             sol::error err = result;
-            LOG_ERROR(Logger::get(), "[LuaScriptSystem] Error loading '{}': {}", scriptPath, err.what());
+            LOG_ERROR(Logger::get(), "[LuaScriptSystem] Error loading '{}': {}", resolvedPath, err.what());
             return;
         }
 

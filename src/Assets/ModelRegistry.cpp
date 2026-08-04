@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <stdexcept>
 
+#include "Core/Path/Paths.hpp"
+
 using namespace Faye;
 
 Faye::ModelRegistry::ModelRegistry(VulkanDevice &device, AssetDatabase &assetDatabase)
@@ -78,18 +80,22 @@ Faye::ModelHandle Faye::ModelRegistry::registerModel(std::unique_ptr<Model> mode
 
 Faye::ModelHandle Faye::ModelRegistry::getOrImportByUri(const std::string &modelPath)
 {
-    const AssetId assetId = AssetDatabase::idForSourceUri(modelPath);
+    // The uri is the asset's portable identity, so it is stored (and hashed)
+    // project-relative regardless of what the caller passed; only the file read
+    // itself needs the absolute path.
+    const std::string sourceUri = Paths::toProjectRelative(modelPath);
+    const AssetId assetId = AssetDatabase::idForSourceUri(sourceUri);
     if (const auto existing = findByAssetId(assetId))
         return *existing;
 
-    std::unique_ptr<Model> model = makeModelFromFile(modelPath);   // throws on failure
+    std::unique_ptr<Model> model = makeModelFromFile(Paths::fromProjectRelative(sourceUri));   // throws on failure
 
     const ModelHandle handle = registerModel(std::move(model), assetId);
     assetDatabase.registerAsset(AssetRecord{
         .id = assetId,
         .type = AssetType::Model,
-        .name = std::filesystem::path(modelPath).filename().string(),
-        .sourceUri = modelPath,
+        .name = std::filesystem::path(sourceUri).filename().string(),
+        .sourceUri = sourceUri,
         .persistence = AssetPersistenceMode::Imported,
     });
     return handle;

@@ -48,7 +48,7 @@ namespace Faye
 
         /// Load a Lua script file and bind it to an entity.
         /// Silently skips if the file does not exist.
-        void loadScript(Entity entity, const std::string &scriptPath, Scene *scene);
+        void loadScript(Entity entity, const std::string &rawScriptPath, Scene *scene);
 
         /// Unload the script bound to an entity (calls onDestroy if present).
         void unloadScript(Entity entity, Scene *scene);

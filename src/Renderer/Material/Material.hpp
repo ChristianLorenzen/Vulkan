@@ -10,6 +10,8 @@
 #include <glm/glm.hpp>
 #include <assimp/material.h>
 
+#include "Core/Path/Paths.hpp"
+
 namespace Faye
 {
     enum class MaterialAlphaMode : uint32_t
@@ -64,15 +66,19 @@ namespace Faye
         int height = 0;
         int channels = 0;
 
+        // `path` is stored project-relative (see Paths::toProjectRelative): it is
+        // what scene files persist and what the texture/material caches key on,
+        // so it must not carry a machine-specific prefix. Resolve it back with
+        // Paths::fromProjectRelative before touching the file system.
         static Texture create(const std::string &path, TextureType type)
         {
             Texture texture{};
-            texture.path = path;
+            texture.path = Paths::toProjectRelative(path);
             texture.type = type;
             return texture;
         }
 
-        static Texture create(std::vector<unsigned char> data, int width, int height, int channels, std::string path, TextureType type)
+        static Texture create(std::vector<unsigned char> data, int width, int height, int channels, const std::string &path, TextureType type)
         {
             Texture texture{};
             texture.data = std::make_shared<std::vector<unsigned char>>(std::move(data));
@@ -80,7 +86,7 @@ namespace Faye
             texture.height = height;
             texture.channels = channels;
             texture.type = type;
-            texture.path = std::move(path);
+            texture.path = Paths::toProjectRelative(path);
             return texture;
         }
 
