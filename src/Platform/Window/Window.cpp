@@ -41,10 +41,23 @@ Faye::Window::Window(uint32_t width, uint32_t height, const char *title) : width
     glfwSetErrorCallback(VKGLFW::glfwErrorCallback);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
     glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
 
+    int monitorCount;
+    GLFWmonitor **monitors = glfwGetMonitors(&monitorCount);
+
+    // TODO: Eventually remove this logic, but for now I want to open this on side monitor while doing dev
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
+    // TODO: dev convenience — open on the side monitor.
+    if (monitorCount > 1) {
+        int mx, my, mw, mh;
+        glfwGetMonitorWorkarea(monitors[1], &mx, &my, &mw, &mh);
+        glfwSetWindowPos(window, mx + (mw - width) / 2, my + (mh - height) / 2);
+    }
+
+    glfwShowWindow(window);
 
     if (!window)
     {

@@ -1,5 +1,5 @@
 BasedOnStyle: Google
 IndentWidth: 4
-UseTab: Yes
+UseTab: Always
 BreakBeforeBraces: Allman
 AllowShortFunctionsOnASingleLine: false

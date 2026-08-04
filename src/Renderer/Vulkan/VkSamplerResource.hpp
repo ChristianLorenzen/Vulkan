@@ -23,6 +23,7 @@ namespace Faye
         VkBool32 unnormalizedCoordinates = VK_FALSE;
         VkBool32 compareEnable = VK_FALSE;
         VkCompareOp compareOp = VK_COMPARE_OP_ALWAYS;
+        const char *debugName = nullptr;
     };
 
     struct VkSamplerResource

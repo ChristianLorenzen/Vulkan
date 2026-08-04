@@ -115,12 +115,21 @@ namespace Faye::Editor {
         ImGuiFrameData frameData{};
         frameData.frameTimeMs = engine.frameTimeMs();
         frameData.averageFps = engine.averageFps();
+        frameData.scopes = engine.getFrameScopeData();
         frameData.viewportGrid = viewport.grid;
         layer.buildViewportFrameData(r.targets(),
                                      static_cast<uint32_t>(frame->frameIndex),
                                      viewport.debugMode,
                                      engine.finalPostProcessTarget(),
                                      frameData);
+
+        // Phase 1 water compute smoke test. registerThumbnail caches by
+        // (view, sampler), so this is one ImGui_ImplVulkan_AddTexture on the
+        // first frame and a map lookup afterwards. The image is already in
+        // SHADER_READ_ONLY_OPTIMAL by here — renderScene transitions it right
+        // after the dispatch.
+        frameData.waterDebugTexture = layer.registerThumbnail(r.getWaterDebugImageView(),
+                                                              r.targets().getSceneViewportSampler());
 
         onPresent(frameData);
 

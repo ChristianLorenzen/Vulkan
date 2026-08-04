@@ -3,10 +3,8 @@
 #include <algorithm>
 #include <vector>
 #include <stdio.h>
-#include <unordered_map>
 #include <stdio.h>
 #include <stdlib.h>
-#include <exception>
 #include <iostream>
 #include <optional>
 #include <set>
@@ -15,6 +13,11 @@
 
 namespace
 {
+    template <typename Fn>
+    Fn loadDeviceFn(VkDevice device, const char *name) {
+        return reinterpret_cast<Fn>(vkGetDeviceProcAddr(device, name));
+    }
+
     struct PhysicalDeviceEvaluation
     {
         VkPhysicalDevice device = VK_NULL_HANDLE;
@@ -183,6 +186,43 @@ VulkanDevice::VulkanDevice(Window &window) : window{window}
     LOG_INFO(Logger::get(), "Creating Command Pools...");
     createCommandPools();
 }
+
+void VulkanDevice::loadDebugUtilsFunctions()
+{
+    debugUtils.setObjName = loadDeviceFn<PFN_vkSetDebugUtilsObjectNameEXT>(device, "vkSetDebugUtilsObjectNameEXT");
+    debugUtils.beginLabel    = loadDeviceFn<PFN_vkCmdBeginDebugUtilsLabelEXT>(device, "vkCmdBeginDebugUtilsLabelEXT");
+    debugUtils.endLabel      = loadDeviceFn<PFN_vkCmdEndDebugUtilsLabelEXT>(device, "vkCmdEndDebugUtilsLabelEXT");
+}
+
+void VulkanDevice::setObjectName(VkObjectType objectType, uint64_t objectHandle, const char *name) const
+{
+    if (!debugUtils.setObjName || objectHandle == 0) return;
+
+    VkDebugUtilsObjectNameInfoEXT info{};
+    info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+    info.objectType = objectType;
+    info.objectHandle = objectHandle;
+    info.pObjectName = name;
+    debugUtils.setObjName(device, &info);
+}
+
+void VulkanDevice::cmdBeginLabel(VkCommandBuffer cmd, const char *name) const
+{
+    if (!debugUtils.beginLabel) return;
+
+    VkDebugUtilsLabelEXT info{};
+    info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+    info.pLabelName = name;
+    debugUtils.beginLabel(cmd, &info);
+}
+
+void VulkanDevice::cmdEndLabel(VkCommandBuffer cmd) const
+{
+    if (!debugUtils.endLabel) return;
+
+    debugUtils.endLabel(cmd);
+}
+
 
 void VulkanDevice::createAllocator()
 {
@@ -471,9 +511,9 @@ void VulkanDevice::createInstance()
 {
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.pApplicationName = "Faye";
     appInfo.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
-    appInfo.pEngineName = "No Engine";
+    appInfo.pEngineName = "Faye Engine";
     appInfo.engineVersion = VK_MAKE_API_VERSION(0, 0, 0, 1);
     appInfo.apiVersion = VK_VERSION;
 
@@ -494,15 +534,17 @@ void VulkanDevice::createInstance()
     std::vector<const char *> extensions = getRequiredExtensions();
 
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-    if (validationLayersEnabled)
-    {
-        populateDebugMessengerCreateInfo(debugCreateInfo);
-        createInfo.pNext = &debugCreateInfo;
-    }
-    else
-    {
-        createInfo.pNext = nullptr;
-    }
+    populateDebugMessengerCreateInfo(debugCreateInfo);
+    createInfo.pNext = &debugCreateInfo;
+    // if (validationLayersEnabled)
+    // {
+    //     populateDebugMessengerCreateInfo(debugCreateInfo);
+    //     createInfo.pNext = &debugCreateInfo;
+    // }
+    // else
+    // {
+    //     createInfo.pNext = nullptr;
+    // }
 
 #ifdef __APPLE__
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
@@ -724,6 +766,9 @@ void VulkanDevice::createLogicalDevice()
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+
+    // Loading debug utils now that the logical device is created
+    loadDebugUtilsFunctions();
 }
 
 void VulkanDevice::createPipelineCache()
@@ -831,10 +876,11 @@ std::vector<const char *> VulkanDevice::getRequiredExtensions()
     extensions.push_back("VK_KHR_portability_enumeration");
 #endif
 
-    if (validationLayersEnabled)
-    {
-        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    }
+    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    // if (validationLayersEnabled)
+    // {
+    //     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    // }
 
     return extensions;
 }

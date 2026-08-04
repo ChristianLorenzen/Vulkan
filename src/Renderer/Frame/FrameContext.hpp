@@ -63,6 +63,7 @@ namespace Faye
         int numPointLights = 0;                                       // offset 468
         int _pad0 = 0;                                                // offset 472
         int _pad1 = 0;                                                // offset 476 -> block size 480
+        glm::vec4 skyParams{0.0f, 1.0f, 1.0f, 0.0f}; // offset 480
     };
 
     // Lock the std140 layouts so any accidental drift from the GLSL mirrors
@@ -72,7 +73,8 @@ namespace Faye
     static_assert(offsetof(SceneLightingUBO, directionalLights) == 16, "SceneLightingUBO layout drift");
     static_assert(offsetof(SceneLightingUBO, pointLights) == 144, "SceneLightingUBO layout drift");
     static_assert(offsetof(SceneLightingUBO, numDirectionalLights) == 464, "SceneLightingUBO layout drift");
-    static_assert(sizeof(SceneLightingUBO) == 480, "SceneLightingUBO std140 size drift");
+    static_assert(offsetof(SceneLightingUBO, skyParams) == 480, "SceneLightingUBO layout drift");
+    static_assert(sizeof(SceneLightingUBO) == 496, "SceneLightingUBO std140 size drift");
 
     struct FrameContext
     {
@@ -86,7 +88,11 @@ namespace Faye
         VulkanBuffer *globalBuffer{nullptr};
         VulkanBuffer *lightingBuffer{nullptr};
         VkDescriptorImageInfo prepassDepthInfo{};
-        VkDescriptorImageInfo skyboxInfo{};
+        VkDescriptorImageInfo waterFieldInfo{};
+        VkDescriptorImageInfo skyCubeInfo{};
+        VkDescriptorImageInfo irradianceInfo{};
+        VkDescriptorImageInfo prefilteredInfo{};
+        uint32_t prefilteredMipCount = 1;
     };
 
     using FrameInfo = FrameContext;

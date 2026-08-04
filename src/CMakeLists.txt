@@ -24,6 +24,8 @@ set(FAYE_ENGINE_SOURCES
     Editor/Panels/Inspector/InspectorPanel.cpp
     Editor/Panels/Inspector/MaterialEditor.cpp
     Editor/Panels/RuntimeView/RuntimeViewPanel.cpp
+    Editor/Panels/SceneSettings/SceneSettingsPanel.cpp
+    Editor/Panels/WaterDebug/WaterDebugPanel.cpp
     Editor/Widgets/AssetBrowser.cpp
     Editor/Widgets/EditorWidgets.cpp
     Editor/Widgets/FilePickerDialog.cpp
@@ -55,6 +57,7 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/vk_renderer.cpp
     Renderer/Vulkan/vk_swapchain.cpp
     Renderer/Vulkan/Vulkan.cpp
+    Renderer/Vulkan/profiler/vk_profiler.cpp
     Renderer/Vulkan/VulkanBuffer.cpp
     Renderer/Vulkan/VkImageResource.cpp
     Renderer/Vulkan/vma_implementation.cpp

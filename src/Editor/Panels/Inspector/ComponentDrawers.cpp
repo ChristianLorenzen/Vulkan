@@ -360,7 +360,7 @@ namespace Faye::Editor::Panels
         // any other type, read-only (attach/detach still goes through
         // ScriptSystem/LuaScriptSystem, not the generic add/remove menu). One row
         // each — the path is diagnostic, so it lives in the tooltip.
-        void drawNativeScript(const Utility::ComponentDrawContext &, NativeScriptComponent &script)
+        void drawNativeScript(const Utility::ComponentDrawContext &context, NativeScriptComponent &script)
         {
             if (!Widgets::beginProperties("##nativeScript"))
                 return;

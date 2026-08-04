@@ -31,10 +31,59 @@ layout(set=0,binding=2)uniform SceneLighting{
     int numPointLights;
     int _pad0;
     int _pad1;
+    vec4 skyParams;// x = skybox rotation, y = skybox intensity, z = prefiltered mip count, w = unused
 }lights;
+
+layout(set=0,binding=4)uniform samplerCube irradianceCube;
+layout(set=0,binding=5)uniform samplerCube prefilteredCube;
 
 // Ambient contribution — use to seed the diffuse accumulator.
 vec3 fayeAmbient(){return lights.ambientColor.rgb*lights.ambientColor.a;}
+
+vec3 fayeRotateY(vec3 v,float a){
+    float s=sin(a),c=cos(a);
+    return vec3(c*v.x+s*v.z,v.y,-s*v.x+c*v.z);
+}
+
+vec3 fayeFresnelSchlickRoughness(float cosTheta,vec3 F0,float roughness)
+{
+    return F0+(max(vec3(1.-roughness),F0)-F0)*pow(1.-cosTheta,5.);
+}
+
+vec2 fayeEnvBRDFApprox(float NdotV,float roughness)
+{
+    const vec4 c0=vec4(-1.,-.0275,-.572,.022);
+    const vec4 c1=vec4(1.,.0425,1.04,-.04);
+    vec4 r=roughness*c0+c1;
+    float a004=min(r.x*r.x,exp2(-9.28*NdotV))*r.x+r.y;
+    return vec2(-1.04,1.04)*a004+r.zw;
+}
+
+vec3 fayeIBL(vec3 N,vec3 V,vec3 albedo,float metallic,float roughness,
+float occlusion)
+{
+    float NoV=max(dot(N,V),1e-4);
+    vec3 R=reflect(-V,N);
+    vec3 F0=mix(vec3(.04),albedo,metallic);
+    
+    vec3 F=fayeFresnelSchlickRoughness(NoV,F0,roughness);
+    vec3 kD=(1.-F)*(1.-metallic);
+    
+    vec3 nr=fayeRotateY(N,lights.skyParams.x);
+    vec3 rr=fayeRotateY(R,lights.skyParams.x);
+    
+    // Irradiance is already cosine-convolved AND divided by PI in the bake, so
+    // no further PI division here -- doing it twice is the classic "IBL is 3x
+    // too dark" bug.
+    vec3 diffuse=texture(irradianceCube,nr).rgb*albedo;
+    
+    float lod=roughness*max(lights.skyParams.z-1.,0.);
+    vec3 prefiltered=textureLod(prefilteredCube,rr,lod).rgb;
+    vec2 ab=fayeEnvBRDFApprox(NoV,roughness);
+    vec3 specular=prefiltered*(F*ab.x+ab.y);
+    
+    return(kD*diffuse+specular)*occlusion*lights.skyParams.y;
+}
 
 /**
 * Blinn-Phong = r = k_a + sum_0_n (l_c * (r_d + r_s))

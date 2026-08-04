@@ -1,11 +1,9 @@
 #define VK_USER_PLATFORM_MACOS_MVK
 #include <vulkan/vulkan.h>
-#include <stdio.h>
-#include <unordered_map>
 #include <vector>
 
 #include "Vulkan.hpp"
-#include "Renderer/Resources/Vertex.hpp"
+#include "Renderer/Vulkan/profiler/vk_profiler.hpp"
 #include "Renderer/Scene/LightingUniforms.hpp"
 #include "Core/Path/Paths.hpp"
 
@@ -20,8 +18,11 @@ Faye::Vulkan::Vulkan(Window &win) : window{win}
     LOG_INFO(Logger::get(), "Creating Vulkan Device class instance...");
 
     vk_device = std::make_unique<VulkanDevice>(window);
+    
+    profiler = std::make_unique<Profiler::VkProfiler>(*vk_device);
+    
+    vk_renderer = std::make_unique<VulkanRenderer>(window, *vk_device, *profiler);
 
-    vk_renderer = std::make_unique<VulkanRenderer>(window, *vk_device);
     globalPool = VulkanDescriptorPool::Builder(*vk_device)
                      .setMaxSets(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT * 8)
                      .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VulkanSwapchain::MAX_FRAMES_IN_FLIGHT)
@@ -52,7 +53,7 @@ void Faye::Vulkan::initializeFrameResources()
 {
     uboBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     lightingBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (int i = 0; i < uboBuffers.size(); i++)
+    for (ulong i = 0; i < uboBuffers.size(); i++)
     {
         uboBuffers[i] = std::make_unique<VulkanBuffer>(
             *vk_device,
@@ -80,6 +81,8 @@ void Faye::Vulkan::initializeFrameResources()
                           .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .addBinding(2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                          .addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                          .addBinding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                           .build();
 
     // Material set (set 1): parameter UBO only — textures are now in the bindless set.
@@ -182,7 +185,7 @@ void Faye::Vulkan::initializeFrameResources()
         *globalSetLayout,
         materialSetLayout->getDescriptorSetLayout(),
         bindlessSetLayout->getDescriptorSetLayout(),
-        waterFieldSetLayout->getDescriptorSetLayout());
+        *waterFieldSetLayout);
 
     simpleRenderSystem->prepareDepthPrepassPipeline(
         vk_renderer->getSceneDepthFormat(),
@@ -197,7 +200,7 @@ void Faye::Vulkan::initializeFrameResources()
 
     waterDebugGradient = std::make_unique<VulkanComputePipeline>(
         *vk_device,
-        Paths::compiledShader("water_debug_gradient.comp").string());
+        Paths::compiledShader("water_debug_particles.comp").string());
     VkImageResourceCreateInfo imgInfo{};
     imgInfo.extent = {256, 256, 1};
     imgInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT;
@@ -396,6 +399,10 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     prepassDepthInfo.imageView = vk_renderer->getDepthPrepassImageViews()[frameIndex];
     prepassDepthInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
+    // Placeholder for set 3, binding 1. Filled in below once the water compute pass
+    // has been recorded; the scene pass that consumes it runs after that.
+    VkDescriptorImageInfo waterFieldInfo{};
+
     // Built here and retained for compositeSceneToSwapchain (present pass).
     currentFrame.emplace(FrameContext{
         frameIndex,
@@ -404,12 +411,21 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
         *primaryCamera,
         uboBuffers[frameIndex].get(),
         lightingBuffers[frameIndex].get(),
-        prepassDepthInfo});
+        prepassDepthInfo,
+        waterFieldInfo});
     FrameContext &frameContext = *currentFrame;
 
-    frameContext.skyboxInfo = environmentMap.isValid() ? environmentMap.descriptorInfo() : VkDescriptorImageInfo{};
+    frameContext.skyCubeInfo = environmentMap.skyInfo();
+    frameContext.irradianceInfo = environmentMap.irradianceInfo();
+    frameContext.prefilteredInfo = environmentMap.prefilteredInfo();
+    frameContext.prefilteredMipCount = environmentMap.prefilteredMipCount();
 
     totalElapsedTime += static_cast<float>(frameInput.frameTimeMs) / 1000.0f;
+
+    static const SceneSettings kDefaultSceneSettings{};
+    const SceneSettings &sceneSettings = frameInput.renderScene.sceneSettings
+    ? *frameInput.renderScene.sceneSettings
+    : kDefaultSceneSettings;
 
     GlobalUBO ubo{};
     ubo.priorViewProjection = primaryCamera->getPriorViewProjection();
@@ -430,6 +446,7 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     // lights have no geometry, and point-light billboards are drawn separately.
     SceneLightingUBO lighting{};
     packSceneLighting(frameInput.renderScene, lighting);
+    lighting.skyParams = glm::vec4(sceneSettings.skybox.rotation, sceneSettings.skybox.intensity, environmentMap.prefilteredMipCount(), 0.0f);
     lightingBuffers[frameIndex]->writeToBuffer(&lighting);
     lightingBuffers[frameIndex]->flush();
 
@@ -445,7 +462,7 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     storageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
     // globalSetLayout binding 0 is VK_SHADER_STAGE_ALL_GRAPHICS, which excludes
-    // compute, so water_debug_gradient.comp cannot read the GlobalUBO. Frame time
+    // compute, so the water compute shaders cannot read the GlobalUBO. Frame time
     // reaches it via a push constant instead.
     struct WaterComputeTimePushConstants
     {
@@ -454,6 +471,16 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     } timePush{ubo.time, ubo.deltaTime};
 
     waterDebugGradient->dispatch(commandBuffer, 256 / 16, 256 / 16, 1, {{0, &storageInfo}}, &timePush, sizeof(timePush));
+
+    // Descriptor for the graphics-side read of the same image. The layout here must
+    // be the one the image will be in when the scene pass samples it -- that is the
+    // SHADER_READ_ONLY_OPTIMAL the transition below moves it to, not the GENERAL the
+    // compute pass just wrote it in.
+    VkDescriptorImageInfo waterInfo{};
+    waterInfo.sampler = sceneDepthSampler;
+    waterInfo.imageView = waterFieldDebugImage.imageView;
+    waterInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    frameContext.waterFieldInfo = waterInfo;
 
     // Make the write visible to whatever reads it next. Fragment stage for a debug view
     // now; add TESSELLATION_EVALUATION_SHADER once TESE samples it in Phase 4.
@@ -467,9 +494,12 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
     // Opaque depth prepass -- write depth for all non-water objects.
     // water.frag samples this via set=0 binding=1 (prepassDepth) to
     // compute contact/intersection foam without self-contamination.
-    vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
-    simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
-    vk_renderer->endDepthPrepassRenderPass(commandBuffer);
+    {
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Depth Prepass"};
+        vk_renderer->beginDepthPrepassRenderPass(commandBuffer);
+        simpleRenderSystem->renderDepthPrepass(frameContext, frameInput.renderScene);
+        vk_renderer->endDepthPrepassRenderPass(commandBuffer);
+    }
 
     // Bind the bindless texture set (set 2) with the scene pipeline layout AFTER
     // the depth prepass. The depth prepass uses a separate pipeline layout (set 0
@@ -480,34 +510,53 @@ void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &
                             simpleRenderSystem->getPipelineLayout(),
                             2, 1, bindlessSets, 0, nullptr);
 
-    vk_renderer->beginSceneRenderPass(commandBuffer);
-
-    simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
-
-    if (!frameInput.renderScene.pointLights.empty())
     {
-        pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Scene Pass"};
+
+        vk_renderer->beginSceneRenderPass(commandBuffer);
+
+        {
+            Profiler::ScopedZone zone{*profiler, commandBuffer, "Scene Render"};
+            simpleRenderSystem->renderScene(frameContext, frameInput.renderScene);
+        }
+
+        {
+            Profiler::ScopedZone zone{*profiler, commandBuffer, "Point Light Render"};
+            if (!frameInput.renderScene.pointLights.empty())
+            {
+                pointLightRenderSystem->render(frameContext, frameInput.renderScene);
+            }
+        }
+
+        {
+            Profiler::ScopedZone zone{*profiler, commandBuffer, "Skybox Render"};
+            // isValid() guards the load having failed: descriptorInfo() would hand the
+            // push-descriptor write a null sampler/view, which is a validation error.
+            if (environmentMap.isValid() && sceneSettings.skybox.enabled)
+            {
+                skyboxRenderSystem->render(frameContext, sceneSettings.skybox);
+            }
+        }
+
+        {
+            Profiler::ScopedZone zone{*profiler, commandBuffer, "Editor Grid"};
+            // Editor reference grid. Last inside the scene pass so it tests against a
+            // complete depth buffer and alpha-blends over finished shading. The view
+            // owns the decision: runtime views leave `enabled` false and this is a
+            // predicted-not-taken branch, not a pipeline bind.
+            if (frameInput.renderView.grid.enabled)
+            {
+                editorGridRenderSystem->render(frameContext, frameInput.renderView.grid);
+            }
+        }
+
+        vk_renderer->endSceneRenderPass(commandBuffer);
+    }
+    {
+        Profiler::ScopedZone zone{*profiler, commandBuffer, "Post-Process Effects"};
+        postProcessChain->renderEffects(frameContext, frameInput.postProcessStack);
     }
 
-    // isValid() guards the load having failed: descriptorInfo() would hand the
-    // push-descriptor write a null sampler/view, which is a validation error.
-    if (frameInput.renderView.skybox.enabled && environmentMap.isValid())
-    {
-        skyboxRenderSystem->render(frameContext, frameInput.renderView.skybox);
-    }
-
-    // Editor reference grid. Last inside the scene pass so it tests against a
-    // complete depth buffer and alpha-blends over finished shading. The view
-    // owns the decision: runtime views leave `enabled` false and this is a
-    // predicted-not-taken branch, not a pipeline bind.
-    if (frameInput.renderView.grid.enabled)
-    {
-        editorGridRenderSystem->render(frameContext, frameInput.renderView.grid);
-    }
-
-    vk_renderer->endSceneRenderPass(commandBuffer);
-
-    postProcessChain->renderEffects(frameContext, frameInput.postProcessStack);
     framePhase = FramePhase::Scene;
 }
 

@@ -1,0 +1,49 @@
+#version 450
+// Projects an equirectangular (lat/long) HDR into the six faces of a cubemap.
+//
+// One invocation per output texel per face; gl_GlobalInvocationID.z is the face
+// index. The face basis below is Vulkan's cube convention (inherited from D3D):
+// it is NOT the same as the OpenGL-era tables most tutorials use, and getting it
+// wrong shows up as a mirrored or upside-down sky, not as an error.
+
+layout(local_size_x=8,local_size_y=8,local_size_z=1)in;
+
+layout(set=0,binding=0)uniform sampler2D equirect;
+layout(set=0,binding=1,rgba16f)uniform writeonly imageCube outCube;
+
+layout(push_constant)uniform Push{
+    uint faceSize;
+}push;
+
+const float PI=3.14159265359;
+const float TWO_PI=6.28318530718;
+
+// uv in [-1,1] across the face.
+vec3 directionForFace(uint face,vec2 uv)
+{
+    switch(face){
+        case 0u:return vec3(1.,-uv.y,-uv.x);// +X
+        case 1u:return vec3(-1.,-uv.y,uv.x);// -X
+        case 2u:return vec3(uv.x,1.,uv.y);// +Y
+        case 3u:return vec3(uv.x,-1.,-uv.y);// -Y
+        case 4u:return vec3(uv.x,-uv.y,1.);// +Z
+        default:return vec3(-uv.x,-uv.y,-1.);// -Z
+    }
+}
+
+vec2 dirToEquirect(vec3 d)
+{
+    return vec2(atan(d.z,d.x)/TWO_PI+.5,
+    acos(clamp(d.y,-1.,1.))/PI);
+}
+
+void main()
+{
+    uvec3 id=gl_GlobalInvocationID;
+    if(id.x>=push.faceSize||id.y>=push.faceSize)return;
+    
+    vec2 uv=((vec2(id.xy)+.5)/float(push.faceSize))*2.-1.;
+    vec3 dir=normalize(directionForFace(id.z,uv));
+    
+    imageStore(outCube,ivec3(id),vec4(texture(equirect,dirToEquirect(dir)).rgb,1.));
+}

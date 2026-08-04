@@ -36,7 +36,7 @@ namespace Faye
 	class SimpleRenderSystem
 	{
 	public:
-		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout);
+		SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VulkanDescriptorSetLayout &waterFieldSetLayout);
 		~SimpleRenderSystem();
 
 		SimpleRenderSystem(const SimpleRenderSystem &) = delete;
@@ -76,6 +76,10 @@ namespace Faye
                 VkFormat sceneColorFormat, sceneMotionFormat, sceneDepthFormat;
                 MaterialCache &materialCache;
                 VulkanDescriptorSetLayout &globalDescriptorSetLayout;
+                // Held as the wrapper (not the raw handle) because renderScene pushes
+                // descriptors into set 3 each frame, and VulkanDescriptorWriter needs
+                // the layout object to look binding types up.
+                VulkanDescriptorSetLayout &waterFieldDescriptorSetLayout;
                 std::unordered_map<MaterialPipelineKey, std::unique_ptr<VulkanPipeline>, MaterialPipelineKeyHasher> pipelineCache;
 
                 VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};

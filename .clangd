@@ -1,0 +1,15 @@
+# clangd project configuration for FayeVulkan.
+# Tells clangd where the CMake-generated compilation database lives
+# (build/compile_commands.json) so include paths and diagnostics match
+# the real build exactly.
+#
+# This file is discovered automatically by clangd from the project root.
+
+CompileFlags:
+  # Relative to this file's directory (the repository root).
+  CompilationDatabase: build
+  Add:
+    # Silence warnings about GCC-only flags that clang does not implement;
+    # the database is produced by CMake/GCC, so stray unknown flags would
+    # otherwise surface as noise in the editor.
+    - "-Wno-unknown-warning-option"

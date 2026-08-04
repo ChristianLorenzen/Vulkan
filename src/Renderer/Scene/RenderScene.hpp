@@ -9,6 +9,7 @@
 #include "Renderer/Resources/Model.hpp"
 #include "Scene/Camera/Camera.hpp"
 #include "Scene/Entities/Components.hpp"
+#include "Scene/Scene.hpp"
 
 namespace Faye
 {
@@ -54,6 +55,7 @@ namespace Faye
     struct RenderSceneSnapshot
     {
         const Camera *primaryCamera = nullptr;
+        const SceneSettings *sceneSettings = nullptr;
         std::vector<RenderableInstance> renderables;
         std::vector<PointLightInstance> pointLights;
         std::vector<DirectionalLightInstance> directionalLights;

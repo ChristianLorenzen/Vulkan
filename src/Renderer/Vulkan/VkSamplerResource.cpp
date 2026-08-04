@@ -67,6 +67,8 @@ void Faye::VkSamplerResource::create(VulkanDevice &device, const VkSamplerResour
     {
         throw std::runtime_error("Failed to create VkSamplerResource sampler");
     }
+
+    device.setObjectName(VK_OBJECT_TYPE_SAMPLER, (uint64_t)(sampler), createInfo.debugName ? createInfo.debugName : "VkSamplerResource Sampler");
 }
 
 void Faye::VkSamplerResource::destroy(VkDevice device)

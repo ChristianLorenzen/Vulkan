@@ -66,7 +66,11 @@ VulkanComputePipeline::VulkanComputePipeline(VulkanDevice &device, const std::st
     if (vkCreatePipelineLayout(device.getDevice(), &layoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
         throw std::runtime_error("Failed to create compute pipeline layout");
 
+
+    device.setObjectName(VK_OBJECT_TYPE_PIPELINE_LAYOUT, (uint64_t)pipelineLayout, "Compute Pipeline Layout");
+    
     VkShaderModule shaderModule = createShaderModule(device, computeShaderBytes);
+    device.setObjectName(VK_OBJECT_TYPE_SHADER_MODULE, (uint64_t)shaderModule, computeFilepath.c_str());
 
     VkPipelineShaderStageCreateInfo stageInfo{};
     stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -80,6 +84,9 @@ VulkanComputePipeline::VulkanComputePipeline(VulkanDevice &device, const std::st
     pipelineInfo.layout = pipelineLayout;
 
     VkResult result = vkCreateComputePipelines(device.getDevice(), device.getPipelineCache(), 1, &pipelineInfo, nullptr, &computePipeline);
+
+    device.setObjectName(VK_OBJECT_TYPE_PIPELINE, (uint64_t)computePipeline, "Compute Pipeline");
+
     vkDestroyShaderModule(device.getDevice(), shaderModule, nullptr);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create compute pipeline");

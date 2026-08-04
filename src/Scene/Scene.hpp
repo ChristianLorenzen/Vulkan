@@ -5,11 +5,24 @@
 #include <vector>
 
 #include "Core/ECS/World.hpp"
+#include "Renderer/View/RenderView.hpp"
 #include "Core/Serialization/Uuid.hpp"
 #include "Scene/Entities/Entity.hpp"
 
 namespace Faye
 {
+    struct SkyboxSettings
+    {
+        bool enabled = true;
+        float rotation = 0.0f;
+        float intensity = 1.0f;
+    };
+    
+    struct SceneSettings
+    {
+        SkyboxSettings skybox{ .enabled = true, .rotation = 0.0f, .intensity = 1.0f };
+    };
+
     // Thin facade over Ecs::World: callers hold generational Ecs::Entity
     // handles directly (a stale handle safely reads as dead — no aliasing).
     // Scene adds what the World deliberately doesn't know about: entity
@@ -52,6 +65,7 @@ namespace Faye
         void setSceneUuid(Uuid uuid) { sceneUuid = uuid; }
 
         std::string_view getName() const { return name; }
+        SceneSettings &getSceneSettings() { return sceneSettings; }
         void setName(std::string sceneName) { name = std::move(sceneName); }
         const std::vector<Ecs::Entity> &getEntities() const { return sceneEntities; }
 
@@ -130,6 +144,7 @@ namespace Faye
         }
 
         std::string name;
+        SceneSettings sceneSettings;
         Uuid sceneUuid = Uuid::generateV4();
         Ecs::World world;
         std::vector<Ecs::Entity> sceneEntities;   // creation order, backs getEntities()

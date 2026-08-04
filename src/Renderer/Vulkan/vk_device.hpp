@@ -39,6 +39,7 @@ namespace Faye
         VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
         uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+        void setDebugUtilName(VkObjectType objectType, uint64_t objectHandle, const char *name);
 
         VkPhysicalDeviceProperties properties;
 
@@ -56,7 +57,20 @@ namespace Faye
 
         void createImageWithInfo(const VkImageCreateInfo &imageInfo, const VmaAllocationCreateInfo &allocInfo, VkImage &image, VmaAllocation &allocation);
 
+        // Debug utils
+        void setObjectName(VkObjectType objectType, uint64_t objectHandle, const char *name) const;
+        void cmdBeginLabel(VkCommandBuffer commandBuffer, const char *labelName) const;
+        void cmdEndLabel(VkCommandBuffer commandBuffer) const;
+        bool debugUtilsAvailable() const { return debugUtils.setObjName != nullptr; }
+
     private:
+        struct DebugUtilsFunctions {
+            
+            PFN_vkSetDebugUtilsObjectNameEXT setObjName = nullptr;
+            PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel = nullptr;
+            PFN_vkCmdEndDebugUtilsLabelEXT endLabel = nullptr;
+        } debugUtils;
+        void loadDebugUtilsFunctions();
         void createInstance();
         void createSurface();
         void createPhysicalDevice();

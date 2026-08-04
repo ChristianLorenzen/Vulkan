@@ -4,13 +4,11 @@
 #include <stdio.h>
 #include <functional>
 
-#include "Vulkan.hpp"
 #include "vk_render_system.hpp"
 #include "Core/Path/Paths.hpp"
 
 #include "quill/LogMacros.h"
 
-#include <chrono>
 
 using namespace Faye;
 
@@ -59,11 +57,11 @@ size_t Faye::SimpleRenderSystem::MaterialPipelineKeyHasher::operator()(const Mat
     return combined;
 }
 
-Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VkDescriptorSetLayout waterFieldSetLayout)
-    : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache), globalDescriptorSetLayout(globalSetLayout)
+Faye::SimpleRenderSystem::SimpleRenderSystem(VulkanDevice &device, VkFormat colorFormat, VkFormat motionFormat, VkFormat depthFormat, MaterialCache &materialCache, VulkanDescriptorSetLayout &globalSetLayout, VkDescriptorSetLayout materialSetLayout, VkDescriptorSetLayout bindlessSetLayout, VulkanDescriptorSetLayout &waterFieldSetLayout)
+    : vk_device(device), sceneColorFormat(colorFormat), sceneMotionFormat(motionFormat), sceneDepthFormat(depthFormat), materialCache(materialCache), globalDescriptorSetLayout(globalSetLayout), waterFieldDescriptorSetLayout(waterFieldSetLayout)
 {
     LOG_INFO(Logger::get(), "Creating Vulkan Pipeline Layout...");
-    createPipelineLayout(globalSetLayout.getDescriptorSetLayout(), materialSetLayout, bindlessSetLayout, waterFieldSetLayout);
+    createPipelineLayout(globalSetLayout.getDescriptorSetLayout(), materialSetLayout, bindlessSetLayout, waterFieldSetLayout.getDescriptorSetLayout());
 }
 
 Faye::SimpleRenderSystem::~SimpleRenderSystem()
@@ -255,7 +253,16 @@ void Faye::SimpleRenderSystem::renderScene(FrameContext &frameContext, const Ren
         .writeBuffer(0, &bufferInfo)
         .writeImage(1, &frameContext.prepassDepthInfo)
         .writeBuffer(2, &lightingInfo)
+        .writeImage(4, &frameContext.irradianceInfo)
+        .writeImage(5, &frameContext.prefilteredInfo)
         .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 0);
+
+    // Water field (set 3, binding 1): the compute-written debug image, sampled by
+    // lit fragment shaders. Pushed once per frame like set 0 above -- every material
+    // pipeline shares `pipelineLayout`, so the push stays valid across the draw loop.
+    VulkanDescriptorWriter(waterFieldDescriptorSetLayout)
+        .writeImage(1, &frameContext.waterFieldInfo)
+        .pushDescriptors(frameContext.commandBuffer, pipelineLayout, 3);
 
     for (const auto &renderable : renderScene.renderables)
     {

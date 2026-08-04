@@ -15,5 +15,5 @@ find src/shaders -type f \( -name '*.vert' -o -name '*.frag' -o -name '*.comp' \
 	relative_path="${shader#src/shaders/}"
 	output_path="src/shaders/compiled/${relative_path}.spv"
 	mkdir -p "$(dirname "$output_path")"
-	"${GLSLC}" "$shader" -o "$output_path"
+	"${GLSLC}" "$shader" -I "src/shaders" -o "$output_path"
 done

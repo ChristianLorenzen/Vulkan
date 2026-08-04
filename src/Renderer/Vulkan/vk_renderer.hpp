@@ -2,6 +2,7 @@
 
 #include "Renderer/IRenderer.hpp"
 #include "Platform/Window/Window.hpp"
+#include "Renderer/Vulkan/profiler/vk_profiler.hpp"
 #include "vk_device.hpp"
 #include "vk_swapchain.hpp"
 #include "VkImageResource.hpp"
@@ -19,7 +20,7 @@ namespace Faye
     public:
         static constexpr uint32_t kPostProcessTargetCount = 2;
 
-        VulkanRenderer(Window &window, VulkanDevice &device);
+        VulkanRenderer(Window &window, VulkanDevice &device, Profiler::VkProfiler &profiler);
         ~VulkanRenderer();
 
         VulkanRenderer(const VulkanRenderer &) = delete;
@@ -95,6 +96,7 @@ namespace Faye
 
         Window &window;
         VulkanDevice &vk_device;
+        Profiler::VkProfiler &profiler;
         std::unique_ptr<VulkanSwapchain> vk_swapchain;
         VkExtent2D sceneRenderExtent{};
         VkFormat sceneColorFormat = VK_FORMAT_UNDEFINED;
