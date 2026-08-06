@@ -53,6 +53,8 @@ namespace Faye
         bool view = true;
     };
 
+    void onCameraFieldChanged(void *, const Ecs::FieldDescriptor &, Ecs::World &, Ecs::Entity);
+
     struct FAYE_ATTR(Ecs::TypeName("Camera")) CameraComponent
     {
         FAYE_ATTR(Ecs::NotSerialized) Camera camera{};
@@ -100,3 +102,5 @@ namespace Faye
         FAYE_ATTR(Ecs::Range{8, 256})       uint32_t subdivisions = 64;
     };
 }
+
+FAYE_ON_FIELD_CHANGED(Faye::CameraComponent, &Faye::onCameraFieldChanged);

@@ -263,6 +263,20 @@ namespace Faye
         return registry();
     }
 
+    // Named by reflection from PostProcessEffectComponent::definitionId, so the
+    // inspector's effect dropdown is this list, live, with no registration step
+    // and no string to keep in sync. The pointers handed to the sink are into
+    // the registry's own strings and stay valid for the frame.
+    void postProcessEffectOptions(const Ecs::OptionSink &sink)
+    {
+        for (const PostProcessEffectDefinition &definition : getPostProcessEffectDefinitions())
+        {
+            if (!definition.showInEditor)
+                continue;
+            sink.add(definition.id.c_str(), definition.displayName.c_str());
+        }
+    }
+
     const PostProcessEffectDefinition *findPostProcessEffectDefinition(std::string_view id)
     {
         const auto &definitions = getPostProcessEffectDefinitions();

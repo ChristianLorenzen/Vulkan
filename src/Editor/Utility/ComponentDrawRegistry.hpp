@@ -16,6 +16,11 @@ namespace Faye
     class ModelRegistry;
 }
 
+namespace Faye::Ecs
+{
+    class World;
+}
+
 namespace Faye::Editor::Utility
 {
     // Context handed to every component drawer: the scene facade for the
@@ -28,6 +33,11 @@ namespace Faye::Editor::Utility
         using TextureThumbnailFn = std::function<ImTextureID(MaterialHandle, TextureType)>;
 
         Entity entity;
+        // The reflected drawer fires TypeDescriptor::onFieldChanged after an
+        // edit, and that hook takes a World. Entity keeps its Scene private and
+        // exposes only handle(), so the World cannot be recovered from `entity`
+        // -- the inspector, which has one in scope, passes it explicitly.
+        Ecs::World *world = nullptr;
         MaterialRegistry *materials = nullptr;
         ModelRegistry *models = nullptr;
         const TextureThumbnailFn *thumbnails = nullptr;
@@ -59,6 +69,11 @@ namespace Faye::Editor::Utility
                 DrawTyped(context, *static_cast<T *>(component));
             };
         }
+
+        // Whether a hand-written drawer exists. The inspector asks first so it
+        // can fall back to the reflected drawer, which lives in Panels and must
+        // not be called from here (Utility does not depend on Panels).
+        bool has(Ecs::ComponentId id) const { return drawTable.contains(id); }
 
         void draw(Ecs::ComponentId id, const ComponentDrawContext &context, void *component) const
         {

@@ -389,15 +389,15 @@ namespace Faye::Editor::Panels
     Utility::ComponentDrawRegistry makeEditorDrawRegistry()
     {
         Utility::ComponentDrawRegistry registry;
-        registry.registerDrawer<TransformComponent, &drawTransform>();
-        registry.registerDrawer<MeshRendererComponent, &drawMesh>();
-        registry.registerDrawer<CameraComponent, &drawCamera>();
-        registry.registerDrawer<PointLightComponent, &drawPointLight>();
-        registry.registerDrawer<DirectionalLightComponent, &drawDirectionalLight>();
-        registry.registerDrawer<WaterComponent, &drawWater>();
-        registry.registerDrawer<PostProcessStackComponent, &drawPostProcessStack>();
-        registry.registerDrawer<NativeScriptComponent, &drawNativeScript>();
-        registry.registerDrawer<LuaScriptComponent, &drawLuaScript>();
+        // registry.registerDrawer<TransformComponent, &drawTransform>();
+        // registry.registerDrawer<MeshRendererComponent, &drawMesh>();
+        // registry.registerDrawer<CameraComponent, &drawCamera>();
+        // registry.registerDrawer<PointLightComponent, &drawPointLight>();
+        // registry.registerDrawer<DirectionalLightComponent, &drawDirectionalLight>();
+        // registry.registerDrawer<WaterComponent, &drawWater>();
+        //registry.registerDrawer<PostProcessStackComponent, &drawPostProcessStack>();
+        //registry.registerDrawer<NativeScriptComponent, &drawNativeScript>();
+        //registry.registerDrawer<LuaScriptComponent, &drawLuaScript>();
         // RigidBody2dComponent intentionally unregistered until it has UI:
         // it shows the "(no editor for this component)" placeholder.
         return registry;

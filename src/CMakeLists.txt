@@ -21,11 +21,13 @@ set(FAYE_ENGINE_SOURCES
     Editor/Panels/FrameStats/FrameStatsPanel.cpp
     Editor/Panels/Hierarchy/HierarchyPanel.cpp
     Editor/Panels/Inspector/ComponentDrawers.cpp
+    Editor/Panels/Inspector/FieldDrawers.cpp
     Editor/Panels/Inspector/InspectorPanel.cpp
     Editor/Panels/Inspector/MaterialEditor.cpp
     Editor/Panels/RuntimeView/RuntimeViewPanel.cpp
     Editor/Panels/SceneSettings/SceneSettingsPanel.cpp
     Editor/Panels/WaterDebug/WaterDebugPanel.cpp
+    Editor/Utility/FieldDrawRegistry.cpp
     Editor/Widgets/AssetBrowser.cpp
     Editor/Widgets/EditorWidgets.cpp
     Editor/Widgets/FilePickerDialog.cpp
@@ -253,6 +255,13 @@ add_executable(faye_tests
     Core/Path/Tests/PathsTests.cpp
     Core/Serialization/Uuid.cpp
     Core/Serialization/Tests/UuidTests.cpp
+    Core/IO/FileSystem.cpp
+    # PostProcessEffectComponent's definitionId dropdown names its option
+    # provider by reflection, so kDescriptor now holds the function's ADDRESS
+    # and the descriptor no longer links without it. Vulkan-free -- this file
+    # only reads effect definitions off disk -- so the test target stays
+    # headless.
+    Renderer/PostProcess/PostProcessEffectLibrary.cpp
     Assets/AssetDatabase.cpp
     Assets/Tests/AssetDatabaseTests.cpp
     Scene/Camera/Camera.cpp

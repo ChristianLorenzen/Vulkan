@@ -1,6 +1,7 @@
 #include "Scene.hpp"
 
 #include <algorithm>
+#include <utility>
 #include <stdexcept>
 
 #include "Scene/Entities/RegisterComponents.hpp"
@@ -11,17 +12,9 @@ namespace Faye
     {
         registerEngineComponents(world);
 
-        // Keep the primary-camera invariant no matter which route removes the
-        // camera — Scene::remove<CameraComponent>, entity destruction, or the editor's
-        // type-erased remove via the component registry.
-        world.setRemoveHook<CameraComponent>(
-            [this](Ecs::World &, Ecs::Entity entity, void *)
-            {
-                if (entity == primaryCameraEntity)
-                {
-                    primaryCameraEntity = Ecs::Entity::null();
-                }
-            });
+        // No primary-camera remove hook is needed: the primary camera is derived
+        // from the components themselves (findPrimaryCamera), so destroying or
+        // removing one cannot leave a stale cache behind.
     }
 
     Scene::~Scene()
@@ -96,9 +89,22 @@ namespace Faye
         return copiedEntity;
     }
 
+    Ecs::Entity Scene::findPrimaryCamera() const
+    {
+        for (const Ecs::Entity entity : sceneEntities)
+        {
+            if (const auto *camera = tryGet<CameraComponent>(entity))
+            {
+                if (camera->primary)
+                    return entity;
+            }
+        }
+        return Ecs::Entity::null();
+    }
+
     Entity Scene::getPrimaryCameraEntity()
     {
-        return getEntity(primaryCameraEntity);
+        return getEntity(findPrimaryCamera());
     }
 
     void Scene::destroyEntity(Ecs::Entity entity)
@@ -179,7 +185,7 @@ namespace Faye
         auto &camera = addOrGet<CameraComponent>(entity);
         camera.primary = primary;
 
-        if (primary || primaryCameraEntity.isNull())
+        if (primary || findPrimaryCamera().isNull())
         {
             setPrimaryCamera(entity);
         }
@@ -204,7 +210,6 @@ namespace Faye
         }
 
         camera->primary = true;
-        primaryCameraEntity = entity;
     }
 
     void Scene::setPrimaryCamera(Entity entity)
@@ -212,14 +217,17 @@ namespace Faye
         setPrimaryCamera(entity.handle());
     }
 
-    CameraComponent *Scene::getPrimaryCamera()
-    {
-        return tryGet<CameraComponent>(primaryCameraEntity);
-    }
-
     const CameraComponent *Scene::getPrimaryCamera() const
     {
-        return tryGet<CameraComponent>(primaryCameraEntity);
+        const Ecs::Entity entity = findPrimaryCamera();
+        return entity.isNull() ? nullptr : tryGet<CameraComponent>(entity);
     }
 
+    CameraComponent *Scene::getPrimaryCamera()
+    {
+        // Delegate to the const overload rather than duplicating the scan.
+        // Writing `return getPrimaryCamera();` in the CONST version instead
+        // would have called itself forever.
+        return const_cast<CameraComponent *>(std::as_const(*this).getPrimaryCamera());
+    }
 }

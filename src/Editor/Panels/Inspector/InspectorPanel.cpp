@@ -3,6 +3,7 @@
 #include "Assets/ModelRegistry.hpp"
 #include "Core/ECS/World.hpp"
 #include "Editor/Widgets/EditorWidgets.hpp"
+#include "Editor/Panels/Inspector/FieldDrawers.hpp"
 #include "Editor/Panels/Inspector/MaterialEditor.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Resources/Model.hpp"
@@ -73,13 +74,16 @@ namespace Faye::Editor::Panels
             }
             else
             {
+                // Designated: the member order is not something a caller should
+                // have to track, and `world` was added in the middle of it.
                 const Utility::ComponentDrawContext context{
-                    selectedEntity,
-                    materialRegistry,
-                    modelRegistry,
-                    textureThumbnailCallback,
-                    materialTemplateRegistry,
-                    &texturePicker};
+                    .entity = selectedEntity,
+                    .world = &scene->getWorld(),
+                    .materials = materialRegistry,
+                    .models = modelRegistry,
+                    .thumbnails = textureThumbnailCallback,
+                    .materialTemplates = materialTemplateRegistry,
+                    .texturePicker = &texturePicker};
 
                 drawEntityMetadata(selectedEntity);
                 drawComponents(*scene, context);
@@ -143,7 +147,17 @@ namespace Faye::Editor::Panels
             const Widgets::ComponentCard card = Widgets::beginComponentCard(info.name, removable);
             if (card.open)
             {
-                drawers.draw(info.id, context, component);
+                // Hand-written drawer wins, then the reflected one, then the
+                // placeholder. Branching here rather than inside
+                // ComponentDrawRegistry keeps Utility free of a dependency on
+                // Panels, and means an existing drawer can be deleted one at a
+                // time to compare it against the generic rendering.
+                if (drawers.has(info.id))
+                    drawers.draw(info.id, context, component);
+                else if (info.descriptor != nullptr)
+                    drawFields(*info.descriptor, component, context);
+                else
+                    ImGui::TextDisabled("(no editor for this component)");
             }
             Widgets::endComponentCard(card);
             ImGui::PopID();

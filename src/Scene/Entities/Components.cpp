@@ -60,4 +60,42 @@ namespace Faye
             },
         };
     }
+
+    // The primary-camera invariant has TWO halves, and only one of them used to
+    // live here. The hand-written inspector drawer enforced the other by never
+    // offering demotion at all -- it wired the checkbox to a local copy and
+    // acted only on promotion. A generic drawer cannot know that, so the rule
+    // moves to where it belongs: every path that writes `primary` (inspector,
+    // deserializer, script) now gets both halves.
+    void onCameraFieldChanged(void *component, const Ecs::FieldDescriptor &field, Ecs::World &world, Ecs::Entity entity)
+    {
+        if (field.offset != offsetof(CameraComponent, primary)) return;
+
+        auto *edited = static_cast<CameraComponent *>(component);
+
+        if (edited->primary)
+        {
+            // Promotion: exactly one camera holds the role, so demote the rest.
+            for (const uint32_t cameraEntityId : Ecs::denseEntitiesOf<CameraComponent>(world))
+            {
+                const Ecs::Entity cam = world.entityAt(cameraEntityId);
+                if (cam == entity) continue;
+                if (auto *c = world.tryGet<CameraComponent>(cam)) c->primary = false;
+            }
+            return;
+        }
+
+        // Demotion: allowed only if some other camera already holds the role.
+        // Otherwise the scene would be left with cameras but nothing to render
+        // through, and there is no UI gesture that gets it back -- so refuse
+        // the edit rather than repair it after the fact.
+        for (const uint32_t cameraEntityId : Ecs::denseEntitiesOf<CameraComponent>(world))
+        {
+            const Ecs::Entity cam = world.entityAt(cameraEntityId);
+            if (cam == entity) continue;
+            const auto *c = world.tryGet<CameraComponent>(cam);
+            if (c != nullptr && c->primary) return;
+        }
+        edited->primary = true;
+    }
 }

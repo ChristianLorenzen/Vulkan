@@ -137,7 +137,7 @@ namespace Faye
 
         void setPrimaryCamera(Ecs::Entity entity);
         void setPrimaryCamera(Entity entity);
-        Ecs::Entity getPrimaryCameraHandle() const { return primaryCameraEntity; }
+        Ecs::Entity getPrimaryCameraHandle() const { return findPrimaryCamera(); }
         CameraComponent *getPrimaryCamera();
         const CameraComponent *getPrimaryCamera() const;
 
@@ -145,6 +145,11 @@ namespace Faye
         const Ecs::World &getWorld() const { return world; }
 
     private:
+        // The primary camera is DERIVED, never cached: the one-primary-camera
+        // rule lives in the component data, so there is nothing to keep in
+        // sync. Null when no camera is primary.
+        Ecs::Entity findPrimaryCamera() const;
+
         Ecs::Entity require(Ecs::Entity entity) const;   // throws on dead/null handles
         static std::string defaultEntityName(Ecs::Entity entity);
 
@@ -171,7 +176,6 @@ namespace Faye
         Uuid sceneUuid = Uuid::generateV4();
         Ecs::World world;
         std::vector<Ecs::Entity> sceneEntities;   // creation order, backs getEntities()
-        Ecs::Entity primaryCameraEntity{};        // null when no primary camera
     };
 
     // ---- Entity facade forwarding ----------------------------------------
