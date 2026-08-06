@@ -177,7 +177,10 @@ TEST_CASE("registerEngineComponents stamps the serialize/deserialize slots")
     {
         if (info.name == nullptr)
             continue;
-        CHECK(info.serialize != nullptr);
-        CHECK(info.deserialize != nullptr);
+        // Either a hand-written thunk pair or a descriptor -- both are
+        // serialisable, and 1.7 migrates components from the former to the latter.
+        INFO("component: ", std::string{info.name});
+        CHECK((info.serialize != nullptr || info.descriptor != nullptr));
+        CHECK((info.deserialize != nullptr || info.descriptor != nullptr));
     }
 }

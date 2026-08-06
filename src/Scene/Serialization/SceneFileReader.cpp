@@ -10,7 +10,9 @@
 #include "Renderer/Resources/PrimitiveType.hpp"
 #include "Scene/Scene.hpp"
 #include "Scene/Serialization/Deserializer.hpp"
+#include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 #include "Scene/Serialization/MaterialEnumNames.hpp"
+#include "Scene/Serialization/ReflectedSerializers.hpp"
 #include "Scripting/LuaScriptSystem.hpp"
 #include "Scripting/ScriptSystem.hpp"
 #include "quill/LogMacros.h"
@@ -310,7 +312,7 @@ namespace Faye
                         LOG_WARNING(Logger::get(), "Scene load: unknown component type '{}' (skipped)", typeName);
                         continue;   // forward compatibility
                     }
-                    if (info->deserialize == nullptr)
+                    if (info->deserialize == nullptr && info->descriptor == nullptr)
                     {
                         LOG_WARNING(Logger::get(), "Scene load: component '{}' is not deserializable (skipped)", typeName);
                         continue;
@@ -321,7 +323,12 @@ namespace Faye
                     if (raw == nullptr)
                         continue;
                     Ecs::Deserializer deserializer(compNode, &models, &materials);
-                    info->deserialize(raw, deserializer);
+                    // Mirrors SceneFileWriter: hand-written thunk first, then
+                    // the descriptor-driven walk.
+                    if (info->deserialize != nullptr)
+                        info->deserialize(raw, deserializer);
+                    else
+                        Ecs::deserializeReflected(*info->descriptor, raw, deserializer);
                 }
             }
 

@@ -14,6 +14,7 @@
 #include "Core/ECS/AccessCheck.hpp"
 #include "Core/ECS/ComponentPool.hpp"
 #include "Core/ECS/Entity.hpp"
+#include "Core/ECS/Reflection/TypeDescriptor.hpp"
 
 namespace Faye::Ecs
 {
@@ -36,6 +37,7 @@ namespace Faye::Ecs
     {
         ComponentId id = 0;
         const char *name = nullptr;
+        TypeId typeId = 0;
 
         // Type-erased operations the editor (and save/load) need without
         // knowing T. Plain function pointers: each is a captureless lambda
@@ -47,8 +49,19 @@ namespace Faye::Ecs
         bool (*has)(World &, Entity) = nullptr;
         void (*copyTo)(World &, Entity, Entity) = nullptr;  // for duplication
 
-        void (*serialize)(const void *component, Serializer &) = nullptr;     // reserved
-        void (*deserialize)(void *component, Deserializer &) = nullptr;       // reserved
+        void (*serialize)(const void *component, Serializer &) = nullptr;
+        void (*deserialize)(void *component, Deserializer &) = nullptr;
+
+        // Generic path, used when serialize/deserialize are null: the scene
+        // writer/reader hand this to Scene/Serialization/ReflectedSerializers.
+        //
+        // A descriptor POINTER rather than a per-T thunk pair, because a thunk
+        // is a template instantiation and a descriptor is plain data. That is
+        // the difference between <meta> reaching two .cpp files and reaching
+        // every translation unit that includes World.hpp (measured: 54 of 124).
+        // It is also the only form a plugin can supply across a .so boundary,
+        // which is why TypeDescriptor is POD in the first place.
+        const TypeDescriptor *descriptor = nullptr;
     };
 
     class ComponentTypeRegistry
@@ -63,13 +76,42 @@ namespace Faye::Ecs
         // a move-only component (CameraComponent) can be registered.
         // serialize/deserialize fill the reserved ComponentTypeInfo slots;
         // nullptr (default) marks a type as not (de)serializable.
+        //
+        // explicitTypeId defaults to hashTypeName(name), because `name` already
+        // IS the persistent key: SceneFileWriter writes it as the `type:` field
+        // and SceneFileReader looks components up by it. Pass an explicit id
+        // only to decouple the two — i.e. to rename the displayed name without
+        // invalidating existing .faye files.
+        //
+        // A trailing defaulted parameter rather than an overload: an overload
+        // taking TypeId in second position is ambiguous with a literal 0 for
+        // the serialize thunk, and would be a second signature to keep in sync.
         template <class T, Clone C = Clone::copy>
         void registerType(const char *name,
                           void (*serialize)(const void *, Serializer &) = nullptr,
-                          void (*deserialize)(void *, Deserializer &) = nullptr);
+                          void (*deserialize)(void *, Deserializer &) = nullptr,
+                          TypeId explicitTypeId = 0);
+
+        // Reflected registration: the descriptor drives (de)serialisation and
+        // the thunk slots stay null.
+        //
+        //     registry.registerType<TransformComponent>("Transform",
+        //                                               &Ecs::kDescriptor<TransformComponent>);
+        //
+        // Unambiguous against the overload above: a const TypeDescriptor* does
+        // not convert to a serialize thunk. Only a literal nullptr in the
+        // second position would be ambiguous, and that spelling means nothing.
+        template <class T, Clone C = Clone::copy>
+        void registerType(const char *name,
+                          const TypeDescriptor *descriptor,
+                          TypeId explicitTypeId = 0);
 
         const ComponentTypeInfo &info(ComponentId id) const { return types[id]; }
         std::span<const ComponentTypeInfo> all() const { return types; }
+
+        // Null when no registered type carries that id. Linear over at most
+        // kMaxComponentTypes entries, and only ever called during load.
+        const ComponentTypeInfo *findByTypeId(TypeId typeId) const;
 
     private:
         std::vector<ComponentTypeInfo> types;   // indexed by ComponentId; gaps have name == nullptr
@@ -320,7 +362,8 @@ namespace Faye::Ecs
     template <class T, Clone C>
     void ComponentTypeRegistry::registerType(const char *name,
                                              void (*serialize)(const void *, Serializer &),
-                                             void (*deserialize)(void *, Deserializer &))
+                                             void (*deserialize)(void *, Deserializer &),
+                                             TypeId explicitTypeId)
     {
         const ComponentId id = componentId<T>();
         if (id >= types.size())
@@ -328,6 +371,7 @@ namespace Faye::Ecs
         types[id] = ComponentTypeInfo{
             .id = id,
             .name = name,
+            .typeId = explicitTypeId != 0 ? explicitTypeId : hashTypeName(name),
             .addDefault = [](World &world, Entity e) { world.add<T>(e); },
             .remove = [](World &world, Entity e) { world.remove<T>(e); },
             .tryGetRaw = [](World &world, Entity e) -> void * { return world.tryGet<T>(e); },
@@ -336,6 +380,28 @@ namespace Faye::Ecs
             .serialize = serialize,
             .deserialize = deserialize,
         };
+    }
+
+    template <class T, Clone C>
+    void ComponentTypeRegistry::registerType(const char *name,
+                                             const TypeDescriptor *descriptor,
+                                             TypeId explicitTypeId)
+    {
+        // Same registration, thunks left null so the writer/reader take the
+        // descriptor path. Delegating keeps the addDefault/remove/copyTo
+        // lambdas defined exactly once.
+        registerType<T, C>(name, nullptr, nullptr, explicitTypeId);
+        types[componentId<T>()].descriptor = descriptor;
+    }
+
+    inline const ComponentTypeInfo *ComponentTypeRegistry::findByTypeId(TypeId typeId) const
+    {
+        if (typeId == 0)
+            return nullptr;   // 0 means "no id", never a match
+        for (const ComponentTypeInfo &info : types)
+            if (info.name != nullptr && info.typeId == typeId)
+                return &info;
+        return nullptr;
     }
 
     // ---- View implementation ---------------------------------------------

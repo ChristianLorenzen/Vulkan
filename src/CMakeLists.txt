@@ -71,6 +71,7 @@ set(FAYE_ENGINE_SOURCES
     Scripting/LuaScriptSystem.cpp
     Scripting/ScriptingSystem.cpp
     Scene/Camera/Camera.cpp
+    Core/ECS/Reflection/SemanticRegistry.cpp
     Scene/Entities/Components.cpp
     Scene/Entities/Entity.cpp
     Scene/Entities/RegisterComponents.cpp
@@ -81,6 +82,7 @@ set(FAYE_ENGINE_SOURCES
     Scene/Serialization/Serializer.cpp
     Scene/Serialization/Deserializer.cpp
     Scene/Serialization/ComponentSerializers.cpp
+    Scene/Serialization/ReflectedSerializers.cpp
     Scene/Serialization/MaterialEnumNames.cpp
     Scene/Serialization/SceneFileWriter.cpp
     Scene/Serialization/SceneFileReader.cpp
@@ -244,6 +246,8 @@ add_executable(faye_tests
     Core/ECS/Tests/EcsTests.cpp
     Core/ECS/Tests/TypeRegistryTests.cpp
     Core/ECS/Tests/ScheduleTests.cpp
+    Core/ECS/Reflection/SemanticRegistry.cpp
+    Core/ECS/Tests/ReflectionTests.cpp
     Core/Logging/Logger.cpp
     Core/Path/Paths.cpp
     Core/Path/Tests/PathsTests.cpp
@@ -260,6 +264,7 @@ add_executable(faye_tests
     Scene/Serialization/Serializer.cpp
     Scene/Serialization/Deserializer.cpp
     Scene/Serialization/ComponentSerializers.cpp
+    Scene/Serialization/ReflectedSerializers.cpp
     Scene/Serialization/MaterialEnumNames.cpp
     Scene/Serialization/Tests/SceneSerializationTests.cpp
     Scripting/ScriptSystem.cpp

@@ -10,12 +10,41 @@
 namespace Faye::Ecs
 {
     // ---- Transform -------------------------------------------------------
+    namespace
+    {
+        // Exactly the table Describe.hpp now generates from enumerators_of, and
+        // exactly the boilerplate step 1.12 exists to delete -- it is here only
+        // because the reflection-off build has no other way to persist an enum,
+        // and because the parity harness compares against hand-written code by
+        // definition. Names must match the C++ identifiers: that is what the
+        // reflected writer emits.
+        const char *testEnumName(TestEnum value)
+        {
+            switch (value)
+            {
+            case TESTONE: return "TESTONE";
+            case TESTTWO: return "TESTTWO";
+            case FINAL:   return "FINAL";
+            }
+            return "TESTONE";
+        }
+
+        TestEnum testEnumFromName(const std::string &name, TestEnum fallback)
+        {
+            if (name == "TESTONE") return TESTONE;
+            if (name == "TESTTWO") return TESTTWO;
+            if (name == "FINAL")   return FINAL;
+            return fallback;
+        }
+    }
+
     void serializeTransform(const void *raw, Serializer &s)
     {
         const auto &c = *static_cast<const TransformComponent *>(raw);
         s.writeField("translation", c.translation);
-        s.writeField("rotation", c.rotation);   // radians
         s.writeField("scale", c.scale);
+        s.writeField("rotation", c.rotation);   // radians
+        s.writeField("enumVal", std::string{testEnumName(c.enumVal)});
     }
 
     void deserializeTransform(void *raw, Deserializer &d)
@@ -24,6 +53,7 @@ namespace Faye::Ecs
         c.translation = d.readVec3("translation", c.translation);
         c.rotation = d.readVec3("rotation", c.rotation);
         c.scale = d.readVec3("scale", c.scale);
+        c.enumVal = testEnumFromName(d.readString("enumVal", testEnumName(c.enumVal)), c.enumVal);
     }
 
     // ---- Mesh (asset id references) --------------------------------------

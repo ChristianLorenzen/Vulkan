@@ -7,6 +7,7 @@
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Scene/Scene.hpp"
 #include "Scene/Serialization/MaterialEnumNames.hpp"
+#include "Scene/Serialization/ReflectedSerializers.hpp"
 #include "Scene/Serialization/Serializer.hpp"
 
 namespace Faye
@@ -136,7 +137,7 @@ namespace Faye
             emitter << YAML::Key << "components" << YAML::Value << YAML::BeginSeq;
             for (const Ecs::ComponentTypeInfo &info : world.types().all())
             {
-                if (info.name == nullptr || info.serialize == nullptr)
+                if (info.name == nullptr || (info.serialize == nullptr && info.descriptor == nullptr))
                     continue;   // unregistered gap or not serializable
                 void *raw = info.tryGetRaw(world, entity);
                 if (raw == nullptr)
@@ -144,7 +145,12 @@ namespace Faye
 
                 emitter << YAML::BeginMap;
                 emitter << YAML::Key << "type" << YAML::Value << info.name;
-                info.serialize(raw, serializer);   // writes the component's fields
+                // A hand-written thunk still wins where one is registered; types
+                // registered with a descriptor take the generic walk.
+                if (info.serialize != nullptr)
+                    info.serialize(raw, serializer);
+                else
+                    Ecs::serializeReflected(*info.descriptor, raw, serializer);
                 emitter << YAML::EndMap;
             }
             emitter << YAML::EndSeq;   // components
