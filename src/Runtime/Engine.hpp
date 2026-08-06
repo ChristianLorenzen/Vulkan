@@ -85,6 +85,7 @@ namespace Faye {
         // Editor actions (deferred by the editor to end-of-frame).
         SceneBuilder::SceneSetup newScene();
         std::string saveScene(const std::string &path);          // "" = success
+        std::string saveSceneAs(const std::string &path);        // "" = success; forks the scene uuid
         SceneFileLoadResult loadScene(const std::string &path);
 
     private:

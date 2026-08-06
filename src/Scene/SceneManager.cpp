@@ -45,6 +45,15 @@ std::string Faye::SceneManager::saveSceneToFile(const std::string &path)
     return "";
 }
 
+std::string Faye::SceneManager::saveSceneAsToFile(const std::string &path)
+{
+    if (activeScene != nullptr && sceneSaveNeedsNewUuid(scenePath, path))
+    {
+        activeScene->regenerateSceneUuid();
+    }
+    return saveSceneToFile(path);
+}
+
 Faye::SceneFileLoadResult Faye::SceneManager::loadSceneFromFile(const std::string &path)
 {
     if (scriptSystem == nullptr || luaScriptSystem == nullptr)

@@ -36,6 +36,10 @@ namespace Faye
         // Save the active scene to a .faye file. Returns "" on success, else
         // an error message.
         std::string saveSceneToFile(const std::string &path);
+        // Save As: writing an already-persisted scene to a DIFFERENT path
+        // produces a copy, so the copy gets a fresh scene uuid. Without this
+        // two .faye files claim the same identity (see sceneSaveNeedsNewUuid).
+        std::string saveSceneAsToFile(const std::string &path);
         // Fill-in-place load: clears the active scene, then rebuilds it from
         // the file. result.error is set on failure.
         SceneFileLoadResult loadSceneFromFile(const std::string &path);

@@ -11,6 +11,23 @@
 
 namespace Faye
 {
+    // True when writing the active scene to `targetPath` produces a COPY that
+    // would otherwise duplicate an existing file's scene uuid.
+    //
+    // Three cases, and only the first mints a new id:
+    //   - a scene already on disk, written somewhere else  -> a fork, new id
+    //   - written back over its own path                   -> same scene, keep
+    //   - never persisted (currentPath empty)              -> no file claims
+    //                                                         its id yet, keep
+    //
+    // Free and header-inline so it is unit-testable: SceneManager itself pulls
+    // in the registries and the renderer, and is not in the test target.
+    inline bool sceneSaveNeedsNewUuid(const std::string &currentPath,
+                                      const std::string &targetPath)
+    {
+        return !currentPath.empty() && !targetPath.empty() && currentPath != targetPath;
+    }
+
     struct SkyboxSettings
     {
         bool enabled = true;
@@ -63,6 +80,12 @@ namespace Faye
 
         Uuid getSceneUuid() const { return sceneUuid; }
         void setSceneUuid(Uuid uuid) { sceneUuid = uuid; }
+
+        // Mint a fresh identity. Call when the in-memory scene stops being the
+        // scene it was: File > New, and Save As onto a different path. NOT on
+        // clear(), which the load path also uses -- there the reader supplies
+        // the id from the file.
+        void regenerateSceneUuid() { sceneUuid = Uuid::generateV4(); }
 
         std::string_view getName() const { return name; }
         SceneSettings &getSceneSettings() { return sceneSettings; }

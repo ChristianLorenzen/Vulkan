@@ -135,6 +135,11 @@ namespace Faye {
     {
         Scene &scene = sceneManager->getActiveScene();
         scene.clear();
+        // newScene() reuses the live Scene object rather than constructing one,
+        // so the uuid has to be minted explicitly -- otherwise the "new" scene
+        // inherits the identity of whatever was open and saving it duplicates
+        // that id onto a second file.
+        scene.regenerateSceneUuid();
         sceneManager->clearScenePath();
 
         SceneBuilder::SceneSetup setup = sceneBuilder->populate(scene);
@@ -146,6 +151,11 @@ namespace Faye {
     std::string Engine::saveScene(const std::string &path)
     {
         return sceneManager->saveSceneToFile(path);
+    }
+
+    std::string Engine::saveSceneAs(const std::string &path)
+    {
+        return sceneManager->saveSceneAsToFile(path);
     }
 
     SceneFileLoadResult Engine::loadScene(const std::string &path)

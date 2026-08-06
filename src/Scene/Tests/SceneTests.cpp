@@ -244,3 +244,46 @@ TEST_CASE("destroying the scene destroys every remaining entity through the norm
 
     CHECK(hookFired);
 }
+
+// ---------------------------------------------------------------------------
+// Scene identity. Two .faye files must never claim the same uuid: it is the
+// only stable handle a future scene reference / asset record can key on.
+// ---------------------------------------------------------------------------
+TEST_CASE("Save As forks the scene uuid only when it creates a copy")
+{
+    // A scene already on disk, written elsewhere -> that is a duplicate.
+    CHECK(Faye::sceneSaveNeedsNewUuid("assets/scenes/a.faye", "assets/scenes/b.faye"));
+
+    // Written back over itself -> still the same scene.
+    CHECK_FALSE(Faye::sceneSaveNeedsNewUuid("assets/scenes/a.faye", "assets/scenes/a.faye"));
+
+    // Never persisted -> no file claims its id yet, so nothing to collide with.
+    CHECK_FALSE(Faye::sceneSaveNeedsNewUuid("", "assets/scenes/b.faye"));
+
+    // Degenerate: no target path is not a save at all.
+    CHECK_FALSE(Faye::sceneSaveNeedsNewUuid("assets/scenes/a.faye", ""));
+}
+
+TEST_CASE("regenerateSceneUuid mints a distinct identity")
+{
+    Faye::Scene scene("Scene");
+    const Faye::Uuid original = scene.getSceneUuid();
+    CHECK_FALSE(original.isNull());
+
+    scene.regenerateSceneUuid();
+    CHECK(scene.getSceneUuid() != original);
+
+    // Clearing entities must NOT touch identity -- the load path clears before
+    // the reader supplies the uuid from the file, and File > New mints its own.
+    const Faye::Uuid afterRegenerate = scene.getSceneUuid();
+    scene.createEntity("doomed");
+    scene.clear();
+    CHECK(scene.getSceneUuid() == afterRegenerate);
+}
+
+TEST_CASE("freshly constructed scenes do not share an identity")
+{
+    Faye::Scene first("A");
+    Faye::Scene second("B");
+    CHECK(first.getSceneUuid() != second.getSceneUuid());
+}

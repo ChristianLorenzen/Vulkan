@@ -178,7 +178,7 @@ namespace Faye::Editor {
 
         case Panels::FileAction::SaveAs:
         {
-            const std::string error = engine.saveScene(pendingFileAction.path);
+            const std::string error = engine.saveSceneAs(pendingFileAction.path);
             if (!error.empty())
                 LOG_ERROR(Logger::get(), "Editor: save failed: {}", error);
             else
