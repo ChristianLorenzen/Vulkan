@@ -4,8 +4,7 @@
 
 #include <cstddef>
 
-#include "Scene/Camera/Camera.hpp"
-
+#include "engine/Scene/Camera/Camera.hpp"
 namespace Faye { class VulkanBuffer; }
 
 namespace Faye

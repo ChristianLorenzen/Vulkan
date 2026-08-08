@@ -7,21 +7,20 @@
 #include <glm/glm.hpp>
 #include <yaml-cpp/yaml.h>
 
-#include "Assets/ModelHandle.hpp"
 #include "Core/ECS/Reflection/SemanticRegistry.hpp"
+#include "Core/Handles/MaterialHandle.hpp"
+#include "Core/Handles/ModelHandle.hpp"
 #include "Core/Serialization/Uuid.hpp"
-#include "Renderer/Material/MaterialHandle.hpp"
-#include "Scene/Serialization/Deserializer.hpp"
-#include "Scene/Serialization/Serializer.hpp"
-
+#include "engine/Scene/Serialization/Deserializer.hpp"
+#include "engine/Scene/Serialization/Serializer.hpp"
 #if defined(FAYE_HAS_REFLECTION) && FAYE_HAS_REFLECTION
 #include "Core/ECS/Reflection/Describe.hpp"
-#include "Scene/Entities/Components.hpp"
-#include "Scene/Serialization/ComponentSerializers.hpp"
+#include "engine/Scene/Entities/Components.hpp"
+#include "engine/Scene/Serialization/ComponentSerializers.hpp"
 #include "Core/ECS/World.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
-#include "Scene/Entities/RegisterComponents.hpp"
-#include "Scene/Serialization/ReflectedSerializers.hpp"
+#include "engine/Scene/Entities/RegisterComponents.hpp"
+#include "engine/Scene/Serialization/ReflectedSerializers.hpp"
 #endif
 
 using namespace Faye;

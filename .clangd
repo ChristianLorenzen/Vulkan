@@ -5,6 +5,8 @@
 #
 # This file is discovered automatically by clangd from the project root.
 
+# /home/christian/.vscode-server/data/User/globalStorage/llvm-vs-code-extensions.vscode-clangd/install/22.1.6/clangd_22.1.6/bin/clangd
+
 CompileFlags:
   # Relative to this file's directory (the repository root).
   CompilationDatabase: build

@@ -2,8 +2,7 @@
 
 #include <algorithm>
 
-#include "Scene/Camera/Camera.hpp"
-
+#include "engine/Scene/Camera/Camera.hpp"
 namespace Faye
 {
     void packSceneLighting(const RenderSceneSnapshot &snapshot, SceneLightingUBO &lighting)

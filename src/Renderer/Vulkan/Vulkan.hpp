@@ -16,6 +16,7 @@
 #include "Platform/Window/Window.hpp"
 #include "Renderer/Frame/FrameContext.hpp"
 #include "Renderer/IRenderer.hpp"
+#include "Renderer/IRendererBackend.hpp"
 #include "Renderer/Resources/Model.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
 #include "Renderer/View/RenderView.hpp"
@@ -42,35 +43,11 @@
 
 namespace Faye
 {
-	struct VulkanFrameInput
-	{
-		const RenderView &renderView;
-		const RenderSceneSnapshot &renderScene;
-		const PostProcessStackComponent *postProcessStack = nullptr;
-		int frameTimeMs = 0;
-		int averageFps = 0;
-	};
-
-	// GPU image + sampler pair for a material texture. The lookup half of the
-	// former material-thumbnail query; the UI layer turns this into its own
-	// texture descriptor for display in panels.
-	struct MaterialTextureView
-	{
-		VkImageView imageView = VK_NULL_HANDLE;
-		VkSampler sampler = VK_NULL_HANDLE;
-	};
-
-	class Vulkan
+	// FrameToken / MaterialTextureView / RenderFrameInput now live in
+	// Renderer/IRendererBackend.hpp (namespace Faye).
+	class Vulkan : public IRendererBackend
 	{
 	public:
-		// Identifies an in-flight frame across the editor-driven phase calls.
-		struct FrameToken
-		{
-			VkCommandBuffer cmd = VK_NULL_HANDLE;
-			int frameIndex = 0;
-			bool swapchainRecreated = false;
-		};
-
 		explicit Vulkan(Window &win);
 		~Vulkan();
 
@@ -87,7 +64,7 @@ namespace Faye
 		std::optional<FrameToken> beginFrame();
 		// Depth prepass + scene pass + point lights + editor grid overlay +
 		// post-process effects.
-		void renderScene(const FrameToken &token, const VulkanFrameInput &frameInput);
+		void renderScene(const FrameToken &token, const RenderFrameInput &frameInput) override;
 		// Begin the swapchain (present) render pass.
 		void beginPresentPass(const FrameToken &token);
 		// Composite the final post-processed scene into the swapchain image.

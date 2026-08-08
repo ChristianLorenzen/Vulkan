@@ -21,7 +21,7 @@ namespace Faye
         // src/shaders/  (shader source files, watched for hot-reload)
         static std::filesystem::path shaderSources();
 
-        // src/Assets/
+        // src/engine/Assets/
         static std::filesystem::path assets();
 
         // bin/

@@ -3,9 +3,9 @@
 #include <filesystem>
 #include <string_view>
 
+#include "Core/Handles/MaterialHandle.hpp"
 #include "Editor/Utility/ComponentDrawRegistry.hpp"
 #include "Renderer/Material/Material.hpp"
-#include "Renderer/Material/MaterialHandle.hpp"
 
 namespace Faye
 {

@@ -10,10 +10,9 @@
 #include "Editor/Widgets/AssetBrowser.hpp"
 #include "Editor/Widgets/FilePickerDialog.hpp"
 #include "Editor/ImGuiFrameData.hpp"
+#include "Core/Handles/PrimitiveType.hpp"
 #include "Editor/Panels/IEditorPanel.hpp"
-#include "Renderer/Resources/PrimitiveType.hpp"
-#include "Scene/Scene.hpp"
-
+#include "engine/Scene/Scene.hpp"
 namespace Faye
 {
     class MaterialRegistry;

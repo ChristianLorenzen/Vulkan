@@ -1,6 +1,6 @@
 #include "Editor/Panels/Hierarchy/HierarchyPanel.hpp"
 
-#include "Assets/ModelRegistry.hpp"
+#include "engine/Assets/ModelRegistry.hpp"
 #include "Renderer/Resources/Model.hpp"
 
 #include "imgui.h"

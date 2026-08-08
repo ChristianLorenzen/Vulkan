@@ -8,9 +8,9 @@
 
 #include <imgui.h>
 
+#include "Core/Handles/MaterialHandle.hpp"
 #include "Core/Path/Paths.hpp"
 #include "Renderer/Material/Material.hpp"
-#include "Renderer/Material/MaterialHandle.hpp"
 
 namespace Faye::Editor::Widgets
 {

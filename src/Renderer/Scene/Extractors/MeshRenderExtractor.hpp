@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "Assets/ModelRegistry.hpp"
+#include "engine/Assets/ModelRegistry.hpp"
 #include "Core/ECS/System.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Scene/RenderScene.hpp"

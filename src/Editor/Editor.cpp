@@ -2,8 +2,9 @@
 
 #include "Core/Logging/Logger.hpp"
 #include "Editor/Panels/AssetExplorer/AssetExplorerPanel.hpp"
+#include "Platform/Input/Input.hpp"
 #include "Renderer/Material/TextureLoader.hpp"
-
+#include "engine/Scene/Entities/Components.hpp"
 #include "quill/LogMacros.h"
 
 namespace Faye::Editor {
@@ -79,7 +80,7 @@ namespace Faye::Editor {
     }
 
     void Application::renderFrame(const RenderView& view) {
-        Vulkan& r = engine.renderer();
+        IRendererBackend& r = engine.renderer();
 
         // Apply the offscreen resize the viewport panel requested last frame.
         // Re-register the ImGui viewport textures if the resize actually took effect.
@@ -209,9 +210,9 @@ namespace Faye::Editor {
         if (!tf || !cam) return; // throw std::runtime_error("Active scene camera is not configured correctly");
 
         cam->camera.saveViewProjectionMatrix();
-        Input& input = Input::getInstance();
-        input.updateEditorCamera(engine.window(), *tf, dt, {viewport.hovered, viewport.focused});
+        editorCamera.update(engine.window(), *tf, dt, {viewport.hovered, viewport.focused});
         cam->camera.setViewYXZ(tf->translation, tf->rotation);
+        Input &input = Input::getInstance();
         if (input.isKeyPressed(engine.window(), input.keyMap.escape))
             glfwSetWindowShouldClose(engine.window(), true);
     }

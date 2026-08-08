@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <assimp/material.h>
 
+#include "Core/Handles/TextureType.hpp"
 #include "Core/Path/Paths.hpp"
 
 namespace Faye
@@ -28,29 +29,6 @@ namespace Faye
         Opaque,      // participates in the depth prepass, drawn as triangles
         Transparent, // skips the depth prepass, drawn as triangles
         Water,       // skips the depth prepass, drawn as tessellated patches
-    };
-
-    // Handle to a MaterialTemplate (0 = built-in PBR).
-    using MaterialTemplateHandle = uint32_t;
-    static constexpr MaterialTemplateHandle kBuiltinPBRTemplateHandle = 0;
-
-    enum class TextureType
-    {
-        Albedo,
-        Normal,
-        Metallic,
-        Roughness,
-        AmbientOcclusion,
-        Height,
-        Equirectangular,
-    };
-
-    struct TextureTypeHasher
-    {
-        size_t operator()(TextureType type) const
-        {
-            return std::hash<uint32_t>{}(static_cast<uint32_t>(type));
-        }
     };
 
     struct HdrImage { std::vector<float> pixels; int width = 0; int height = 0; };

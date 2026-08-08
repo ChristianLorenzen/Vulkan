@@ -6,9 +6,10 @@
 #include <imgui.h>
 
 #include "Core/ECS/ComponentPool.hpp"
+#include "Core/Handles/MaterialHandle.hpp"
+#include "Core/Handles/TextureType.hpp"
 #include "Editor/Widgets/AssetBrowser.hpp"
-#include "Scene/Entities/Entity.hpp"
-
+#include "engine/Scene/Entities/Entity.hpp"
 namespace Faye
 {
     class MaterialRegistry;

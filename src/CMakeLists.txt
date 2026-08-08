@@ -1,6 +1,7 @@
 set(FAYE_ENGINE_SOURCES
-    Assets/ModelRegistry.cpp
-    Assets/AssetDatabase.cpp
+    engine/Assets/ModelRegistry.cpp
+    engine/Assets/AssetDatabase.cpp
+    engine/Assets/Import/ModelImporter.cpp
     Core/HotReload/HotReloadManager.cpp
     Core/HotReload/HotReloadSystem.cpp
     Core/IO/FileSystem.cpp
@@ -67,27 +68,27 @@ set(FAYE_ENGINE_SOURCES
     Renderer/Vulkan/TextureCache.cpp
     Renderer/Vulkan/VkSamplerResource.cpp
     Renderer/Vulkan/VkTextureResource.cpp
-    Runtime/main.cpp
-    Runtime/Engine.cpp
-    Scripting/ScriptSystem.cpp
-    Scripting/LuaScriptSystem.cpp
-    Scripting/ScriptingSystem.cpp
-    Scene/Camera/Camera.cpp
+    engine/Runtime/main.cpp
+    engine/Runtime/Engine.cpp
+    engine/Scripting/ScriptSystem.cpp
+    engine/Scripting/LuaScriptSystem.cpp
+    engine/Scripting/ScriptingSystem.cpp
+    engine/Scene/Camera/Camera.cpp
     Core/ECS/Reflection/SemanticRegistry.cpp
-    Scene/Entities/Components.cpp
-    Scene/Entities/Entity.cpp
-    Scene/Entities/RegisterComponents.cpp
-    Scene/Scene.cpp
-    Scene/SceneQueries.cpp
-    Scene/SceneManager.cpp
-    Scene/SceneBuilder.cpp
-    Scene/Serialization/Serializer.cpp
-    Scene/Serialization/Deserializer.cpp
-    Scene/Serialization/ComponentSerializers.cpp
-    Scene/Serialization/ReflectedSerializers.cpp
-    Scene/Serialization/MaterialEnumNames.cpp
-    Scene/Serialization/SceneFileWriter.cpp
-    Scene/Serialization/SceneFileReader.cpp
+    engine/Scene/Entities/Components.cpp
+    engine/Scene/Entities/Entity.cpp
+    engine/Scene/Entities/RegisterComponents.cpp
+    engine/Scene/Scene.cpp
+    engine/Scene/SceneQueries.cpp
+    engine/Scene/SceneManager.cpp
+    engine/Scene/SceneBuilder.cpp
+    engine/Scene/Serialization/Serializer.cpp
+    engine/Scene/Serialization/Deserializer.cpp
+    engine/Scene/Serialization/ComponentSerializers.cpp
+    engine/Scene/Serialization/ReflectedSerializers.cpp
+    engine/Scene/Serialization/MaterialEnumNames.cpp
+    engine/Scene/Serialization/SceneFileWriter.cpp
+    engine/Scene/Serialization/SceneFileReader.cpp
 )
 
 include(FetchContent)
@@ -227,12 +228,12 @@ if(FAYE_USE_PCH)
     # vma_implementation.cpp - the PCH already parsed vk_mem_alloc.h without
     # VMA_IMPLEMENTATION, so the definitions would
     # silently vanish.
-    # Model.cpp              - stb_image's SSE2 path miscompiles under a PCH
+    # engine/Assets/Import/ModelImporter.cpp - stb_image's SSE2 path miscompiles under a PCH
     # at -O0 ("last argument must be an 8-bit
     # immediate" out of emmintrin.h).
     set_source_files_properties(
         Renderer/Vulkan/vma_implementation.cpp
-        Renderer/Resources/Model.cpp
+        engine/Assets/Import/ModelImporter.cpp
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 endif()
 
@@ -262,24 +263,26 @@ add_executable(faye_tests
     # only reads effect definitions off disk -- so the test target stays
     # headless.
     Renderer/PostProcess/PostProcessEffectLibrary.cpp
-    Assets/AssetDatabase.cpp
-    Assets/Tests/AssetDatabaseTests.cpp
-    Scene/Camera/Camera.cpp
-    Scene/Entities/Components.cpp
-    Scene/Entities/Entity.cpp
-    Scene/Entities/RegisterComponents.cpp
-    Scene/Scene.cpp
-    Scene/Tests/SceneTests.cpp
-    Scene/Serialization/Serializer.cpp
-    Scene/Serialization/Deserializer.cpp
-    Scene/Serialization/ComponentSerializers.cpp
-    Scene/Serialization/ReflectedSerializers.cpp
-    Scene/Serialization/MaterialEnumNames.cpp
-    Scene/Serialization/Tests/SceneSerializationTests.cpp
-    Scripting/ScriptSystem.cpp
-    Scripting/LuaScriptSystem.cpp
-    Scripting/Tests/ScriptSystemTests.cpp
-    Scripting/Tests/LuaScriptSystemTests.cpp)
+    engine/Assets/AssetDatabase.cpp
+    engine/Assets/Tests/AssetDatabaseTests.cpp
+    engine/Assets/Import/ModelImporter.cpp
+    engine/Assets/Tests/ModelImporterTests.cpp
+    engine/Scene/Camera/Camera.cpp
+    engine/Scene/Entities/Components.cpp
+    engine/Scene/Entities/Entity.cpp
+    engine/Scene/Entities/RegisterComponents.cpp
+    engine/Scene/Scene.cpp
+    engine/Scene/Tests/SceneTests.cpp
+    engine/Scene/Serialization/Serializer.cpp
+    engine/Scene/Serialization/Deserializer.cpp
+    engine/Scene/Serialization/ComponentSerializers.cpp
+    engine/Scene/Serialization/ReflectedSerializers.cpp
+    engine/Scene/Serialization/MaterialEnumNames.cpp
+    engine/Scene/Serialization/Tests/SceneSerializationTests.cpp
+    engine/Scripting/ScriptSystem.cpp
+    engine/Scripting/LuaScriptSystem.cpp
+    engine/Scripting/Tests/ScriptSystemTests.cpp
+    engine/Scripting/Tests/LuaScriptSystemTests.cpp)
 
 target_include_directories(faye_tests
     PRIVATE
@@ -356,7 +359,7 @@ add_test(NAME faye_tests COMMAND faye_tests)
 FetchContent_GetProperties(assimp SOURCE_DIR _assimp_script_src BINARY_DIR _assimp_script_bin)
 
 add_library(faye_rotator_script SHARED
-    Scripting/ExampleScripts/RotatorScript.cpp)
+    engine/Scripting/ExampleScripts/RotatorScript.cpp)
 
 target_include_directories(faye_rotator_script
     PRIVATE

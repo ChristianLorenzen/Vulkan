@@ -5,11 +5,10 @@
 
 #include <imgui.h>
 
+#include "Core/Handles/MaterialHandle.hpp"
 #include "Editor/ImGuiFrameData.hpp"
 #include "Renderer/Material/Material.hpp"
-#include "Renderer/Material/MaterialHandle.hpp"
-#include "Scene/Scene.hpp"
-
+#include "engine/Scene/Scene.hpp"
 namespace Faye
 {
     class MaterialRegistry;

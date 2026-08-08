@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Runtime/Engine.hpp"
+#include "engine/Runtime/Engine.hpp"
 #include "Editor/Panels/EditorPanels.hpp"
 #include "Editor/ImGuiIntegration/EditorRenderLayer.hpp"
-#include "Scene/SceneQueries.hpp"
-
+#include "Editor/Utility/EditorCameraController.hpp"
+#include "engine/Scene/SceneQueries.hpp"
 #include <filesystem>
 
 namespace Faye::Editor {
@@ -36,6 +36,7 @@ namespace Faye::Editor {
             Engine            engine;
             Panels::EditorPanels      panels;
             ImGuiIntegration::EditorRenderLayer layer;
+            EditorCameraController    editorCamera;
             ViewportState     viewport;
 
             // Offscreen scene size requested by the viewport panel last frame,

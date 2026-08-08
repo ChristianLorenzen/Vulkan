@@ -6,10 +6,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Assets/AssetDatabase.hpp"
-#include "Assets/AssetId.hpp"
+#include "engine/Assets/AssetDatabase.hpp"
+#include "engine/Assets/AssetId.hpp"
+#include "Core/Handles/MaterialHandle.hpp"
 #include "Material.hpp"
-#include "Renderer/Material/MaterialHandle.hpp"
 
 namespace Faye
 {

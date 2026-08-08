@@ -20,7 +20,7 @@ namespace Faye::Editor::Panels
     EditorPanels::EditorPanels()
     {
         panels.push_back(std::make_unique<ConsolePanel>(Logger::getConsoleSink()));
-        panels.push_back(std::make_unique<FrameStatsPanel>());
+        // panels.push_back(std::make_unique<FrameStatsPanel>());
         panels.push_back(std::make_unique<EditorViewPanel>());
         panels.push_back(std::make_unique<HierarchyPanel>());
         panels.push_back(std::make_unique<InspectorPanel>());

@@ -1,6 +1,6 @@
 #include "Editor/Panels/Inspector/InspectorPanel.hpp"
 
-#include "Assets/ModelRegistry.hpp"
+#include "engine/Assets/ModelRegistry.hpp"
 #include "Core/ECS/World.hpp"
 #include "Editor/Widgets/EditorWidgets.hpp"
 #include "Editor/Panels/Inspector/FieldDrawers.hpp"

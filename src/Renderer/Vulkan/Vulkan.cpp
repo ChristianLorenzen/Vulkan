@@ -363,7 +363,7 @@ bool Faye::Vulkan::setSceneRenderSize(uint32_t width, uint32_t height)
     return vk_renderer->resizeSceneIfNeeded(width, height);
 }
 
-std::optional<Faye::Vulkan::FrameToken> Faye::Vulkan::beginFrame()
+std::optional<FrameToken> Faye::Vulkan::beginFrame()
 {
     assert(framePhase == FramePhase::Idle && "beginFrame called while a frame is already in progress");
     postProcessChain->syncResources();
@@ -393,7 +393,7 @@ std::optional<Faye::Vulkan::FrameToken> Faye::Vulkan::beginFrame()
     return token;
 }
 
-void Faye::Vulkan::renderScene(const FrameToken &token, const VulkanFrameInput &frameInput)
+void Faye::Vulkan::renderScene(const FrameToken &token, const RenderFrameInput &frameInput)
 {
     assert(framePhase == FramePhase::Acquired && "renderScene must be called once, right after beginFrame");
     const auto *primaryCamera = frameInput.renderView.camera;

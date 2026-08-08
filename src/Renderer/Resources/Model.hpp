@@ -1,56 +1,28 @@
 #pragma once
 
-#include "Renderer/Resources/PrimitiveType.hpp"
+// GPU model: uploads CPU mesh data (Assets/Import/ModelMeshData) into vertex /
+// index buffers and owns the node hierarchy + submeshes. The Assimp import and
+// procedural primitive generation live headless in Assets/Import/ModelImporter,
+// so this header no longer pulls in assimp.
+
+#include "engine/Assets/Import/ModelMeshData.hpp"
+#include "Core/Handles/MaterialHandle.hpp"
+#include "Core/Handles/PrimitiveType.hpp"
 #include "Renderer/Resources/Vertex.hpp"
 #include "Renderer/Vulkan/VulkanBuffer.hpp"
 #include "Renderer/Vulkan/vk_device.hpp"
 #include "Renderer/Material/Material.hpp"
-#include "Renderer/Material/MaterialRegistry.hpp"
 
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
 
+#include <cstdint>
 #include <memory>
-
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+#include <string>
 
 namespace Faye
 {
-    struct Mesh
-    {
-        std::vector<Vertex> vertices;
-        std::vector<uint32_t> indices;
-        uint32_t materialIndex = 0;
-    };
-
-    struct Builder
-    {
-        struct NodeData
-        {
-            std::string name;
-            std::vector<uint32_t> meshDataIndices;
-            std::vector<uint32_t> childNodeIndices;
-        };
-
-        std::vector<Mesh> meshes;
-        std::vector<MaterialData> materials;
-        std::string directory;
-        std::unordered_map<std::string, Texture> loadedTextures;
-        std::vector<NodeData> nodes;
-        uint32_t rootNodeIndex = ~0u;
-
-        void loadModel(const std::string &modelPath);
-        uint32_t processNode(aiNode *node, const aiScene *scene, const glm::mat4 &parentTransform = glm::mat4(1.0f));
-        Mesh processMesh(aiMesh *mesh, const aiScene *scene, const glm::mat4 &nodeTransform);
-        MaterialData processMaterial(aiMaterial *material, const aiScene *scene);
-        Texture loadTexture(const std::string &texturePath, const aiScene *scene, TextureType textureType);
-        Texture processTexture(aiTextureType type, const aiScene *scene);
-        static Builder makePrimitive(PrimitiveType primitiveType, uint32_t subdivisions = 64);
-    };
-
     class Model
     {
     public:
@@ -84,7 +56,7 @@ namespace Faye
             glm::vec3 extents() const { return (max - min) * 0.5f; }
         };
 
-        Model(VulkanDevice &device, const Builder &builder);
+        Model(VulkanDevice &device, const ModelMeshData &meshData);
         Model(VulkanDevice &device, const std::vector<Vertex> &vertices);
         ~Model();
 
@@ -117,15 +89,15 @@ namespace Faye
 
         std::unique_ptr<VulkanBuffer> vertexBuffer;
         uint32_t vertexCount;
-
         std::unique_ptr<VulkanBuffer> indexBuffer;
-        uint32_t indexCount;
-
+        uint32_t indexCount = 0;
         bool hasIndexBuffer = false;
-        Bounds localBounds{};
-        std::vector<MaterialData> importedMaterials;
+
         std::vector<Submesh> submeshes;
+        std::vector<MaterialData> importedMaterials;
         std::vector<MeshNode> meshNodes;
         uint32_t rootNodeIndex = kInvalidNodeIndex;
+
+        Bounds localBounds{};
     };
-}
+} // namespace Faye

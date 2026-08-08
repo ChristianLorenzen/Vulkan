@@ -1,6 +1,6 @@
 #include "Editor/Panels/Inspector/FieldDrawers.hpp"
 
-#include "Assets/ModelRegistry.hpp"
+#include "engine/Assets/ModelRegistry.hpp"
 #include "Core/ECS/World.hpp"
 #include "Core/Serialization/Uuid.hpp"
 #include "Editor/Panels/Inspector/MaterialEditor.hpp"

@@ -2,13 +2,12 @@
 
 #include <cstdint>
 
-#include "Assets/ModelRegistry.hpp"
+#include "engine/Assets/ModelRegistry.hpp"
 #include "Core/ECS/SystemSchedule.hpp"
 #include "Core/Jobs/JobSystem.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Scene/RenderScene.hpp"
-#include "Scene/Scene.hpp"
-
+#include "engine/Scene/Scene.hpp"
 namespace Faye
 {
     // Builds the per-frame render snapshot. The read-only mesh + point-light

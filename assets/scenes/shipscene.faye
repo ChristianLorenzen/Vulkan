@@ -209,7 +209,7 @@ entities:
         materialHandle: 00000000-0000-0000-0000-000000000000
         view: true
       - type: Lua Script
-        scriptPath: src/Scripting/ExampleScripts/rotator.lua
+        scriptPath: src/engine/Scripting/ExampleScripts/rotator.lua
   - id: 4495b63c-022d-46fc-824c-dc199e26867c
     name: Point Light
     components:

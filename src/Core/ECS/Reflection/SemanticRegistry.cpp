@@ -2,12 +2,11 @@
 
 #include <glm/glm.hpp>
 
-#include "Assets/ModelHandle.hpp"
+#include "Core/Handles/MaterialHandle.hpp"
+#include "Core/Handles/ModelHandle.hpp"
 #include "Core/Serialization/Uuid.hpp"
-#include "Renderer/Material/MaterialHandle.hpp"
-#include "Scene/Serialization/Deserializer.hpp"
-#include "Scene/Serialization/Serializer.hpp"
-
+#include "engine/Scene/Serialization/Deserializer.hpp"
+#include "engine/Scene/Serialization/Serializer.hpp"
 // NOTE ON LAYERING: this is the one file under Core/ECS/Reflection/ that
 // includes Scene/Serialization (and therefore yaml-cpp). The ground rule is
 // that the reflection HEADERS stay headless -- SemanticRegistry.hpp forward

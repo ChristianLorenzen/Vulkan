@@ -7,10 +7,9 @@
 #include "Core/ECS/Entity.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/Resources/Model.hpp"
-#include "Scene/Camera/Camera.hpp"
-#include "Scene/Entities/Components.hpp"
-#include "Scene/Scene.hpp"
-
+#include "engine/Scene/Camera/Camera.hpp"
+#include "engine/Scene/Entities/Components.hpp"
+#include "engine/Scene/Scene.hpp"
 namespace Faye
 {
     struct RenderableInstance

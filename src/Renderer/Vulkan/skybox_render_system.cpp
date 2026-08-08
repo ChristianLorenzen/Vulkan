@@ -3,7 +3,7 @@
 #include <cassert>
 #include <stdexcept>
 
-#include "Scene/Scene.hpp"
+#include "engine/Scene/Scene.hpp"
 #include "glm/glm.hpp"
 
 #include "skybox_render_system.hpp"

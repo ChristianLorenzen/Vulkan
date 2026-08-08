@@ -1,14 +1,13 @@
 #include "Editor/Panels/Inspector/ComponentDrawers.hpp"
 
-#include "Assets/ModelRegistry.hpp"
+#include "engine/Assets/ModelRegistry.hpp"
 #include "Editor/Widgets/EditorWidgets.hpp"
 #include "Editor/Panels/Inspector/MaterialEditor.hpp"
 #include "Renderer/Material/MaterialRegistry.hpp"
 #include "Renderer/PostProcess/PostProcessEffectLibrary.hpp"
 #include "Renderer/Resources/Model.hpp"
-#include "Scripting/LuaScriptSystem.hpp"
-#include "Scripting/ScriptComponents.hpp"
-
+#include "engine/Scripting/LuaScriptSystem.hpp"
+#include "engine/Scripting/ScriptComponents.hpp"
 #include "imgui.h"
 
 #include <glm/trigonometric.hpp>

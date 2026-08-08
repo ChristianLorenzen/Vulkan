@@ -22,5 +22,12 @@ namespace Faye::Editor::Panels
                   ModelRegistry *modelRegistry,
                   const TextureThumbnailCallback *textureThumbnailCallback,
                   MaterialTemplateRegistry *materialTemplateRegistry) override;
+
+        void drawEditorControls(ImGuiFrameData &frameData);
+        
+    private:
+        bool panMode;
+        bool rotateMode;
+        bool frameStatsOpen;
     };
 }

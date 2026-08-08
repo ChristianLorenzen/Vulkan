@@ -30,7 +30,7 @@ namespace Faye
 
     std::filesystem::path Paths::assets()
     {
-        return root() / "src" / "Assets";
+        return root() / "src" / "engine" / "Assets";
     }
 
     std::filesystem::path Paths::bin()
