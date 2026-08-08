@@ -456,22 +456,6 @@ SwapChainSupportDetails VulkanDevice::querySwapChainSupport(VkPhysicalDevice dev
     return details;
 }
 
-uint32_t VulkanDevice::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
-{
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
-    {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-        {
-            return i;
-        }
-    }
-    LOG_ERROR(Logger::get(), "Failed to find suitable memory type");
-    throw std::runtime_error("Failed to find suitable memory type...");
-}
-
 VkSampleCountFlagBits VulkanDevice::getMaxUsableSampleCount()
 {
     VkPhysicalDeviceProperties physicalDeviceProperties;

@@ -60,14 +60,14 @@ void Faye::Vulkan::initializeFrameResources()
 {
     uboBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
     lightingBuffers.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-    for (ulong i = 0; i < uboBuffers.size(); i++)
+    for (std::size_t i = 0; i < uboBuffers.size(); i++)
     {
         uboBuffers[i] = std::make_unique<VulkanBuffer>(
             *vk_device,
             sizeof(GlobalUBO),
             1,
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+            BufferMemoryUsage::HostVisible);
         uboBuffers[i]->map();
 
         lightingBuffers[i] = std::make_unique<VulkanBuffer>(
@@ -75,7 +75,7 @@ void Faye::Vulkan::initializeFrameResources()
             sizeof(SceneLightingUBO),
             1,
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+            BufferMemoryUsage::HostVisible);
         lightingBuffers[i]->map();
     }
 

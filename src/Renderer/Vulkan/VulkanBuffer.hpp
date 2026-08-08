@@ -5,6 +5,15 @@
 namespace Faye
 {
 
+    // VMA-centric buffer memory usage. Replaces raw VkMemoryPropertyFlags so
+    // callers express intent instead of leaking Vulkan memory-type flags.
+    enum class BufferMemoryUsage
+    {
+        GpuOnly,    // device-local, no host access (vertex/index/storage buffers)
+        HostVisible, // host-visible, sequential-write access (per-frame UBO updates)
+        Staging,    // host-visible staging for uploads (transfer source)
+    };
+
     class VulkanBuffer
     {
     public:
@@ -13,7 +22,7 @@ namespace Faye
             VkDeviceSize instanceSize,
             uint32_t instanceCount,
             VkBufferUsageFlags usageFlags,
-            VkMemoryPropertyFlags memoryPropertyFlags,
+            BufferMemoryUsage memoryUsage,
             VkDeviceSize minOffsetAlignment = 1);
         ~VulkanBuffer();
 
@@ -55,7 +64,7 @@ namespace Faye
         VkDeviceSize instanceSize;
         VkDeviceSize alignmentSize;
         VkBufferUsageFlags usageFlags;
-        VkMemoryPropertyFlags memoryPropertyFlags;
+        BufferMemoryUsage memoryUsage;
     };
 
 } // namespace lve

@@ -37,13 +37,13 @@ namespace Faye
       VkDeviceSize instanceSize,
       uint32_t instanceCount,
       VkBufferUsageFlags usageFlags,
-      VkMemoryPropertyFlags memoryPropertyFlags, // TODO: Remove this parameter once VMA is integrated. Leaving now so all callers can be updated later.
+      BufferMemoryUsage memoryUsage, // VMA-centric: maps to VmaAllocationCreateInfo below
       VkDeviceSize minOffsetAlignment)
       : vk_device{device},
         instanceCount{instanceCount},
         instanceSize{instanceSize},
         usageFlags{usageFlags},
-        memoryPropertyFlags{memoryPropertyFlags}
+        memoryUsage{memoryUsage}
   {
     alignmentSize = getAlignment(instanceSize, minOffsetAlignment);
     bufferSize = alignmentSize * instanceCount;
@@ -51,9 +51,15 @@ namespace Faye
     VmaAllocationCreateInfo allocInfo = {};
     allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-    if (memoryPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    switch (memoryUsage)
     {
-      allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    case BufferMemoryUsage::HostVisible:
+    case BufferMemoryUsage::Staging:
+        allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        break;
+    case BufferMemoryUsage::GpuOnly:
+    default:
+        break;
     }
 
     device.createBuffer(bufferSize, usageFlags, allocInfo, buffer, allocation);

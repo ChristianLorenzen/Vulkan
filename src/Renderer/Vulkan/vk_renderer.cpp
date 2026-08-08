@@ -454,7 +454,6 @@ void Faye::VulkanRenderer::createSceneImages()
         prepassDepthInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         prepassDepthInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         prepassDepthInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        prepassDepthInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         prepassDepthInfo.imageType = VK_IMAGE_TYPE_2D;
         prepassDepthInfo.debugName = "Depth Prepass Image";
         depthPrepassResources[i].createOwned(vk_device, prepassDepthInfo, true);
@@ -466,7 +465,6 @@ void Faye::VulkanRenderer::createSceneImages()
         colorCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         colorCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         colorCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         colorCreateInfo.imageType = VK_IMAGE_TYPE_2D;
         colorCreateInfo.debugName = "Scene Color Image";
         sceneColorResources[i].createOwned(vk_device, colorCreateInfo, true);
@@ -478,7 +476,6 @@ void Faye::VulkanRenderer::createSceneImages()
         depthCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         depthCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depthCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        depthCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         depthCreateInfo.imageType = VK_IMAGE_TYPE_2D;
         depthCreateInfo.debugName = "Scene Depth Image";
         sceneDepthResources[i].createOwned(vk_device, depthCreateInfo, true);
@@ -490,7 +487,6 @@ void Faye::VulkanRenderer::createSceneImages()
         motionCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         motionCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         motionCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        motionCreateInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         motionCreateInfo.imageType = VK_IMAGE_TYPE_2D;
         motionCreateInfo.debugName = "Scene Motion Image";
         sceneMotionResources[i].createOwned(vk_device, motionCreateInfo, true);
@@ -502,7 +498,7 @@ void Faye::VulkanRenderer::createPostProcessImages()
     for (auto &target : postProcessTargets)
     {
         target.images.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
-        target.imageMemories.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
+        target.imageAllocations.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
         target.imageViews.resize(VulkanSwapchain::MAX_FRAMES_IN_FLIGHT);
 
         for (int i = 0; i < VulkanSwapchain::MAX_FRAMES_IN_FLIGHT; i++)
@@ -529,7 +525,7 @@ void Faye::VulkanRenderer::createPostProcessImages()
                 postProcessColorImageInfo,
                 allocInfo,
                 target.images[i],
-                target.imageMemories[i]);
+                target.imageAllocations[i]);
             target.imageViews[i] = createImageView(target.images[i], sceneColorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
         }
     }
@@ -570,11 +566,11 @@ void Faye::VulkanRenderer::cleanupPostProcessRenderTargets()
         for (size_t i = 0; i < target.imageViews.size(); i++)
         {
             vkDestroyImageView(vk_device.getDevice(), target.imageViews[i], nullptr);
-            vmaDestroyImage(vk_device.getAllocator(), target.images[i], target.imageMemories[i]);
+            vmaDestroyImage(vk_device.getAllocator(), target.images[i], target.imageAllocations[i]);
         }
 
         target.images.clear();
-        target.imageMemories.clear();
+        target.imageAllocations.clear();
         target.imageViews.clear();
     }
 }

@@ -38,7 +38,6 @@ namespace Faye
         QueueFamilyIndices findPhysicalQueueFamilies() { return cachedQueueFamilies; }
         VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
-        uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
         void setDebugUtilName(VkObjectType objectType, uint64_t objectHandle, const char *name);
 
         VkPhysicalDeviceProperties properties;

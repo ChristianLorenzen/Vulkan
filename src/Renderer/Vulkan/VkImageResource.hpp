@@ -14,7 +14,6 @@ namespace Faye
         VkFormat format = VK_FORMAT_UNDEFINED;
         VkImageUsageFlags usage = 0;
         VkImageAspectFlags aspectFlags = 0;
-        VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
         VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkImageType imageType = VK_IMAGE_TYPE_2D;
